@@ -83,7 +83,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{count} published probes failed",
         "fix the metrics, then re-apply",
         demotable=False,
-        condition=("one or more smoke queries failed in `sst test --suite smoke`, so the suite is not a success"),
+        condition=("one or more smoke probes failed in `sst test`, so the run is not a success"),
         note=(
             "Smoke queries are not part of a deployment, so this can never fail an `apply`. Each "
             "failed probe is reported above it: SST-PLN100 for a metric, SST-APL100 for anything else."
@@ -158,7 +158,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, "
         "when that run will never end, release it with `sst state unlock --run <run id> --yes`",
         condition=(
-            "another run (`apply`, `drop`, `state recover`, or the eval suite of `sst test`) holds the target's run "
+            "another run (`apply`, `drop`, `state recover`, or `sst eval`) holds the target's run "
             "lock, in Snowflake or in the local cache; or the lock expired and "
             "`--break-stale-lock` was not given; or this run lost its lock while it ran"
         ),
@@ -182,13 +182,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "the target changed after the plan was computed: its state table no longer reads as the "
             "plan read it, an object the plan would create now exists, an ownership marker changed "
-            "or was not installed, or a composite artifact's resources changed; `sst test` also "
-            "reports it when an artifact it would smoke or eval is recorded as published as compiled "
+            "or was not installed, or a composite artifact's resources changed; `sst test` and "
+            "`sst eval` also report it when an artifact they would check is recorded as published as compiled "
             "but its live object changed since; and `sst apply --plan` reports it, exiting 4, when "
             "the saved plan's manifest, observation, or ordered changes are not a fresh plan's"
         ),
         note=(
-            "Under `sst test`, the object was changed outside SST after it was applied: run `sst plan` "
+            "Under `sst test` or `sst eval`, the object was changed outside SST after it was applied: run `sst plan` "
             "and `sst apply` to publish it again. An artifact never published on the target is "
             "SST-APL036, and one published from an older compile SST-APL038."
         ),
@@ -338,7 +338,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "SST already counts the attempt as not passing: although this is a warning, the eval "
-            "is not accepted, and the eval suite fails, unless another attempt completes; then "
+            "is not accepted, and the `sst eval` gate fails, unless another attempt completes; then "
             "SST-APL029 replaces this warning. A partial status `run.accept_statuses` names "
             "reports SST-VAL730, an error, instead."
         ),
@@ -367,7 +367,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval config stage '{value}': FILE FORMAT is {found}, expected {expected}",
         "run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create",
         condition=("`apply` found an existing eval config stage that does not carry the file format eval runs read"),
-        note="`sst test` reports the same stage as SST-VAL729 before any eval run starts.",
+        note="`sst eval` reports the same stage as SST-VAL729 before any eval run starts.",
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -485,19 +485,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {value} is not published on this target",
         "run `sst plan`, then `sst apply`",
         condition=(
-            "`sst test` would smoke or eval an artifact the target's state records no successful "
-            "publish of; when that is true of every artifact the suite tests, SST-APL037 reports it once"
+            "`sst test` would probe, or `sst eval` run, an artifact the target's state records no successful "
+            "publish of; when that is true of every artifact the run checks, SST-APL037 reports it once"
         ),
         precheck=Precheck.RUNTIME,
     ),
     spec(
         "SST-APL037",
         Severity.ERROR,
-        "Nothing the suite tests is published on this target",
-        "nothing the {kind} suite tests is published on this target ({count} not published)",
+        "Nothing to check is published on this target",
+        "nothing `sst {command}` checks is published on this target ({count} not published)",
         "run `sst plan`, then `sst apply`",
         condition=(
-            "no artifact `sst test` would smoke or eval is published on the target, as on a target "
+            "no artifact `sst test` would probe, or `sst eval` run, is published on the target, as on a target "
             "nothing was applied to; reported once instead of SST-APL036 for each"
         ),
         precheck=Precheck.RUNTIME,
@@ -509,7 +509,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {value} is published from an older compile",
         "run `sst plan`, then `sst apply`, to publish the current compile",
         condition=(
-            "`sst test` would smoke or eval an artifact the target's state records at another "
+            "`sst test` would probe, or `sst eval` run, an artifact the target's state records at another "
             "fingerprint or name than the project compiles to now"
         ),
         precheck=Precheck.RUNTIME,
@@ -574,7 +574,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "fix the artifact the probe names; a created view is not a working view",
         condition=(
             "a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact "
-            "failed, observed by `sst test --suite smoke` rather than by `apply`"
+            "failed, observed by `sst test` rather than by `apply`"
         ),
         note="Fix the artifact the probe names; a metric probe reports `SST-PLN100`.",
         precheck=Precheck.RUNTIME,
@@ -648,7 +648,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: the model comparison needs it published exactly as compiled, and {detail}",
         "run `sst plan` to see what differs, then `sst apply`, and compare again",
         condition=(
-            "before `sst test --compare-models` commits anything, an eval's agent or CoWork profile "
+            "before `sst eval --compare-models` commits anything, an eval's agent or CoWork profile "
             "is one plan would change, has no live version, does not carry its alias on the version "
             "holding its specification, or has a default not pinned by name to that version"
         ),

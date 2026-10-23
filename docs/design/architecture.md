@@ -83,8 +83,8 @@ Drawn from: [pyproject.toml](../../pyproject.toml), [tests/unit/test_ring_bounda
 
 A use case never constructs what it talks to. It is given a port, and the
 narrowest one that covers its calls: `ApplyArtifacts` takes an `ApplyPort`, a
-`StateStore`, and a `ClockPort`; `CompileProject` takes a `ProjectInputs`; the
-smoke suite takes a `SmokePort`. In production `cli` passes real adapters; in the
+`StateStore`, and a `ClockPort`; `CompileProject` takes a `ProjectInputs`;
+and `SmokePublished` takes a `SmokePort`. In production `cli` passes real adapters; in the
 unit tests the same use case runs against in-memory implementations of the same
 protocol. That is why the test suite needs no mocking library and no account:
 the fakes are real implementations with observable state, held to the same
@@ -480,7 +480,7 @@ finishes the job.
 SST keeps two kinds of record: what the project compiles to, and what apply
 published. The diagram shows the main reads and writes of each file and table;
 every arrow starts at the command. Any run that reads the state table online also
-rewrites a local cache that disagrees with it, and `diff` and the smoke suite read
+rewrites a local cache that disagrees with it, and `diff` and `sst test` read
 the state table too.
 
 ```mermaid
@@ -491,7 +491,7 @@ flowchart LR
         plan["sst plan"]
         apply["sst apply"]
         drop["sst drop"]
-        evals["sst test --suite evals"]
+        evals["sst eval"]
     end
     subgraph files ["Local files in sst_target/"]
         direction TB
@@ -531,7 +531,7 @@ state table defaults to `SST_STATE` in the target's database and schema
 (`state:` moves it); the lock table is its name with `_LOCK`, and the eval
 baseline and gate table its name with `_EVALS`. `plan --use-cached-state`
 plans from the observation file in the `--state` directory, which an earlier
-plan recorded, instead of connecting. Apply, drop, and the eval suite also take a
+plan recorded, instead of connecting. Apply, drop, and `sst eval` also take a
 local lock, a file beside the state cache: `<state file>.lock`.
 
 | | Manifest | State |
@@ -540,7 +540,7 @@ local lock, a file beside the state cache: `<state file>.lock`.
 | Lives in | `sst_target/manifest.json` | the state table, cached in `sst_target/state.<target>.json` |
 | Describes | what the project renders now | what was published, with each object's fingerprint and the manifest it came from |
 | Deterministic | yes: its id is the hash of its content | no: it records run ids, times, and the commit |
-| When stale | `plan`, `apply`, and the smoke and eval suites refuse to start until `sst compile` runs again | online, the table wins and a disagreeing cache is rewritten (`SST-MAN027`); a state table changed since the plan refuses the apply (`SST-APL012`) |
+| When stale | `plan`, `apply`, `test`, and a published `eval` refuse to start until `sst compile` runs again | online, the table wins and a disagreeing cache is rewritten (`SST-MAN027`); a state table changed since the plan refuses the apply (`SST-APL012`) |
 
 ### Fingerprints and checksums
 
@@ -635,20 +635,20 @@ These are the commands that connect, and what they do once connected:
 | `diff` | when either side is a target, as `--to` is by default | the state table and ownership markers | nothing |
 | `plan` | unless `--use-cached-state` | the catalog, grants, the state table | `plan.json` and the observation file, locally |
 | `apply` | yes | as `plan` | the planned objects, the lock table, the state table; locally, the statements and the state cache |
-| `test --suite smoke` | yes | state, ownership markers, the probes' queries | nothing in Snowflake |
-| `test --suite evals` | yes | the published agents | evaluation runs, the lock table, the eval table |
+| `test` | yes | state, ownership markers, the probes' queries | nothing in Snowflake |
+| `eval` | yes | the published agents | evaluation runs, the lock table, the eval table |
 | `drop` | yes | the object's marker, the state table | one `DROP`, the lock table, the state table |
 | `state recover` | yes | as `plan` | the lock table; the state table, recording only what ownership markers or content prove |
 | `state convert` | yes | the state and lock tables | rebuilt state and lock tables, keeping the old ones as backups |
 | `state unlock` | yes | the lock table | releases one named run's lock |
 | `ask` | yes; besides SQL, the Cortex Agents REST API, on the same session's token and role | the state table; the agent's streamed run | scratch copies `<NAME>__SST_ASK_<id>` and an `sst_ask` thread, both removed when the session ends |
-| `test --suite evals --compare-models` | yes | the state table, each subject's versions, the published agents, the usage views | per subject a hold copy, a version per candidate aliased `EVAL_<MODEL>`, and a restore copy with its live version; their staged specifications, evaluation runs, the lock table; locally, the report |
-| `test --refresh-cost` | yes | the usage views | nothing in Snowflake; locally, the report it rereads |
-| `test --suite evals --unpublished` | yes | the state table, one temporary agent run per question, the judges | scratch copies and temporary agents, dropped when the run ends |
+| `eval --compare-models` | yes | the state table, each subject's versions, the published agents, the usage views | per subject a hold copy, a version per candidate aliased `EVAL_<MODEL>`, and a restore copy with its live version; their staged specifications, evaluation runs, the lock table; locally, the report |
+| `eval --refresh-cost` | yes | the usage views | nothing in Snowflake; locally, the report it rereads |
+| `eval --unpublished` | yes | the state table, one temporary agent run per question, the judges | scratch copies and temporary agents, dropped when the run ends |
 
-Run without `--suite`, `sst test` runs each suite that applies once `sst compile`
-has written the manifest, and exits 4 when none applies: `SST-MAN001` with no
-manifest, `SST-DIS012` when the selection compiles no semantic view and no eval.
+`sst test` and a published `sst eval` exit 4 before connecting when `sst compile` has
+written no manifest (`SST-MAN001`), or when the selection compiles nothing to probe
+(`SST-DIS012`) or no eval (`SST-DIS010`).
 
 "Never" means SST opens no session. With `dbt.command: compile`, dbt itself connects to the
 warehouse on any command that runs dbt: every one that loads the project, unless `--manifest` is

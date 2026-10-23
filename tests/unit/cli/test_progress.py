@@ -20,7 +20,7 @@ from snowflake_semantic_tools.app.evals.progress import (
     StillWaiting,
 )
 from snowflake_semantic_tools.cli import output
-from snowflake_semantic_tools.cli.commands.test import _print_eval_progress
+from snowflake_semantic_tools.cli.commands.eval import _print_eval_progress
 from snowflake_semantic_tools.cli.logs import configure_logging
 from snowflake_semantic_tools.cli.output import RenderPolicy, announce, print_progress, use_render_policy
 from snowflake_semantic_tools.cli.render import progress

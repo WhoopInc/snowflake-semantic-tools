@@ -2,7 +2,7 @@
 
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept as code in a dbt project: semantic views, agent tools, Cortex Agents, CoWork profiles, evals, skills, plugins, and CoCo Desktop profiles. It validates offline, saves a reviewable plan, and applies exactly that plan.
 
-**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test --suite smoke|evals`, `ask`, `explain`, `lineage`, `docs [--check]`, `state recover|convert|unlock`, `agent-kit install|upgrade|status|remove`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
+**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test`, `eval`, `ask`, `explain`, `lineage`, `docs [--check]`, `state recover|convert|unlock`, `agent-kit install|upgrade|status|remove`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
 
 ## Critical Rules
 

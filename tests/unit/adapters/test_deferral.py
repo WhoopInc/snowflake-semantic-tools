@@ -162,7 +162,7 @@ def test_test_resolves_the_deferral_as_compile_did(tmp_path: Path, monkeypatch: 
     assert _compiled(project, "--defer-target", "prod")[0] == 0
 
     def stale(*flags: str) -> bool:
-        args = ["test", *common(project), "--suite", "smoke", *flags, "--output", "json"]
+        args = ["test", *common(project), *flags, "--output", "json"]
         result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
         assert result.exit_code != 3, result.output
         return "SST-MAN009" in [item["code"] for item in json.loads(result.output)["diagnostics"]]

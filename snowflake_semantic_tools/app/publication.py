@@ -1,4 +1,4 @@
-"""Say why an artifact `sst test` would smoke or eval is not published as the project compiles it.
+"""Say why an artifact `sst test` or `sst eval` would check is not published as it compiles.
 
 Each case has its own code and next step, so a target nothing was applied to reads as such
 rather than as a plan gone stale: never published here, published from an older compile, or
@@ -25,7 +25,7 @@ class Publication(Enum):
 
 @dataclass(frozen=True, slots=True)
 class Checked:
-    """One artifact a suite would test, with how it is published.
+    """One artifact `sst test` would probe or `sst eval` run, with how it is published.
 
     Attributes:
         key: The artifact's key, such as `semantic_view:sales`.
@@ -44,19 +44,19 @@ _CODES = {
 }
 
 
-def unpublished_findings(checked: Sequence[Checked], *, suite: str) -> tuple[Diagnostic, ...]:
+def unpublished_findings(checked: Sequence[Checked], *, command: str) -> tuple[Diagnostic, ...]:
     """Report each checked artifact that is not published as compiled, in the order given.
 
     When none of them is published at all, one finding says so instead of one per artifact.
 
     Diagnostics:
-        SST-APL037: no artifact the suite would test is published on the target; once.
+        SST-APL037: no artifact `sst <command>` would check is published on the target; once.
         SST-APL036: an artifact is not published on the target.
         SST-APL038: an artifact is published from an older compile.
         SST-APL012: an artifact is published as compiled but its live object changed since.
     """
     if checked and all(item.publication is Publication.ABSENT for item in checked):
-        return (D("SST-APL037", kind=suite, count=len(checked)),)
+        return (D("SST-APL037", command=command, count=len(checked)),)
     return tuple(
         D(_CODES[item.publication], artifact=item.key, value=item.target)
         for item in checked

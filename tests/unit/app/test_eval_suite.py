@@ -163,7 +163,7 @@ def test_an_unpublished_eval_stops_before_any_run_and_releases_the_lock(monkeypa
     assert isinstance(outcome, EvalGateOutcome)
     assert (outcome.passed, outcome.suite) == (False, None)
     assert [item.code for item in outcome.diagnostics] == ["SST-APL037"]
-    assert dict(outcome.data) == {"suite": "evals", **empty_eval_suite_json()}
+    assert dict(outcome.data) == empty_eval_suite_json()
     assert not lock.locked and port.scripts == []
 
 

@@ -1,4 +1,4 @@
-"""How `sst test` shows eval results: each attempt as a tree of its metrics, cost and questions.
+"""How `sst eval` shows eval results: each attempt as a tree of its metrics, cost and questions.
 
 An attempt's line names its eval and status, and how many questions passed. Under it come a
 published attempt's run, each metric's pass count, average and threshold, what the attempt

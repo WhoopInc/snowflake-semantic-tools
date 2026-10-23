@@ -41,7 +41,7 @@ It is vendored in this repository, so there is nothing to clone.
 
 3. **Syntax checks connect.** `validation.snowflake_syntax_check` is true in the fixture and is the default elsewhere; pass `--no-snowflake-syntax-check` to stay offline.
 
-4. **`sst test` does not compare goldens.** Its only suites, `smoke` and `evals`, test what `sst apply` published, so neither belongs in an offline phase. The goldens are compared by `poetry run pytest tests/unit/test_goldens.py` and rewritten by `poetry run python -m tests.helpers.update_goldens`, both from the repo root.
+4. **`sst test` does not compare goldens.** It smoke-probes what `sst apply` published, as `sst eval` runs its agents, so neither belongs in an offline phase. The goldens are compared by `poetry run pytest tests/unit/test_goldens.py` and rewritten by `poetry run python -m tests.helpers.update_goldens`, both from the repo root.
 
 5. **Compile before plan.** `plan`, `apply`, and the smoke and eval suites read the manifest `sst compile` wrote for the same `--target`. `SST-MAN001` (none), `SST-MAN006` (another target), or `compiled SST manifest is stale; run sst compile before ...` means compile again with that target.
 

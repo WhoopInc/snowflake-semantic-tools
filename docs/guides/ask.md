@@ -13,7 +13,7 @@ echo "Why did returns rise?" | sst ask sales_analyst - --output json
 
 ## What runs
 
-1. The project compiles in memory, as `sst test` compiles it.
+1. The project compiles in memory, as `sst eval --unpublished` compiles it.
 2. SST reads the target's state table, read-only, and finds each semantic view,
    search service, procedure, function, skill and sub-agent the agent reaches
    that compiles differently from what state records: an edit you have not
@@ -178,7 +178,7 @@ sends `response.suggested_queries` and ends with `done`.
 
 ## Unpublished evals
 
-`sst test --suite evals --unpublished` makes the same copies, once per agent, and
+`sst eval --unpublished` makes the same copies, once per agent, and
 runs each question on the agent pointed at them, so its scores reflect your
 edits to what the agent calls too; see [unpublished eval
 runs](evals.md#unpublished-eval-runs).

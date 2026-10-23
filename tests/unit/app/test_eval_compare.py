@@ -222,7 +222,7 @@ def test_cost_that_has_not_landed_is_pending_and_one_that_has_is_known() -> None
     assert [notice.code for notice in outcome.diagnostics] == ["SST-VAL773", "SST-VAL774"]
     assert (
         outcome.diagnostics[0].suggestion
-        == "run `sst test --refresh-cost sst_target/compare/c.json` in about an hour to fill it in"
+        == "run `sst eval --refresh-cost sst_target/compare/c.json` in about an hour to fill it in"
     )
 
 

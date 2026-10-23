@@ -111,13 +111,12 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-DIS012",
         Severity.ERROR,
-        "No test suite applies",
-        "no test suite applies: the project compiles no semantic view for the smoke suite and no eval for the "
-        "eval suite",
-        "add a semantic view or an eval, widen --select and --exclude, or name a suite with --suite",
+        "Nothing to smoke test",
+        "nothing to smoke test: the selection compiles no artifact `sst test` can probe",
+        "add a semantic view, or widen --select and --exclude",
         condition=(
-            "`sst test` names no `--suite`, and the selection compiles neither a semantic view nor an eval, "
-            "so it would test nothing"
+            "`sst test` runs on a selection that compiles no artifact with a smoke probe -- no "
+            "semantic view, tool, agent, or CoWork profile -- so it would probe nothing"
         ),
     ),
     spec(

@@ -216,7 +216,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _removed("validation.expression_rules", "the expression rules it disabled are no longer optional"),
     _removed("validation.multipath_check", "multi-path relationship analysis is always on"),
-    _removed("validation.smoke_query", "smoke probes run only under sst test --suite smoke"),
+    _removed("validation.smoke_query", "smoke probes run only under sst test"),
     _key("diagnostics", _BLOCK, "How severe a diagnostic is, beyond what the error registry declares."),
     _key(
         "diagnostics.severity_overrides",
@@ -287,9 +287,9 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "generation.threads",
         _I,
-        "Sessions `plan`, `validate`, `diff`, `state recover` and `test` work on at once, and changes "
-        "`apply` applies at once, unless "
-        "`--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1.",
+        "Sessions `plan`, `validate`, `diff`, `state recover`, `test` and `eval` work on at once, and changes "
+        "`apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes "
+        "`skills.+threads` first, and `test` and `eval` take 1.",
         default=str(DEFAULT_THREADS),
         minimum=1,
         maximum=16,
@@ -479,7 +479,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "agents.+scratch_schema",
         _SCH,
-        "`DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` make their "
+        "`DATABASE.SCHEMA` where `sst ask` and `sst eval --unpublished` make their "
         "scratch copies and temporary agents, and connected validate its model probes "
         "(SST-VAL551), for a role that cannot create them in the agent's own "
         "schema, or an agent in a personal database, which cannot hold a semantic view. Nothing "
@@ -583,7 +583,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "evals.+candidate_models",
         _L,
-        "Orchestration models `sst test --suite evals --compare-models` compares with the pinned one, "
+        "Orchestration models `sst eval --compare-models` compares with the pinned one, "
         "each from `snowflake.orchestration_models` when that is set (SST-VAL771) and never `auto` (SST-VAL770); "
         "`--compare-models <list>` replaces it.",
     ),

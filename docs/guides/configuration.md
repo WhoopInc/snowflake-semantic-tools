@@ -348,7 +348,7 @@ usage error, exit code 3.
 sessions `plan`, `validate` and `apply` work on at once. Unset, all three take the
 same default, 4; apply's changes take `skills.+threads` first. `--threads 1` works
 on one session at a time. The plan, its diagnostics and the saved plan file are
-the same for any count. `sst test` defaults to 1.
+the same for any count. `sst test` and `sst eval` default to 1.
 
 SST also reads `$DBT_PROFILES_DIR` (see [above](#which-files-are-read)) and the
 standard `$NO_COLOR`: any non-empty value turns colour off, as `--no-color`

@@ -77,7 +77,7 @@ see [tests/golden/README.md](../../tests/golden/README.md).
 
 Tests marked `live` connect. They live in `tests/contract_live/` (the real connector against the
 port contract the fakes satisfy), `tests/integration/` (apply in a real account) and `tests/e2e/`
-(the CLI from `validate` to the smoke suite).
+(the CLI from `validate` to `sst test`).
 
 ### Configure an account
 
@@ -199,8 +199,8 @@ must already exist. The `apply.agent_spec_stage`
 stage need not: apply creates it when it is absent, which needs `CREATE STAGE` on its schema
 (`SST-PLN008` otherwise).
 
-The evals suite is `sst test --suite evals --target verify` on the reference project. Like the
-smoke suite, it reads the manifest `sst compile` wrote for that target (`SST-MAN001` without one)
+The evals suite is `sst eval --target verify` on the reference project. Like
+`sst test`, it reads the manifest `sst compile` wrote for that target (`SST-MAN001` without one)
 and runs against the agents already published there, and it holds the target's run lock while it
 runs. So the order is: build the dbt models in `verify`, compile and apply against the manifest
 that build wrote, then run the suite; the committed `tests/fixtures/reference_project_manifest.json`
@@ -225,7 +225,7 @@ and nothing waits on it. Pick a suite:
 | `live` | `pytest -m live --require-snowflake -n 4` over the three live layers, then drops the run's scratch schemas even when a test failed |
 | `sweep` | `sweep_scratch --older-than-hours` with the `older_than_hours` input (default `6`), for schemas a cancelled job left |
 | `recording` | `session_recorder`, uploading the capture as an artifact either way; the first capture passes and is the one to commit |
-| `evals` | on the reference project's `verify` target, with a key-pair profile written for the run: `dbt build`, `sst compile`, `sst apply --no-strict`, then `sst test --suite evals`; uploads `evals.json`. What it publishes stays in place for the next run. |
+| `evals` | on the reference project's `verify` target, with a key-pair profile written for the run: `dbt build`, `sst compile`, `sst apply --no-strict`, then `sst eval`; uploads `evals.json`. What it publishes stays in place for the next run. |
 
 A second run of the same suite on the same ref cancels the first. Supply these repository
 secrets; the workflow maps them to `SST_TEST_SNOWFLAKE_*`, sets `SST_TEST_RUN_ID` to the

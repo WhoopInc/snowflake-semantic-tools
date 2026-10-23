@@ -168,7 +168,7 @@ running `claude-opus-4-8`. A change of model then looks, in an eval's scores or
 in the agent's answers, like a change the project made. So pin the model: list
 it in `snowflake.orchestration_models` and name it for every agent, or in one
 agent's `config:`. To choose which model, run the agent's evals on each candidate
-with [`sst test --compare-models`](evals.md#comparing-orchestration-models).
+with [`sst eval --compare-models`](evals.md#comparing-orchestration-models).
 
 ```yaml
 snowflake:
@@ -750,8 +750,8 @@ a release tag apart:
 
 | Command | Like git's | What it touches in Snowflake |
 |---|---|---|
-| `sst ask`, `sst test --suite evals --unpublished` | the working tree | A temporary copy built from the project as it is on disk, unapplied edits included. Nothing published, no version. |
-| `sst test --compare-models` | commits on a side branch | Extra committed versions of the published agent: a hold copy of the release, one per candidate model (aliased `EVAL_<MODEL>`), and a restore copy the live version is reopened from. Never the default, the alias, or what any caller is served ([comparing models](evals.md#comparing-orchestration-models)). |
+| `sst ask`, `sst eval --unpublished` | the working tree | A temporary copy built from the project as it is on disk, unapplied edits included. Nothing published, no version. |
+| `sst eval --compare-models` | commits on a side branch | Extra committed versions of the published agent: a hold copy of the release, one per candidate model (aliased `EVAL_<MODEL>`), and a restore copy the live version is reopened from. Never the default, the alias, or what any caller is served ([comparing models](evals.md#comparing-orchestration-models)). |
 | `sst plan` / `sst apply` | tagging a release | Commits a version when the spec changed, then moves the alias and the default to it. |
 
 **`sst apply` is the only command that moves the default or the alias.**
@@ -778,7 +778,7 @@ where apply put it. `DESCRIBE AGENT` shows which: `default_version_name` reads
 ```mermaid
 flowchart LR
     A["sst apply"] -->|commits, pins| R["VERSION$4<br/>RELEASED, default"]
-    C["sst test --compare-models"] -->|commits| H["VERSION$5<br/>hold"]
+    C["sst eval --compare-models"] -->|commits| H["VERSION$5<br/>hold"]
     C -->|commits| E1["VERSION$6<br/>EVAL_CLAUDE_OPUS_4_8"]
     C -->|commits| E2["VERSION$7<br/>EVAL_CLAUDE_HAIKU_4_5"]
     C -->|commits, reopens live from| RS["VERSION$8<br/>restore"]
@@ -873,7 +873,7 @@ no tool or skill. `sst plan` looks up the consumed extensions and pinned
 versions on every connected plan unless `--no-validate`, even with connected
 validation off. For a
 target whose referenced objects may be absent, demote the code to a warning with
-`diagnostics.severity_overrides`; a baseline cannot hold an error. `sst test --suite smoke` describes each published agent to
+`diagnostics.severity_overrides`; a baseline cannot hold an error. `sst test` describes each published agent to
 confirm it exists as planned; to check what an agent answers, write an
 [eval](evals.md).
 
@@ -903,7 +903,7 @@ privileges, cleanup, and how SST reaches the API.
 
 ### Run its evals unpublished
 
-`sst test --suite evals --unpublished` runs each of the agent's eval questions
+`sst eval --unpublished` runs each of the agent's eval questions
 the same way, one temporary agent per question, and scores the replies without
 an evaluation run: `tool_selection_accuracy` exactly, which gates on its
 threshold, and `answer_correctness` and custom metrics by an approximate judge,

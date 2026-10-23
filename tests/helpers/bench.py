@@ -52,7 +52,7 @@ COMMANDS: Mapping[str, BenchCommand] = {
     "validate": BenchCommand(("validate", "--snowflake-syntax-check"), frozenset({0}), 900),
     "plan": BenchCommand(("plan",), frozenset({0, 2}), 900),
     "apply-noop": BenchCommand(("apply", "--yes"), frozenset({0}), 1200),
-    "smoke": BenchCommand(("test", "--suite", "smoke"), frozenset({0}), 600),
+    "smoke": BenchCommand(("test",), frozenset({0}), 600),
 }
 DEFAULT_COMMANDS = tuple(COMMANDS)
 

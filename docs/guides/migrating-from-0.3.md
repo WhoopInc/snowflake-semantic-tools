@@ -59,7 +59,7 @@ to write instead, naming only flags the command takes. A command without
 key in `sst_config.yml`, which now chooses where artifacts publish. `sst plan` and `sst apply` read the manifest `sst compile` writes, and
 refuse without one (`SST-MAN001`). New in 1.0 are `sst plan`, `sst apply`,
 `sst migrate split`, `sst migrate refs`, `sst baseline`, `sst lineage`, `sst test`,
-`sst ask`, `sst explain`, `sst docs`, `sst state` and `sst agent-kit`. The
+`sst eval`, `sst ask`, `sst explain`, `sst docs`, `sst state` and `sst agent-kit`. The
 [CLI reference](../reference/cli.md) lists every 1.0 command and flag.
 
 ## Where `profiles.yml` and `sst_config.yml` are found

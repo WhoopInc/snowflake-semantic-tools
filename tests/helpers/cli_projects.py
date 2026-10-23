@@ -37,7 +37,7 @@ def common(project: Path) -> list[str]:
 def applied_port(project: Path) -> FakeSnowflake:
     """A fake Snowflake on which every artifact of `project`'s compiled manifest is applied.
 
-    The state table records each one and its live marker matches, so the smoke suite runs its
+    The state table records each one and its live marker matches, so `sst test` runs its
     probes, each of which answers.
     """
     manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))

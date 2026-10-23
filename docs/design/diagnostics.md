@@ -276,7 +276,7 @@ report it:
 - `observe` needs a read of Snowflake but no write. `sst plan`, or a connected `sst validate`, can
   report it before `apply` changes anything.
 - `runtime` is seen only while a statement runs. No check can report it ahead of the statement, so
-  `apply` or a test suite meets it.
+  `apply`, `sst test` or `sst eval` meets it.
 
 The aim is to report a condition at the earliest point it can be known. A target schema that does
 not exist is observable, so `plan` reports it as `SST-PLN010` before anything is written; if `apply`

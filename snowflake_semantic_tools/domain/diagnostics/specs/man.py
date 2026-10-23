@@ -75,8 +75,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "compiled SST manifest is stale; run sst compile before {command}",
         "run sst compile, then re-run the command",
         condition=(
-            "the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, or a "
-            "connected test suite refuses to start from it; the command exits 4"
+            "the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, "
+            "`sst test`, or a published `sst eval` refuses to start from it; the command exits 4"
         ),
     ),
     spec(
@@ -172,10 +172,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Comparison report cannot be refreshed",
         "{path} cannot have its cost refreshed: {detail}",
-        "pass a compare.json that `sst test --suite evals --compare-models` wrote, as it wrote it; "
-        "compare again for a new one",
+        "pass a compare.json that `sst eval --compare-models` wrote, as it wrote it; compare again for a new one",
         condition=(
-            "`sst test --refresh-cost` was given a file that is not there, is not JSON, or is not an "
+            "`sst eval --refresh-cost` was given a file that is not there, is not JSON, or is not an "
             "`sst.compare/1` report with every key it writes"
         ),
     ),

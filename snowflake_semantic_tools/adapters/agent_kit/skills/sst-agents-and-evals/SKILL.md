@@ -171,16 +171,15 @@ evals:
   stay. Every file in the folder is checked, and only the named pair publishes.
 
 - `sst compile` checks eval files offline, and `sst compile --emit-ddl` writes what they render.
-- `sst test --suite evals` runs the agent in Snowflake, costs credits, and can take many
-  minutes. Run it only when the user asks, against the target they name.
+- `sst eval` runs the agent in Snowflake, costs credits, and can take many minutes. Run it only when the user asks, against the target they name.
 - A gate run compares with a captured baseline, stored in Snowflake, not in
   `.sst/baseline.json`. With none, the run fails (`SST-VAL758`). A new agent version, or a
   changed dataset or configuration, needs a new baseline (`SST-VAL759`), captured on purpose:
-  `sst test --suite evals --capture-baseline --reason "<why>"`.
-- The eval suite needs the agent applied exactly as compiled: never published is `SST-APL036`,
+  `sst eval --capture-baseline --reason "<why>"`.
+- `sst eval` needs the agent applied exactly as compiled: never published is `SST-APL036`,
   published from an older compile `SST-APL038`, changed in Snowflake since `SST-APL012`; and the session's
   primary role to hold the task and stage privileges (`SST-VAL727`, `SST-VAL728`).
-- `sst test --suite evals --compare-models <model>,<model>` compares orchestration models on an
+- `sst eval --compare-models <model>,<model>` compares orchestration models on an
   eval: it commits a version of the published agent per candidate, aliased `EVAL_<MODEL>`, runs
   them beside the pinned model, and writes a report; it never moves the default or the released
   alias, and costs credits like any eval run, so run it only when the user asks. Adopting a
@@ -214,11 +213,11 @@ agent in Snowflake and costs credits.
    `SST-ASK008`, an unreachable tool `SST-ASK010`. `--published` copies nothing, and then
    `SST-ASK001` names each edit the agent did not see. `sst ask --cleanup` removes copies and
    threads a crashed session left.
-2. `sst test --suite evals --unpublished`: runs each eval question on the same copies, publishing
+2. `sst eval --unpublished`: runs each eval question on the same copies, publishing
    nothing and touching no baseline. `tool_selection_accuracy` is scored exactly and gates on
    its threshold (`SST-ASK007`); `answer_correctness` and custom metrics are judged
    approximately and never gate. Never pass `--capture-baseline` with it (refused).
 3. A per-developer target: its own state table and object locations, never shared, with
-   `sst plan`, `sst apply` and `sst test --suite evals` against it. An agent may live in a
+   `sst plan`, `sst apply` and `sst eval` against it. An agent may live in a
    personal `USER$<user>.PUBLIC` schema, but its evals may not (`SST-VAL766`): Snowflake creates
    no table, dataset or stage in a personal database.

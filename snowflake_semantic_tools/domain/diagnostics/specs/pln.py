@@ -257,7 +257,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: no smoke query can be built for metric '{member}'",
         "make the metric selectable, or exclude it from smoke checks",
         condition="a public metric of a semantic view has no smoke probe, because no query can name it",
-        note="Raised by `sst test --suite smoke`, which then runs no probe.",
+        note="Raised by `sst test`, which then runs no probe.",
     ),
     spec(
         "SST-PLN021",
@@ -540,8 +540,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: smoke query for metric '{member}' failed: {detail}",
         "read Snowflake's error: when it is about the metric's definition, fix the metric, since a "
         "created view is not a working view; when it names dimensions the query must request that "
-        "the probe could not, exclude the view from the smoke suite",
-        condition=("a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`"),
+        "the probe could not, exclude the view from `sst test`",
+        condition=("a smoke probe of a metric failed (`sst test`); any other probe reports `SST-APL100`"),
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -551,8 +551,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: smoke check skipped ({detail})",
         None,
         condition=(
-            "under `sst test --suite smoke --fail-fast`, an artifact whose probes did not run "
-            "because an earlier probe failed"
+            "under `sst test --fail-fast`, an artifact whose probes did not run because an earlier probe failed"
         ),
     ),
     spec(

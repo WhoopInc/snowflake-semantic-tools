@@ -23,7 +23,7 @@ def test_sst_val773_fires() -> None:
         "eval 'sales': the usage of 1 model(s)' runs has not landed in Snowflake's usage views yet, "
         "so their cost is pending"
     )
-    assert diagnostic.suggestion == "run `sst test --refresh-cost c.json` in about an hour to fill it in"
+    assert diagnostic.suggestion == "run `sst eval --refresh-cost c.json` in about an hour to fill it in"
     assert diagnostic.subject == "eval:sales"
 
 

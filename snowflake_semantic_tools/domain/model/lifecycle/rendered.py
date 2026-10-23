@@ -49,7 +49,7 @@ class ProbeKind(Enum):
 
 @dataclass(frozen=True, slots=True)
 class SmokeProbe:
-    """One query the smoke suite runs against a published artifact; it passes when the query runs.
+    """One query `sst test` runs against a published artifact; it passes when the query runs.
 
     Attributes:
         key: What a failure is reported under: a member's key, or the artifact's key with a
@@ -195,7 +195,7 @@ class RenderedArtifact:
             members, as artifact keys and component keys such as `command:<name>`,
             `hook:<name>` and `mcp:<name>`, and the tool members another team owns that an
             agent calls, as `tool_ref:<name>`. Recorded in the manifest; never a publish edge.
-        smoke: The probes the smoke suite runs once the artifact is published.
+        smoke: The probes `sst test` runs once the artifact is published.
         required_relations: The tables and views apply checks exist before it writes anything.
         component_fingerprints, physical_resources: As `CompositeFacts` describes them.
         generic_apply_safe: False for a composite artifact, which the generic apply path refuses.

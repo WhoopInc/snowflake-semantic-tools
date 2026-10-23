@@ -142,7 +142,7 @@ which publishes the earlier spec as a new version.
 sst compile --target prod
 sst plan --target prod
 sst apply --target prod --plan sst_target/plan.json --yes
-sst test --suite smoke --target prod
+sst test --target prod
 ```
 
 `apply` executes exactly the plan it is given. It plans the target again and
@@ -155,7 +155,7 @@ pipeline: it is required with `--output json` or `--prune`, and without it
 
 `apply` holds a run lock in the target's state table while it runs, so a second
 apply against the same target stops with `SST-APL011` instead of interleaving
-with the first; `sst test --suite evals` and `sst drop` take the same lock. An
+with the first; `sst eval` and `sst drop` take the same lock. An
 apply whose plan has nothing to write takes no lock and opens no session beyond
 the one it planned on, so a merge that changes nothing published finishes as
 soon as it is planned. A
@@ -310,7 +310,7 @@ jobs:
         run: sst plan --target prod || test $? -eq 2
       - name: Apply exactly the saved plan
         run: sst apply --target prod --plan sst_target/plan.json --yes
-      - run: sst test --suite smoke --target prod
+      - run: sst test --target prod
       - if: always()
         run: rm -f "$RUNNER_TEMP/snowflake_key.p8"
 ```
@@ -396,7 +396,7 @@ shown indented here:
 - `next_steps` is what to do next, first step first; it never tells the reader
   to run `apply`, `drop`, or a baseline or state write on its own.
 - With `--output json`, no progress line is printed on stderr, so a long
-  `sst test --suite evals` stays silent until its envelope.
+  `sst eval` stays silent until its envelope.
 - An envelope that would carry a credential is replaced by one reporting
   `SST-PRT012`, and the run exits `1`.
 
@@ -427,7 +427,7 @@ for every step.
 | Code | Meaning |
 |---:|---|
 | 0 | Success. For `plan`, nothing to change: every artifact's live object carries the marker state records, and the properties plan compares (see [Concepts](../concepts.md#how-plan-decides-each-change)) are as apply read them back. Anything else about an object, such as its grants, is not compared. |
-| 1 | Errors were reported, or an apply, a test suite, or a check failed. |
+| 1 | Errors were reported, or an apply, a smoke probe, an eval gate, or a check failed. |
 | 2 | Declared and actual state differ: `plan` found changes, `diff` found the two states differ, or `format --check`, `enrich --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |

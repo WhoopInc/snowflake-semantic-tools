@@ -253,7 +253,7 @@ def test_the_default_next_step_follows_how_the_run_ended(
 
 
 @pytest.mark.parametrize(
-    ("command", "exit_code", "warnings"), [("compile", 0, 0), ("validate", 0, 2), ("test", 130, 0)]
+    ("command", "exit_code", "warnings"), [("compile", 0, 0), ("validate", 0, 2), ("test", 130, 0), ("eval", 130, 0)]
 )
 def test_no_next_step_where_there_is_nothing_to_do(command: str, exit_code: int, warnings: int) -> None:
     assert default_next_steps(command, exit_code, errors=0, warnings=warnings) == ()

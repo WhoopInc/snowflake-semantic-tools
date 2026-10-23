@@ -128,7 +128,7 @@ Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/prefligh
 A session can draw on its secondary roles as well as its primary role, but a
 task runs as the primary role alone, and an eval runs as tasks. A privilege
 held only through a secondary role therefore works interactively and fails in
-the run. `sst test --suite evals` checks `CREATE TASK`, `CREATE STAGE`, and
+the run. `sst eval` checks `CREATE TASK`, `CREATE STAGE`, and
 `CREATE FILE FORMAT` on each agent's schema before any run starts:
 `SST-VAL727` when only a secondary role holds one, `SST-VAL728` when no role in
 the session does. Grant them to the primary role, or to a role it inherits;
@@ -295,7 +295,7 @@ and `plan` exits 0 from then on.
 
 ## Another run holds the lock (`SST-APL011`)
 
-`apply`, `drop`, and `test --suite evals` take a run lock on the target: a row in
+`apply`, `drop`, and `eval` take a run lock on the target: a row in
 the lock table beside the state table (`SST_STATE_LOCK` by default) and a file
 beside the local state cache, `sst_target/state.<target>.json.lock`. A live run
 extends its lock every 5 minutes; a lock not extended for 30 minutes has
@@ -404,9 +404,9 @@ validation checks, the listings and the reads of each listed object, and the
 preflight reads on; `--threads 1` reads on one session at a time. The plan, its
 diagnostics and the saved plan file are the same for any count.
 
-## The eval suite is slow
+## `sst eval` is slow
 
-An eval run takes minutes in Snowflake. The suite reads each run's status every 5
+An eval run takes minutes in Snowflake. `sst eval` reads each run's status every 5
 seconds and prints progress to stderr (see [Running](evals.md#running)): a line
 when an attempt starts, when its status changes, and when it ends, and a line
 naming the runs still in flight at most once a minute. What bounds it:

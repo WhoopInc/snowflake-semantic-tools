@@ -1,6 +1,6 @@
 """Run evals against agents as they compile now, through temporary agents, with no evaluation run.
 
-`RunInlineEvals` is `sst test --suite evals --unpublished`: each question of each eval's
+`RunInlineEvals` is `sst eval --unpublished`: each question of each eval's
 compiled dataset is asked of its agent's compiled specification, as `sst ask` asks it, as
 many at once as the suite's concurrency allows. Then each enabled metric is scored:
 
@@ -534,7 +534,6 @@ def _data(
     approximated = sorted({metric.name for _, plan in results for metric in plan.metrics if metric.kind == _JUDGED})
     unscored = sorted({name for _, plan in results for name in plan.unscored})
     return {
-        "suite": "evals",
         **eval_suite_json(suite, frozenset((*approximated, *unscored))),
         "mode": "unpublished",
         "approximated_metrics": approximated,

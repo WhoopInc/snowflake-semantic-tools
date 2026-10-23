@@ -20,7 +20,10 @@ EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
     (
         ERROR,
         "ERROR",
-        "Errors were reported, an apply, a test suite, or a check failed, or an apply skipped a blocked change.",
+        (
+            "Errors were reported, an apply, a smoke probe, an eval gate, or a check failed, "
+            "or an apply skipped a blocked change."
+        ),
     ),
     (
         CHANGES,

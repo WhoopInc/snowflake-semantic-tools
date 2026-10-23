@@ -51,7 +51,7 @@ SST publishes what a project declares; it does not sandbox it. The files in a pr
 - **Verified queries** are SQL: connected validation runs `EXPLAIN` on each one, and on each
   expression, with that role, and publishing writes them into the semantic view.
 - **Agent instructions**, tool definitions, and skills are published as written and decide what
-  an agent does for whoever calls it; `sst test --suite evals` runs the agents.
+  an agent does for whoever calls it; `sst eval` runs the agents.
 - **Profiles, hooks, MCP configs, and commands** are installed by CoCo Desktop for everyone who
   selects the profile, so a hook's script and an MCP server's command run for them.
 
@@ -65,7 +65,7 @@ Consequences:
   fork, and never give such a job Snowflake credentials. A command that connects runs the
   project's SQL with the target's role. That includes `sst validate` by default (Snowflake
   syntax checks are on unless turned off), `sst debug` unless `--no-connect` is given, and
-  `sst test` with no `--suite`; the full list is in
+  `sst test` and `sst eval`; the full list is in
   [docs/guides/security.md](docs/guides/security.md#trust-model). Check untrusted changes
   offline: `sst validate --no-snowflake-syntax-check` and `sst compile`. In GitHub Actions use
   the `pull_request` trigger, which withholds

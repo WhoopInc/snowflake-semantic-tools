@@ -186,7 +186,7 @@ def test_a_target_nothing_was_applied_to_is_one_finding() -> None:
     outcome = smoke(result, manifest, port)
 
     assert [item.message for item in outcome.diagnostics] == [
-        "nothing the smoke suite tests is published on this target (2 not published)"
+        "nothing `sst test` checks is published on this target (2 not published)"
     ]
     assert (outcome.unpublished, port.described) == (2, [])
 

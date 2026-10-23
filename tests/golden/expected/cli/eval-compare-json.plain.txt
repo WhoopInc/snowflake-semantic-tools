@@ -1,4 +1,4 @@
-$ sst -o json --project-dir <project> --manifest <manifest> test --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+$ sst -o json --project-dir <project> --manifest <manifest> eval --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
 --- exit 0
 --- data
 {

@@ -1,4 +1,4 @@
-"""How `sst test --compare-models` shows a comparison: ranked models, what differs, the verdict.
+"""How `sst eval --compare-models` shows a comparison: ranked models, what differs, the verdict.
 
 Each eval's line names it, its questions and runs, and its verdict. Under it, one row per model in
 rank order, the pinned one marked: its rank, model, role, the headline metric's mean with a bar

@@ -1,4 +1,4 @@
-"""Project an eval suite's results as the JSON `sst test --output json` reports.
+"""Project an eval suite's results as the JSON `sst eval --output json` reports.
 
 Each attempt keeps its run, status and cost, each metric's pass count and average, and every
 question: what the agent answered and called, each metric's score, threshold and explanation,

@@ -41,7 +41,7 @@ from snowflake_semantic_tools.domain.model.eval import (
     ThresholdRange,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply, ToolUse
-from tests.helpers.cli_projects import common, compile_project
+from tests.helpers.cli_projects import applied_port, common, compile_project
 from tests.helpers.compare_reports import JsonReportWriter, jaffle_outcome
 from tests.helpers.described_objects import described_view
 from tests.helpers.published_target import published
@@ -132,7 +132,7 @@ def _unpublished_miss(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dic
     """Every question answered with the tools it expects, but the first that expects one calls it twice."""
     # One question at a time, and one scratch suffix, so every run prints the same lines.
     patch.setattr("snowflake_semantic_tools.app.evals.inline.suite_concurrency", lambda *args: 1)
-    patch.setattr("snowflake_semantic_tools.cli.commands.test.secrets.token_hex", lambda size: "5f680229")
+    patch.setattr("snowflake_semantic_tools.cli.commands.eval.secrets.token_hex", lambda size: "5f680229")
     port = FakeSnowflake(state={})
     port.judge_answer = {"score": 1, "reason": "The answer says what the expected answer says."}
     [item] = [
@@ -149,6 +149,13 @@ def _unpublished_miss(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dic
         uses = tuple(ToolUse(name, "") for name in tools)
         replies[row["input_query"]] = AgentReply(f"Answer {index}.", uses, duration_ms=1000 * index, tokens=(900, 40))
     port.agent_replies = replies  # type: ignore[assignment]
+    port.close = lambda: None  # type: ignore[attr-defined]
+    return lambda params: port
+
+
+def _smoke_pass(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, object]], FakeSnowflake]:
+    """Every compiled artifact applied as compiled, so each smoke probe runs and answers."""
+    port = applied_port(project)
     port.close = lambda: None  # type: ignore[attr-defined]
     return lambda params: port
 
@@ -194,7 +201,7 @@ def _compared(project: Path, patch: pytest.MonkeyPatch) -> Callable[[dict[str, o
 
 
 _COMPARED = (
-    "test",
+    "eval",
     "--compare-models",
     "claude-opus-4-8,openai-gpt-5,claude-haiku-4-5",
     "--compare-report",
@@ -243,24 +250,29 @@ CASES = (
         connect=_two_targets,
     ),
     Case(
-        "test-unpublished",
+        "test-smoke",
+        _compiled,
+        (*_OFFLINE, "test", "--target", "dev"),
+        variants=("color", "plain", "narrow"),
+        connect=_smoke_pass,
+    ),
+    Case(
+        "eval-unpublished",
         _clean,
-        (*_OFFLINE, "test", "--suite", "evals", "--unpublished", "--target", "dev"),
+        (*_OFFLINE, "eval", "--unpublished", "--target", "dev"),
         connect=_unpublished_miss,
     ),
     Case(
-        "test-unpublished-verbose",
+        "eval-unpublished-verbose",
         _clean,
-        (*_OFFLINE, "-v", "test", "--suite", "evals", "--unpublished", "--target", "dev"),
+        (*_OFFLINE, "-v", "eval", "--unpublished", "--target", "dev"),
         variants=("color", "plain", "narrow"),
         connect=_unpublished_miss,
     ),
+    Case("eval-published", _compiled, (*_OFFLINE, "eval", "--target", "dev"), connect=_published_pass),
+    Case("eval-compare", _compiled, (*_OFFLINE, *_COMPARED), connect=_compared),
     Case(
-        "test-published", _compiled, (*_OFFLINE, "test", "--suite", "evals", "--target", "dev"), connect=_published_pass
-    ),
-    Case("test-compare", _compiled, (*_OFFLINE, *_COMPARED), connect=_compared),
-    Case(
-        "test-compare-json",
+        "eval-compare-json",
         _compiled,
         ("-o", "json", *_OFFLINE, *_COMPARED),
         variants=("plain",),

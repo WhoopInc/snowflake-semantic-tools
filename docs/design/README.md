@@ -68,9 +68,9 @@ definitions it cannot answer queries over -- it enforces none of the
 derived-metric restrictions itself -- so SST carries three further lines of
 evidence. Validation encodes the rules Snowflake leaves to query time and, with
 `validation.snowflake_syntax_check` on, compiles each expression against
-Snowflake. The smoke suite, `sst test --suite smoke`, queries the published
+Snowflake. Smoke probes, `sst test`, query the published
 views, their metrics, and their verified queries; `apply` itself runs no
-probes. The eval suite scores each agent against a fixed question set and gates
+probes. `sst eval` scores each agent against a fixed question set and gates
 a change on regressions against a captured baseline.
 
 Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
@@ -81,7 +81,7 @@ Drawn from: [manifest](../../snowflake_semantic_tools/domain/state/manifest.py),
 [validation skip](../../snowflake_semantic_tools/cli/wiring/plan.py),
 [purity guard](../../snowflake_semantic_tools/app/purity.py),
 [metric restriction codes](../../snowflake_semantic_tools/domain/diagnostics/specs/val_metric.py),
-[smoke suite](../../snowflake_semantic_tools/app/smoke.py),
+[smoke probes](../../snowflake_semantic_tools/app/smoke.py),
 [eval gate](../../snowflake_semantic_tools/app/evals/gate.py).
 
 ## What SST is not

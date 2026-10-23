@@ -1,6 +1,6 @@
 # Model comparison report: `compare.json`, schema `sst.compare/1`
 
-`sst test --compare-models` writes one `compare.json` per run, beside `report.html`,
+`sst eval --compare-models` writes one `compare.json` per run, beside `report.html`,
 and prints the same object with `--output json`. Every key below is always present; a value
 that is not known is `null` unless the key says otherwise. Numbers are JSON numbers, never
 strings. Times are ISO 8601 with offset. Lists are in display order.

@@ -617,7 +617,7 @@ def validate_eval_publication(
             changed = plan.action is not Action.NOOP and not plan.diagnostics.has_errors
             publication = Publication.DRIFTED if changed else Publication.PUBLISHED
         checked.append(Checked(item.artifact_key, artifact.target.sql, publication))
-    diagnostics.extend(unpublished_findings(checked, suite="evals"))
+    diagnostics.extend(unpublished_findings(checked, command="eval"))
     return DiagnosticBag(tuple(diagnostics))
 
 

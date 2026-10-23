@@ -205,10 +205,12 @@ compile  ->  validate  ->  plan  ->  apply  ->  test
   is given. With `--plan <file>`, it executes that saved plan only if it was
   made for the same target, from the manifest the project compiles to now,
   against the same live state, with the same changes.
-- **`test`** checks what `apply` published, once `sst compile` has written the
-  manifest: the smoke suite probes deployed semantic views and the eval suite
-  runs agent evaluations. With no suite to run, it exits `4`. See
-  [testing live](guides/testing-live.md) and [evals](guides/evals.md).
+- **`test`** smoke-probes what `apply` published, once `sst compile` has written
+  the manifest: a read-only query of each view, metric, and verified query, and a
+  DESCRIBE of each tool, agent, and CoWork profile. With nothing to probe, it exits `4`. See
+  [testing live](guides/testing-live.md).
+- **`eval`** runs each agent against its evals in Snowflake and gates the scores
+  on a captured baseline; it is billed. See [evals](guides/evals.md).
 
 The **manifest** is the record of one compile: every artifact with its key,
 fingerprint, publish target, dependencies, members, and source files. It holds
@@ -240,7 +242,7 @@ not the agent.
 
 ### Concurrent applies and the run lock
 
-Only one run that writes to a target -- `apply`, the eval suite of `sst test`, or
+Only one run that writes to a target -- `apply`, `sst eval`, or
 `sst drop` -- runs against it at a time. Before it writes anything, the run
 takes the target's row in a lock table beside the state table (`SST_STATE_LOCK`
 for the default `SST_STATE`), recording its run id, the role and machine it runs

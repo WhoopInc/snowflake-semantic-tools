@@ -80,7 +80,7 @@ ls -R "$OUT"
 poetry run pytest tests/unit/test_goldens.py
 ```
 
-The goldens are the engine's own test tooling, not an `sst test` suite. This compiles a copy of the reference project from its vendored manifest and compares every artifact's payloads with its golden under `tests/golden/expected/` (`ddl/`, `agent/`, `tool/`, `cowork_profile/`, `eval/`, `skill/`, `plugin/`, `coco_desktop_profile/`), and checks that compiling twice reports the same diagnostic fingerprints. Phase 1 already runs it; run it alone to see the diffs.
+The goldens are the engine's own test tooling, not an `sst test` run. This compiles a copy of the reference project from its vendored manifest and compares every artifact's payloads with its golden under `tests/golden/expected/` (`ddl/`, `agent/`, `tool/`, `cowork_profile/`, `eval/`, `skill/`, `plugin/`, `coco_desktop_profile/`), and checks that compiling twice reports the same diagnostic fingerprints. Phase 1 already runs it; run it alone to see the diffs.
 
 ### Pass Criteria
 - Every test passes (`9 passed`), exit 0
@@ -137,7 +137,7 @@ poetry run sst plan --project-dir "$PROJ" --target "$T"                # never w
 
 ```bash
 poetry run sst apply --project-dir "$PROJ" --target "$T" --plan "$PROJ/sst_target/plan.json" --yes
-poetry run sst test --suite smoke --project-dir "$PROJ" --target "$T"
+poetry run sst test --project-dir "$PROJ" --target "$T"
 poetry run sst plan --project-dir "$PROJ" --target "$T"                     # exit 0: nothing left to change
 ```
 
@@ -145,7 +145,7 @@ poetry run sst plan --project-dir "$PROJ" --target "$T"                     # ex
 
 ### Pass Criteria
 - `apply` exits 0
-- The smoke suite passes
+- `sst test` passes
 - The second `plan` exits 0
 
 No SST command tears down a deployment. `sst drop <DB>.<SCHEMA>.<NAME> --type agent|semantic_view --target "$T" --yes` is break-glass: it drops one object SST owns and forgets it in state. `apply` also creates a state table (`SST_STATE` by default, from `state.+table`) and a run-lock table beside it (`SST_STATE_LOCK`). Leave cleanup to the user; never drop anything without explicit approval.

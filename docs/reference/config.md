@@ -83,7 +83,7 @@ How the commands that reach Snowflake pace their work.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate`, `diff`, `state recover` and `test` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` takes 1. |
+| `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate`, `diff`, `state recover`, `test` and `eval` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` and `eval` take 1. |
 | `generation.view_timeout` | integer, at least 1 | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
 
 ## dbt
@@ -182,7 +182,7 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 | `agents.+alias` | string |  | Version alias assigned after publication. |
 | `agents.+enabled` | boolean | `true` | Whether agents are compiled; false leaves them out of the project. |
 | `agents.+secure` | boolean | `false` | Publish agents with `SECURE = TRUE`. |
-| `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst test --suite evals --unpublished` make their scratch copies and temporary agents, and connected validate its model probes (SST-VAL551), for a role that cannot create them in the agent's own schema, or an agent in a personal database, which cannot hold a semantic view. Nothing publishes there. |
+| `agents.+scratch_schema` | two-part name | the agent's own schema | `DATABASE.SCHEMA` where `sst ask` and `sst eval --unpublished` make their scratch copies and temporary agents, and connected validate its model probes (SST-VAL551), for a role that cannot create them in the agent's own schema, or an agent in a personal database, which cannot hold a semantic view. Nothing publishes there. |
 | `agents.+tags` | list |  | Tags, as `name` and `value` entries, set with ALTER AGENT ... SET TAG; a closer setting replaces the list. |
 | `agents.<route>` | block |  | Folder route: overrides for agents under that directory. |
 
@@ -217,7 +217,7 @@ Defaults for agent evaluations, overridable per agent folder and by an eval conf
 | `evals.+concurrency` | integer |  | Eval runs a suite starts and polls at once. At the root it is also the most a folder route or an eval's `config:` may ask (SST-VAL731). |
 | `evals.+baseline_runs` | integer |  | Completed attempts a baseline needs; unset needs 1. |
 | `evals.+min_dataset_rows` | integer |  | Smallest accepted question set (SST-VAL710); unset checks none. |
-| `evals.+candidate_models` | list |  | Orchestration models `sst test --suite evals --compare-models` compares with the pinned one, each from `snowflake.orchestration_models` when that is set (SST-VAL771) and never `auto` (SST-VAL770); `--compare-models <list>` replaces it. |
+| `evals.+candidate_models` | list |  | Orchestration models `sst eval --compare-models` compares with the pinned one, each from `snowflake.orchestration_models` when that is set (SST-VAL771) and never `auto` (SST-VAL770); `--compare-models <list>` replaces it. |
 | `evals.+compare_runs` | integer, at least 1 | `2` | Runs of each model a comparison makes, at least 1; `--compare-runs` replaces it. |
 | `evals.+retention` | enum: `audit`, `decision` |  | Retention class recorded with each run; SST never deletes a run on the strength of it. |
 | `evals.<route>` | block |  | Folder route under `project.agents_dir`: overrides for the evals of the agents under that directory. |
@@ -334,7 +334,7 @@ as though it still does.
 | `project.profiles_dir` | renamed project.coco_desktop_profiles_dir | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
-| `validation.smoke_query` | smoke probes run only under sst test --suite smoke | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `validation.smoke_query` | smoke probes run only under sst test | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.publish_via` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.filters_to_instructions` | standalone filter prose always renders into the view | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.use_create_or_alter` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |

@@ -45,7 +45,7 @@ def refuse_another_target(manifest: Manifest, target_name: str | None) -> None:
 
 
 def compiled_manifest(project_dir: Path) -> Manifest:
-    """The manifest `sst compile` wrote; plan, apply, list, and the suites read it.
+    """The manifest `sst compile` wrote; plan, apply, list, test, and eval read it.
 
     Raises:
         ProjectError: no compiled manifest exists (SST-MAN001).

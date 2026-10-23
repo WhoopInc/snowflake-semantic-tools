@@ -878,13 +878,13 @@ Fix: check the artifact name, or drop the exclusion
 
 ### SST-DIS012
 
-**No test suite applies** (error)
+**Nothing to smoke test** (error)
 
-`no test suite applies: the project compiles no semantic view for the smoke suite and no eval for the eval suite`
+``nothing to smoke test: the selection compiles no artifact `sst test` can probe``
 
-Raised when `sst test` names no `--suite`, and the selection compiles neither a semantic view nor an eval, so it would test nothing.
+Raised when `sst test` runs on a selection that compiles no artifact with a smoke probe -- no semantic view, tool, agent, or CoWork profile -- so it would probe nothing.
 
-Fix: add a semantic view or an eval, widen --select and --exclude, or name a suite with --suite
+Fix: add a semantic view, or widen --select and --exclude
 
 ### SST-DIS200
 
@@ -4806,7 +4806,7 @@ Raised when the eval gate finds the stored baseline holds fewer runs than the ev
 
 Fix: complete the baseline first
 
-Note: Capture a new baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. An eval with no baseline at all is SST-VAL758.
+Note: Capture a new baseline: `sst eval --capture-baseline --reason "<why>"`. An eval with no baseline at all is SST-VAL758.
 
 ### SST-VAL735
 
@@ -4958,7 +4958,7 @@ Raised when the eval gate finds no baseline stored for the eval on this target, 
 
 Fix: capture a baseline explicitly with a reason
 
-Note: Capture one: `sst test --suite evals --capture-baseline --reason "<why>"`.
+Note: Capture one: `sst eval --capture-baseline --reason "<why>"`.
 
 ### SST-VAL759
 
@@ -4970,7 +4970,7 @@ Raised when the eval gate finds the baseline was captured for another dataset, e
 
 Fix: capture a new baseline for the current dataset, agent version and metrics
 
-Note: The message names each part that differs. The run's agent version is part of the identity: it matches the version the baseline was captured on, or any version whose comment carries the same `sst-spec:` fingerprint. Any other version needs a new baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
+Note: The message names each part that differs. The run's agent version is part of the identity: it matches the version the baseline was captured on, or any version whose comment carries the same `sst-spec:` fingerprint. Any other version needs a new baseline: `sst eval --select <eval> --capture-baseline --reason "<why>"`. An edited custom metric is SST-VAL745 instead.
 
 ### SST-VAL760
 
@@ -4992,7 +4992,7 @@ Raised when the eval gate finds the baseline is 30 or more days old, before the 
 
 Fix: capture a replacement baseline with a reason
 
-Note: Capture a replacement: `sst test --suite evals --capture-baseline --reason "<why>"`.
+Note: Capture a replacement: `sst eval --capture-baseline --reason "<why>"`.
 
 ### SST-VAL762
 
@@ -5046,7 +5046,7 @@ Fix: give each file its own name:
 
 Raised when an eval's agent resolves to a database whose name starts with `USER$`, so the eval's source table, dataset and config stage, which publish in the agent's schema, would be created in a personal database.
 
-Fix: route the agent to a schema of an ordinary database, or try its evals with `sst test --suite evals --unpublished`, which creates none of them
+Fix: route the agent to a schema of an ordinary database, or try its evals with `sst eval --unpublished`, which creates none of them
 
 Note: Measured on a live account: Snowflake refuses to create a table, a dataset or a stage in a personal database (error 060119), while an agent may live there. `sst ask` and unpublished eval runs create only temporary agents, so they work for an agent in `USER$<user>.PUBLIC`.
 
@@ -5092,7 +5092,7 @@ Note: Snowflake private preview: CoWork profiles. A routing score lies in [0, 1]
 
 ``eval '<artifact>': <field> names `auto`, which is no model a comparison can run``
 
-Raised when `evals.+candidate_models`, a folder route's, an eval's `config.candidate_models`, or `sst test --compare-models`, names `auto`, compared casefolded.
+Raised when `evals.+candidate_models`, a folder route's, an eval's `config.candidate_models`, or `sst eval --compare-models`, names `auto`, compared casefolded.
 
 Fix: name the orchestration models to compare, such as `claude-opus-4-8`; `auto` lets Snowflake pick one per request, so a version on it compares nothing
 
@@ -5114,7 +5114,7 @@ Note: A comparison commits a version of the published agent or CoWork profile on
 
 `eval '<artifact>' names no candidate model to compare with its pinned one`
 
-Raised when `sst test --compare-models` was given no list, and the eval's `candidate_models` setting, from its config, a folder route, or the `evals:` root, names none.
+Raised when `sst eval --compare-models` was given no list, and the eval's `candidate_models` setting, from its config, a folder route, or the `evals:` root, names none.
 
 Fix: list the models in `evals.+candidate_models`, or give them as `--compare-models <model>,<model>`
 
@@ -5126,7 +5126,7 @@ Fix: list the models in `evals.+candidate_models`, or give them as `--compare-mo
 
 Raised when a comparison read its cost before every agent request, judge call, or SQL credit its runs made had a row in ACCOUNT_USAGE.
 
-Fix: run `sst test --refresh-cost {path}` in about an hour to fill it in
+Fix: run `sst eval --refresh-cost {path}` in about an hour to fill it in
 
 Note: Snowflake documents CORTEX_AGENT_USAGE_HISTORY as lagging up to an hour, and its SQL credits up to eight; the report marks each value it could not read yet `pending`.
 
@@ -5138,7 +5138,7 @@ Note: Snowflake documents CORTEX_AGENT_USAGE_HISTORY as lagging up to an hour, a
 
 Raised when reading CORTEX_AGENT_USAGE_HISTORY, the evaluation's eval spans, or CORTEX_REST_API_USAGE_HISTORY was refused, or nothing named the requests to read.
 
-Fix: read the cost with a role that may read SNOWFLAKE.ACCOUNT_USAGE and the AI observability events, as `sst test --refresh-cost {path}`; the scores stand without it
+Fix: read the cost with a role that may read SNOWFLAKE.ACCOUNT_USAGE and the AI observability events, as `sst eval --refresh-cost {path}`; the scores stand without it
 
 ### SST-VAL775
 
@@ -6538,7 +6538,7 @@ Fix: fix the reported errors, then re-compile
 
 `compiled SST manifest is stale; run sst compile before <command>`
 
-Raised when the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, or a connected test suite refuses to start from it; the command exits 4.
+Raised when the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, `sst test`, or a published `sst eval` refuses to start from it; the command exits 4.
 
 Fix: run sst compile, then re-run the command
 
@@ -6640,9 +6640,9 @@ Fix: re-run; a concurrent dbt compile is in progress
 
 `<path> cannot have its cost refreshed: <detail>`
 
-Raised when `sst test --refresh-cost` was given a file that is not there, is not JSON, or is not an `sst.compare/1` report with every key it writes.
+Raised when `sst eval --refresh-cost` was given a file that is not there, is not JSON, or is not an `sst.compare/1` report with every key it writes.
 
-Fix: pass a compare.json that `sst test --suite evals --compare-models` wrote, as it wrote it; compare again for a new one
+Fix: pass a compare.json that `sst eval --compare-models` wrote, as it wrote it; compare again for a new one
 
 ### SST-MAN201
 
@@ -6886,7 +6886,7 @@ Raised when a public metric of a semantic view has no smoke probe, because no qu
 
 Fix: make the metric selectable, or exclude it from smoke checks
 
-Note: Raised by `sst test --suite smoke`, which then runs no probe.
+Note: Raised by `sst test`, which then runs no probe.
 
 ### SST-PLN021
 
@@ -7120,9 +7120,9 @@ Note: The artifact is updated instead of blocked. An agent whose newest committe
 
 `<artifact>: smoke query for metric '<member>' failed: <detail>`
 
-Raised when a smoke probe of a metric failed (`sst test --suite smoke`); any other probe reports `SST-APL100`.
+Raised when a smoke probe of a metric failed (`sst test`); any other probe reports `SST-APL100`.
 
-Fix: read Snowflake's error: when it is about the metric's definition, fix the metric, since a created view is not a working view; when it names dimensions the query must request that the probe could not, exclude the view from the smoke suite
+Fix: read Snowflake's error: when it is about the metric's definition, fix the metric, since a created view is not a working view; when it names dimensions the query must request that the probe could not, exclude the view from `sst test`
 
 ### SST-PLN101
 
@@ -7130,7 +7130,7 @@ Fix: read Snowflake's error: when it is about the metric's definition, fix the m
 
 `<artifact>: smoke check skipped (<detail>)`
 
-Raised when under `sst test --suite smoke --fail-fast`, an artifact whose probes did not run because an earlier probe failed.
+Raised when under `sst test --fail-fast`, an artifact whose probes did not run because an earlier probe failed.
 
 ### SST-PLN102
 
@@ -7276,7 +7276,7 @@ Fix: re-run plan against the apply target
 
 `<count> published probes failed`
 
-Raised when one or more smoke queries failed in `sst test --suite smoke`, so the suite is not a success.
+Raised when one or more smoke probes failed in `sst test`, so the run is not a success.
 
 Fix: fix the metrics, then re-apply
 
@@ -7332,7 +7332,7 @@ Note: The lock in Snowflake expires 30 minutes after its run last extended it, a
 
 `<value> holds the apply lock`
 
-Raised when another run (`apply`, `drop`, `state recover`, or the eval suite of `sst test`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
+Raised when another run (`apply`, `drop`, `state recover`, or `sst eval`) holds the target's run lock, in Snowflake or in the local cache; or the lock expired and `--break-stale-lock` was not given; or this run lost its lock while it ran.
 
 Fix: wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, when that run will never end, release it with `sst state unlock --run <run id> --yes`
 
@@ -7344,11 +7344,11 @@ Note: The message names the holder: its run id and, for the lock in Snowflake, t
 
 `<artifact>: <value> changed since the plan`
 
-Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` also reports it when an artifact it would smoke or eval is recorded as published as compiled but its live object changed since; and `sst apply --plan` reports it, exiting 4, when the saved plan's manifest, observation, or ordered changes are not a fresh plan's.
+Raised when the target changed after the plan was computed: its state table no longer reads as the plan read it, an object the plan would create now exists, an ownership marker changed or was not installed, or a composite artifact's resources changed; `sst test` and `sst eval` also report it when an artifact they would check is recorded as published as compiled but its live object changed since; and `sst apply --plan` reports it, exiting 4, when the saved plan's manifest, observation, or ordered changes are not a fresh plan's.
 
 Fix: re-run plan
 
-Note: Under `sst test`, the object was changed outside SST after it was applied: run `sst plan` and `sst apply` to publish it again. An artifact never published on the target is SST-APL036, and one published from an older compile SST-APL038.
+Note: Under `sst test` or `sst eval`, the object was changed outside SST after it was applied: run `sst plan` and `sst apply` to publish it again. An artifact never published on the target is SST-APL036, and one published from an older compile SST-APL038.
 
 ### SST-APL013
 
@@ -7474,7 +7474,7 @@ Raised when an attempt still read PARTIALLY_COMPLETED or INVOCATION_PARTIALLY_CO
 
 Fix: treat this as a failure and re-run
 
-Note: SST already counts the attempt as not passing: although this is a warning, the eval is not accepted, and the eval suite fails, unless another attempt completes; then SST-APL029 replaces this warning. A partial status `run.accept_statuses` names reports SST-VAL730, an error, instead.
+Note: SST already counts the attempt as not passing: although this is a warning, the eval is not accepted, and the `sst eval` gate fails, unless another attempt completes; then SST-APL029 replaces this warning. A partial status `run.accept_statuses` names reports SST-VAL730, an error, instead.
 
 ### SST-APL027
 
@@ -7498,7 +7498,7 @@ Raised when `apply` found an existing eval config stage that does not carry the 
 
 Fix: run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create
 
-Note: `sst test` reports the same stage as SST-VAL729 before any eval run starts.
+Note: `sst eval` reports the same stage as SST-VAL729 before any eval run starts.
 
 ### SST-APL029
 
@@ -7580,17 +7580,17 @@ Note: Its error number is not measured, so it is recognised by a message that na
 
 `<artifact>: <value> is not published on this target`
 
-Raised when `sst test` would smoke or eval an artifact the target's state records no successful publish of; when that is true of every artifact the suite tests, SST-APL037 reports it once.
+Raised when `sst test` would probe, or `sst eval` run, an artifact the target's state records no successful publish of; when that is true of every artifact the run checks, SST-APL037 reports it once.
 
 Fix: run `sst plan`, then `sst apply`
 
 ### SST-APL037
 
-**Nothing the suite tests is published on this target** (error)
+**Nothing to check is published on this target** (error)
 
-`nothing the <kind> suite tests is published on this target (<count> not published)`
+``nothing `sst <command>` checks is published on this target (<count> not published)``
 
-Raised when no artifact `sst test` would smoke or eval is published on the target, as on a target nothing was applied to; reported once instead of SST-APL036 for each.
+Raised when no artifact `sst test` would probe, or `sst eval` run, is published on the target, as on a target nothing was applied to; reported once instead of SST-APL036 for each.
 
 Fix: run `sst plan`, then `sst apply`
 
@@ -7600,7 +7600,7 @@ Fix: run `sst plan`, then `sst apply`
 
 `<artifact>: <value> is published from an older compile`
 
-Raised when `sst test` would smoke or eval an artifact the target's state records at another fingerprint or name than the project compiles to now.
+Raised when `sst test` would probe, or `sst eval` run, an artifact the target's state records at another fingerprint or name than the project compiles to now.
 
 Fix: run `sst plan`, then `sst apply`, to publish the current compile
 
@@ -7658,7 +7658,7 @@ Note: Every change the blocked one blocked is skipped with it; the rest of the p
 
 `<artifact>: smoke probe failed: <detail>`
 
-Raised when a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact failed, observed by `sst test --suite smoke` rather than by `apply`.
+Raised when a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact failed, observed by `sst test` rather than by `apply`.
 
 Fix: fix the artifact the probe names; a created view is not a working view
 
@@ -7718,7 +7718,7 @@ Note: The write succeeded and state records it. Until the default is pinned, it 
 
 `<artifact>: the model comparison needs it published exactly as compiled, and <detail>`
 
-Raised when before `sst test --compare-models` commits anything, an eval's agent or CoWork profile is one plan would change, has no live version, does not carry its alias on the version holding its specification, or has a default not pinned by name to that version.
+Raised when before `sst eval --compare-models` commits anything, an eval's agent or CoWork profile is one plan would change, has no live version, does not carry its alias on the version holding its specification, or has a default not pinned by name to that version.
 
 Fix: run `sst plan` to see what differs, then `sst apply`, and compare again
 
@@ -7798,7 +7798,7 @@ Fix: name an agent `sst list agents` lists
 
 Raised when an unpublished eval run cannot judge a custom metric whose prompt uses a placeholder only a published run's trace fills (`start_timestamp`, `span_*`, `llm_model`), or that has no prompt, score bands or judge model; or `answer_correctness`, when neither the eval's `judge_model` nor the agent's orchestration model names a model.
 
-Fix: run the published eval suite, `sst test --suite evals`, to score it
+Fix: run the published evals, `sst eval`, to score it
 
 ### SST-ASK005
 
@@ -7808,7 +7808,7 @@ Fix: run the published eval suite, `sst test --suite evals`, to score it
 
 Raised when an unpublished eval run's config enables `tool_execution_accuracy` or `logical_consistency`, which only Snowflake's evaluation service scores.
 
-Fix: run the published eval suite, `sst test --suite evals`, to score it
+Fix: run the published evals, `sst eval`, to score it
 
 ### SST-ASK006
 
@@ -7898,9 +7898,9 @@ Note: Reported once; the conversation goes on, and each later turn tries the wri
 
 `eval '<artifact>' cannot run unpublished: it evaluates a CoWork profile`
 
-Raised when `sst test --suite evals --unpublished` selects the eval of a CoWork profile; nothing runs.
+Raised when `sst eval --unpublished` selects the eval of a CoWork profile; nothing runs.
 
-Fix: run it published with `sst test --suite evals`, or leave it out with `--exclude {selector}`
+Fix: run it published with `sst eval`, or leave it out with `--exclude {selector}`
 
 Note: Snowflake private preview: CoWork profiles. An unpublished run would need a temporary profile, which has not been measured on Snowflake (see SST-APL106).
 
@@ -8641,7 +8641,7 @@ setting that names one still means what it meant.
 
 **Rolled back after a smoke failure** (retired in 1.0.0)
 
-Retired because apply runs no smoke probes and never rolls back; smoke is its own suite, `sst test --suite smoke`.
+Retired because apply runs no smoke probes and never rolls back; smoke probes are their own command, `sst test`.
 
 ### SST-APL102
 

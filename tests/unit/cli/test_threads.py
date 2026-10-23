@@ -231,7 +231,7 @@ def test_validate_defaults_to_the_parallelism_apply_uses(monkeypatch: pytest.Mon
 
 
 def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixteen(project: Path) -> None:
-    smoke = ["test", *common(project), "--suite", "smoke", "--output", "json"]
+    smoke = ["test", *common(project), "--output", "json"]
     for args, env in ((["--threads", "4"], None), ([], {"SST_THREADS": "4"})):
         result = CliRunner().invoke(cli, [*smoke, *args], env=env)
         assert json.loads(result.output)["command"] == "test" and result.exit_code in (0, 1, 4, 5), result.output

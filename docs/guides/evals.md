@@ -2,7 +2,7 @@
 
 An eval runs an agent against a fixed set of questions and scores the answers.
 SST publishes the question set and run configuration with the agent, runs them
-with `sst test --suite evals`, and gates a change by comparing the scores with
+with `sst eval`, and gates a change by comparing the scores with
 a captured **baseline**.
 
 ## Layout
@@ -306,27 +306,26 @@ evals:
 `apply.eval_config_stage.stage` names the stage, in each agent's schema, that
 holds the rendered run configurations (default `EVAL_CONFIGS`).
 
-## Offline checks and connected suites
+## Offline checks and connected runs
 
 Everything above is checked offline: `sst compile` reports the dataset,
 configuration and judge diagnostics without connecting to Snowflake, and
 `sst compile --emit-ddl` writes each eval's rendered run configuration and source
 table statements, so a review can diff them.
 
-`sst test --suite evals` is connected: it runs the agent in Snowflake. Without
-`--suite`, `sst test` runs it too once `sst compile` has written the manifest
-and an eval compiles, so expect the run times below.
+`sst eval` is connected: it runs the agent in Snowflake, so expect the run times
+below. `sst test` never runs an agent; it only smoke-probes what was published.
 
 ## Running
 
 ```bash
 sst compile
 sst apply --target dev
-sst test --suite evals --target dev --capture-baseline --reason "first baseline"
-sst test --suite evals --target dev
+sst eval --target dev --capture-baseline --reason "first baseline"
+sst eval --target dev
 ```
 
-The first `sst test` captures a baseline; every later one runs the evals and
+The first `sst eval` captures a baseline; every later one runs the evals and
 gates them on it. A gate run with no baseline fails (`SST-VAL758`) before any of
 its runs starts.
 
@@ -631,13 +630,12 @@ the suffix `_EVALS`. (They are not the diagnostic baseline file,
 Capture a baseline on purpose, with a reason that is recorded beside it:
 
 ```bash
-sst test --suite evals --capture-baseline --reason "new tool for supply cost"
+sst eval --capture-baseline --reason "new tool for supply cost"
 ```
 
-`--capture-baseline` and `--reason` go together (exit 3 otherwise), and only
-with a run of the eval suite: with a `--suite` that does not name `evals`, or
-without `--suite` when the eval suite does not apply, they
-are refused (exit 3). A capture
+`--capture-baseline` and `--reason` go together (exit 3 otherwise), and a
+capture is refused with `--unpublished`, `--compare-models` or `--refresh-cost`
+(exit 3). A capture
 runs each eval until `baseline_runs` attempts have completed, starting all of
 them in its first round, and gates nothing. It takes the first `baseline_runs`
 completed attempts, all against one agent version. The baselines of every eval
@@ -693,7 +691,7 @@ of them starts no run ([Before any run starts](#before-any-run-starts)); the
 checks are made again once the run's attempts are in. For `baseline_absent`,
 `baseline_incompatible`, `baseline_incomplete` and `baseline_expired`, running
 the suite again cannot pass, so the run's next step is the capture,
-`sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`.
+`sst eval --select <eval> --capture-baseline --reason "<why>"`.
 
 **After upgrading to the SST that pins agent defaults by name** (the same
 upgrade as the one-time `SST-PLN107` pins in the
@@ -703,7 +701,7 @@ it now renders `DEFAULT`, the version `sst apply` pinned, since a model
 comparison commits versions newer than the release. The rendered run
 configuration changes once, so each eval's config is republished on the next
 apply and its baseline stops matching (`SST-VAL759`): capture each again once,
-`sst test --suite evals --capture-baseline --reason "committed runs on the pinned default"`.
+`sst eval --capture-baseline --reason "committed runs on the pinned default"`.
 
 ### Expiry
 
@@ -717,7 +715,7 @@ The eval's `eval_tier` setting, else `report`, decides what a regression
 does: `blocking` fails the run with `SST-VAL763` (exit 1); `report` lists it in
 `regressions` with `gate_verdict: regressed`, and the run passes.
 
-The eval suite exits 0 when every eval passed and its gate compared cleanly; 1
+`sst eval` exits 0 when every eval passed and its gate compared cleanly; 1
 when another run holds the lock, an attempt failed without a retry passing, the
 preflight refused, the gate could not compare, a blocking eval regressed, or a
 capture fell short; 3 for an invalid command line; 4 when the manifest is stale
@@ -795,19 +793,18 @@ name, so run `sst plan` and `sst apply` first.
 
 ```bash
 # every eval --select picks, against its +candidate_models
-sst test --compare-models --select eval:jaffle_analyst --target dev
+sst eval --compare-models --select eval:jaffle_analyst --target dev
 
 # candidates named on the command line instead, three runs each
-sst test --compare-models claude-opus-4-8,claude-haiku-4-5 --compare-runs 3 \
+sst eval --compare-models claude-opus-4-8,claude-haiku-4-5 --compare-runs 3 \
   --select eval:cowork_profile:gtm --target dev
 
 # an hour later: read the cost that had not landed yet, and decide again
-sst test --refresh-cost sst_target/compare/jaffle_analyst_20261022T043148Z/compare.json --target dev
+sst eval --refresh-cost sst_target/compare/jaffle_analyst_20261022T043148Z/compare.json --target dev
 ```
 
-`--compare-models` runs the eval suite, alone unless `--suite` names `smoke`
-too. It is refused with `--capture-baseline`, `--unpublished`, or a `--suite`
-that does not name `evals`, and an eval with no candidate is `SST-VAL772`. The
+`--compare-models` is refused with `--capture-baseline` or `--unpublished`, and
+an eval with no candidate is `SST-VAL772`. The
 pinned model, the one `+orchestration_model` names, always runs too; a
 candidate equal to it runs once, as pinned. A CoWork profile is compared only
 where its eval runs: on a rehearsal target, never where CoWork lists it
@@ -945,7 +942,7 @@ decision each agent's own comparison should back. Then:
 3. capture the eval's baseline again, since the model change is a
    specification change (`SST-VAL759`); until then the eval's gate fails with
    `no_signal`, whatever its tier:
-   `sst test --suite evals --select eval:jaffle_analyst --capture-baseline --reason "pin claude-opus-4-8"`.
+   `sst eval --select eval:jaffle_analyst --capture-baseline --reason "pin claude-opus-4-8"`.
 
 The `EVAL_` versions stay; the next comparison moves their aliases.
 
@@ -956,7 +953,7 @@ The `EVAL_` versions stay; the next comparison moves their aliases.
 | `SST-APL108` | the subject is not published as compiled | `sst plan`, then `sst apply`, then compare again |
 | `SST-APL109` | a candidate's version could not be committed | the other candidates still ran; the detail is Snowflake's error |
 | `SST-APL110` | the live version could not be restored | callers naming no version are served the release meanwhile; `sst plan`, then `sst apply`, repairs it |
-| `SST-VAL773` | some cost has not landed yet | `sst test --refresh-cost <compare.json>` in about an hour |
+| `SST-VAL773` | some cost has not landed yet | `sst eval --refresh-cost <compare.json>` in about an hour |
 | `SST-VAL774` | the role may not read the usage views | the scores stand; read them with a role that may |
 | `SST-MAN032` | `--refresh-cost` cannot use the file | point it at a `compare.json` a comparison wrote |
 
@@ -980,8 +977,8 @@ agent version per edit. Before that, cheapest first:
 ### Unpublished eval runs
 
 ```bash
-sst test --suite evals --unpublished --target dev
-sst test --suite evals --unpublished --select sales_analyst --output json
+sst eval --unpublished --target dev
+sst eval --unpublished --select sales_analyst --output json
 ```
 
 `--unpublished` asks each question of each selected eval's compiled dataset of
@@ -996,8 +993,7 @@ session of its own. Nothing else of the published suite happens: no `sst
 compile` or `sst apply` is needed first, no run lock is taken, the publication
 checks (`SST-APL036` to `SST-APL038`, `SST-APL012`) and the agent version selector (`SST-VAL719`) do not
 apply, no config is staged, and no baseline or gate state is read or written.
-`--capture-baseline` is refused (exit 3), and so is a `--suite` that does not
-name `evals`; without `--suite`, `--unpublished` runs the eval suite alone.
+`--capture-baseline` and `--compare-models` are refused with it (exit 3).
 
 Each metric is scored from the reply:
 
@@ -1057,7 +1053,7 @@ my_project:
 ```bash
 sst plan --target dev_jdoe --defer-target prod
 sst apply --target dev_jdoe --defer-target prod
-sst test --suite evals --target dev_jdoe
+sst eval --target dev_jdoe
 ```
 
 - **Each developer needs a state table of their own, and object locations of
@@ -1266,7 +1262,7 @@ lists every agent in that schema as a profile, and eval tables, datasets and
 stages there are not measured. The rehearsal routes the same way, so evaluate it
 on a target that publishes the profile elsewhere, such as dev.
 
-`sst test --suite evals --unpublished` refuses a profile's eval before it
+`sst eval --unpublished` refuses a profile's eval before it
 connects (`SST-ASK013`): an unpublished run would need a temporary router agent,
 which is not measured. `sst ask` does not run profiles.
 

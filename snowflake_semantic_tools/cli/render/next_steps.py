@@ -1,20 +1,22 @@
 """The next step a run suggests, from how it ended: one sentence a person or an agent can act on.
 
 A command may name its own steps; these are the defaults every command gets from its exit code
-and what it reported. A step never tells an agent to change Snowflake on its own: `apply`,
-`drop`, the baseline's writes and `state` repairs are only ever named as the user's to run.
+and what it reported. A step never tells an agent to change Snowflake or spend credits on its own:
+`apply`, `drop`, `eval`, the baseline's writes and `state` repairs are only ever named as the
+user's to run.
 """
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, INTERRUPTED, OK, USAGE
 
-# Commands that change Snowflake, the state table, or the baseline: an agent is never told to
-# run one again, only that it is the user's to run.
+# Commands that change Snowflake, the state table, or the baseline, or that spend credits running
+# agents: an agent is never told to run one again, only that it is the user's to run.
 RISKY = frozenset(
     (
         "apply",
         "drop",
+        "eval",
         "baseline add",
         "baseline prune",
         "baseline renew",
@@ -60,7 +62,11 @@ def default_next_steps(
 
 
 def _again(command: str, agent: bool) -> str:
-    """Say to run `command` again; to an agent, a command that changes what SST manages is the user's."""
+    """Say to run `command` again; to an agent, a command `RISKY` holds is the user's."""
+    if agent and command == "eval":
+        return (
+            "tell the user: `sst eval` runs agents in Snowflake and costs credits, so it runs again only when they ask"
+        )
     if agent and command in RISKY:
         return f"tell the user: `sst {command}` changes what SST manages, so it runs again only when they ask"
     return f"run `sst {command}` again"
@@ -74,6 +80,6 @@ def capture_baseline_step(eval_keys: tuple[str, ...]) -> str:
     """
     selected = " ".join(f"--select {key}" for key in eval_keys)
     return (
-        f'once the change is intended, `sst test --suite evals {selected} --capture-baseline --reason "<why>"` '
+        f'once the change is intended, `sst eval {selected} --capture-baseline --reason "<why>"` '
         "captures new baselines; it writes what later gates compare with, so run it only when you mean to"
     )

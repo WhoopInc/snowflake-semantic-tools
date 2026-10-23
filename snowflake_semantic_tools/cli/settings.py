@@ -43,7 +43,7 @@ def threads_setting(paths: ProjectPaths, threads: int | None, *, default: int = 
     That is `--threads`, which already stands for `$SST_THREADS` when the flag is not given, else
     `generation.threads`, else `default`. `plan`, `validate` and apply's plan take
     `DEFAULT_THREADS`, the default apply applies with; `--threads 1` reads serially. `test`
-    passes 1.
+    and `eval` pass 1.
     """
     if threads is not None:
         return threads

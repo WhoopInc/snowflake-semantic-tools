@@ -249,7 +249,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "SST-APL101",
         "Rolled back after a smoke failure",
         None,
-        "apply runs no smoke probes and never rolls back; smoke is its own suite, `sst test --suite smoke`",
+        "apply runs no smoke probes and never rolls back; smoke probes are their own command, `sst test`",
     ),
     (
         "SST-APL102",

@@ -52,7 +52,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.WARNING,
         "Metric cannot be scored unpublished",
         "eval '{artifact}': metric '{name}' is not scored without publishing: {reason}",
-        "run the published eval suite, `sst test --suite evals`, to score it",
+        "run the published evals, `sst eval`, to score it",
         condition=(
             "an unpublished eval run cannot judge a custom metric whose prompt uses a placeholder "
             "only a published run's trace fills (`start_timestamp`, `span_*`, `llm_model`), or that "
@@ -65,7 +65,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "System metric is not scored unpublished",
         "eval '{artifact}': system metric '{name}' is not scored without publishing",
-        "run the published eval suite, `sst test --suite evals`, to score it",
+        "run the published evals, `sst eval`, to score it",
         condition=(
             "an unpublished eval run's config enables `tool_execution_accuracy` or "
             "`logical_consistency`, which only Snowflake's evaluation service scores"
@@ -165,8 +165,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Unpublished run refuses a CoWork profile eval",
         "eval '{artifact}' cannot run unpublished: it evaluates a CoWork profile",
-        "run it published with `sst test --suite evals`, or leave it out with `--exclude {selector}`",
-        condition=("`sst test --suite evals --unpublished` selects the eval of a CoWork profile; nothing runs"),
+        "run it published with `sst eval`, or leave it out with `--exclude {selector}`",
+        condition=("`sst eval --unpublished` selects the eval of a CoWork profile; nothing runs"),
         note=(
             "Snowflake private preview: CoWork profiles. An unpublished run would need a temporary "
             "profile, which has not been measured on Snowflake (see SST-APL106)."

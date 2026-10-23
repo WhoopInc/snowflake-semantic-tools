@@ -523,7 +523,7 @@ def test_eval_publication_preflight_refuses_unapplied_state() -> None:
     )
 
     assert [item.code for item in diagnostics] == ["SST-APL037"]
-    assert diagnostics[0].message == "nothing the evals suite tests is published on this target (1 not published)"
+    assert diagnostics[0].message == "nothing `sst eval` checks is published on this target (1 not published)"
 
 
 def test_eval_runner_rejects_duplicate_metric_rows_and_nonfinite_scores() -> None:

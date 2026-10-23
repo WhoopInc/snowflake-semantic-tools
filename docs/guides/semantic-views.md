@@ -628,7 +628,7 @@ onboarding question.
 - The SQL names each table with `{{ ref('<model>') }}`, which renders as the
   table's logical name in the view, and may use `{{ metric() }}` and
   `{{ var() }}`. A table read by name instead is warned about (`SST-VAL414`).
-- Connected validation and the smoke suite run the query with each logical
+- Connected validation and `sst test` run the query with each logical
   table bound to the relation the view reads, so it is checked the same way
   whether the view publishes beside its tables or in another schema or database.
 - A query's tables are the models its `ref()` calls name, and it attaches to

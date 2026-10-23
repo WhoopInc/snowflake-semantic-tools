@@ -1,4 +1,4 @@
-"""`sst test --suite evals --unpublished`: evals run against agents as they compile now, publishing nothing."""
+"""`sst eval --unpublished`: evals run against agents as they compile now, publishing nothing."""
 
 from __future__ import annotations
 
@@ -21,9 +21,7 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _unpublished(monkeypatch: pytest.MonkeyPatch, project: Path, port: FakeSnowflake, *args: str) -> Result:
-    return invoke_with_port(
-        monkeypatch, port, ["test", "--suite", "evals", "--unpublished", *common(project), "--target", "dev", *args]
-    )
+    return invoke_with_port(monkeypatch, port, ["eval", "--unpublished", *common(project), "--target", "dev", *args])
 
 
 def _right_tools(project: Path) -> dict[str, AgentReply | object]:
@@ -110,7 +108,7 @@ def test_an_eval_scored_only_exactly_names_no_approximate_metric(
 
 def test_a_scratch_schema_that_renders_unusable_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     refused = D("SST-CFG008", key="agents.+scratch_schema", found="'.S'", expected="two-part names, DATABASE.SCHEMA")
-    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.test.agent_scope", lambda agent, target: refused)
+    monkeypatch.setattr("snowflake_semantic_tools.cli.commands.eval.agent_scope", lambda agent, target: refused)
     port = FakeSnowflake(state={})
     result = _unpublished(monkeypatch, project_copy(tmp_path), port, "--output", "json")
     assert result.exit_code == 4
@@ -118,30 +116,16 @@ def test_a_scratch_schema_that_renders_unusable_is_refused(tmp_path: Path, monke
     assert port.inline_runs == []
 
 
-def test_with_no_suite_the_unpublished_run_is_the_eval_suite_alone(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = project_copy(tmp_path)
-    port = FakeSnowflake(state={})
-    port.agent_replies = _right_tools(project)  # type: ignore[assignment]
-    result = invoke_with_port(
-        monkeypatch, port, ["test", "--unpublished", *common(project), "--target", "dev", "--output", "json"]
-    )
-    assert result.exit_code == 0, result.output
-    data = json.loads(result.output)["data"]
-    assert (data["suites"], data["skipped_suites"]) == (["evals"], ["smoke"])
-    assert data["results"][0]["mode"] == "unpublished"
-
-
 @pytest.mark.parametrize(
     "flags",
     [
-        ("--suite", "evals", "--unpublished", "--capture-baseline", "--reason", "why"),
-        ("--suite", "smoke", "--unpublished"),
+        ("--unpublished", "--capture-baseline", "--reason", "why"),
+        ("--unpublished", "--compare-models"),
+        ("--unpublished", "--refresh-cost", "compare.json"),
     ],
 )
-def test_an_unpublished_run_refuses_a_baseline_capture_and_the_smoke_suite_alone(flags: tuple[str, ...]) -> None:
-    assert CliRunner().invoke(cli, ["test", *flags]).exit_code == 3
+def test_an_unpublished_run_refuses_a_baseline_capture_and_a_comparison(flags: tuple[str, ...]) -> None:
+    assert CliRunner().invoke(cli, ["eval", *flags]).exit_code == 3
 
 
 def test_a_selection_without_an_eval_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

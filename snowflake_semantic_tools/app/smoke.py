@@ -1,6 +1,6 @@
 """Execute rendered smoke probes separately from publication.
 
-`RunSmokeSuite` runs probes. `SmokePublished` is the smoke test suite's use case: it first
+`RunSmokeSuite` runs probes. `SmokePublished` is `sst test`'s use case: it first
 proves SST owns each object it would probe, from authoritative state and the object's live
 ownership marker, and runs the probes only once it does. Given a `Fanout`, both the marker
 reads and the probes run on sessions of their own; what they report is merged in probe
@@ -31,7 +31,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
 
 
 class SmokePort(CatalogPort, ExecutionPort, StatePort, Protocol):
-    """The Snowflake roles the smoke suite over published objects uses: markers, probes, and state."""
+    """The Snowflake roles `sst test` uses over published objects: markers, probes, and state."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,7 +219,7 @@ class SmokePublished:
             problems: list[Diagnostic] = list(state_diagnostics)
             published = {artifact.key: artifact for artifact in result.rendered_for_publish(manifest.manifest_id)}
             checked = () if state_diagnostics.has_errors else self._checked(result, state)
-            problems.extend(unpublished_findings(checked, suite="smoke"))
+            problems.extend(unpublished_findings(checked, command="test"))
             problems.extend(unprobed_metrics(result))
         if problems:
             return SmokeResult((), DiagnosticBag(tuple(problems)), unpublished_count(checked))

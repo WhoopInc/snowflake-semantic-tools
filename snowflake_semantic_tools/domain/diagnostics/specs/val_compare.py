@@ -1,6 +1,6 @@
 """Validation codes 770-789 (VAL): comparing orchestration models on an eval's published subject.
 
-`sst test --suite evals --compare-models` runs an eval on a version of its agent or CoWork
+`sst eval --compare-models` runs an eval on a version of its agent or CoWork
 profile per candidate model: which models it may compare, and what its report notices about the
 cost it read and the models it leaves out of its verdict.
 """
@@ -21,7 +21,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Snowflake pick one per request, so a version on it compares nothing",
         condition=(
             "`evals.+candidate_models`, a folder route's, an eval's `config.candidate_models`, or "
-            "`sst test --compare-models`, names `auto`, compared casefolded"
+            "`sst eval --compare-models`, names `auto`, compared casefolded"
         ),
     ),
     spec(
@@ -46,7 +46,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "eval '{artifact}' names no candidate model to compare with its pinned one",
         "list the models in `evals.+candidate_models`, or give them as `--compare-models <model>,<model>`",
         condition=(
-            "`sst test --compare-models` was given no list, and the eval's `candidate_models` setting, "
+            "`sst eval --compare-models` was given no list, and the eval's `candidate_models` setting, "
             "from its config, a folder route, or the `evals:` root, names none"
         ),
     ),
@@ -56,7 +56,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Comparison cost not landed yet",
         "eval '{artifact}': the usage of {count} model(s)' runs has not landed in Snowflake's usage views yet, "
         "so their cost is pending",
-        "run `sst test --refresh-cost {path}` in about an hour to fill it in",
+        "run `sst eval --refresh-cost {path}` in about an hour to fill it in",
         condition=(
             "a comparison read its cost before every agent request, judge call, or SQL credit its runs "
             "made had a row in ACCOUNT_USAGE"
@@ -73,7 +73,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Comparison cost unavailable",
         "eval '{artifact}': the cost of {count} model(s)' runs is unavailable: {reason}",
         "read the cost with a role that may read SNOWFLAKE.ACCOUNT_USAGE and the AI observability events, "
-        "as `sst test --refresh-cost {path}`; the scores stand without it",
+        "as `sst eval --refresh-cost {path}`; the scores stand without it",
         condition=(
             "reading CORTEX_AGENT_USAGE_HISTORY, the evaluation's eval spans, or CORTEX_REST_API_USAGE_HISTORY "
             "was refused, or nothing named the requests to read"

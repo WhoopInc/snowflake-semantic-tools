@@ -1,4 +1,4 @@
-"""How `sst test` lays out eval results: each attempt's tree of metrics, cost and questions."""
+"""How `sst eval` lays out eval results: each attempt's tree of metrics, cost and questions."""
 
 from __future__ import annotations
 

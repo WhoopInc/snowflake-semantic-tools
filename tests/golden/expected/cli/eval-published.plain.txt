@@ -1,4 +1,4 @@
-$ sst --project-dir <project> --manifest <manifest> test --suite evals --target dev
+$ sst --project-dir <project> --manifest <manifest> eval --target dev
 --- exit 0
 --- stdout
 eval:jaffle_analytics_agent  COMPLETED  4/4 questions passed

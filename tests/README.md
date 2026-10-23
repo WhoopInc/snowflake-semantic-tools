@@ -128,7 +128,7 @@ Some claims cannot be proven offline. The goldens prove SST renders the intended
 - the real connector meets the port contract the doubles meet, including that a statement Snowflake refuses fails with text the signature table recognises, and that state round-trips and the run lock admits one run;
 - `apply` publishes a view that carries its ownership marker and answers a metric query, and a plan after it has nothing left to do;
 - replacing the view keeps the grants on it (when a grantee role is configured);
-- the CLI sequence `validate` with the Snowflake syntax check, `plan`, `apply`, `plan` again, and the smoke suite each exits as documented.
+- the CLI sequence `validate` with the Snowflake syntax check, `plan`, `apply`, `plan` again, and `sst test` each exits as documented.
 
 Agent evaluation is the evals suite, run by the manual workflow against a published agent, not by pytest. [docs/guides/testing-live.md](../docs/guides/testing-live.md) says how to configure and run each of these.
 

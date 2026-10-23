@@ -49,6 +49,7 @@ _DECLARED = {
     "list": {0, 1, 3, 4},
     "lineage": {0, 1, 3, 4},
     "test": {0, 1, 3, 4, 5},
+    "eval": {0, 1, 3, 4, 5},
     "docs": {0, 1, 2, 3, 4},
     "clean": {0, 1, 3, 4},
     "migrate": {0, 1, 2, 3, 4},
@@ -180,9 +181,16 @@ SCENARIOS: dict[tuple[str, int], Scenario] = {
     ("lineage", 4): lambda tmp, _: _run("lineage", "--project-dir", str(project_copy(tmp)), "model:orders"),
     ("test", 0): lambda tmp, mp: _test_smoke(tmp, mp, applied=True),
     ("test", 1): lambda tmp, mp: _test_smoke(tmp, mp, applied=False),
-    ("test", 3): lambda tmp, _: _run("test", "--suite", "every"),
+    ("test", 3): lambda tmp, _: _run("test", "--capture-baseline"),
     ("test", 4): lambda tmp, _: _run("test", *common(project_copy(tmp))),
-    ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test", "--suite", "smoke"),
+    ("test", 5): lambda tmp, mp: _connected(tmp, mp, "test"),
+    # A comparison exits 0 whatever it scored, and an unpublished run fails when the agent picks
+    # the wrong tools.
+    ("eval", 0): lambda tmp, mp: _eval_compare(tmp, mp),
+    ("eval", 1): lambda tmp, mp: _eval_unpublished(tmp, mp),
+    ("eval", 3): lambda tmp, _: _run("eval", "--reason", "why"),
+    ("eval", 4): lambda tmp, _: _run("eval", *common(project_copy(tmp))),
+    ("eval", 5): lambda tmp, mp: _connected(tmp, mp, "eval"),
     ("ask", 0): lambda tmp, mp: _ask(tmp, mp),
     ("ask", 1): lambda tmp, mp: _ask(tmp, mp, reply=AgentReply(error="refused")),
     ("ask", 3): lambda tmp, _: _run("ask", "jaffle_analytics_agent", *common(project_copy(tmp))),
@@ -258,23 +266,25 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     "test-select": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--select", "jaffle_minimal", applied=True)),
     "test-exclude": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--exclude", "type:agent", applied=True)),
     "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "nothing")),
-    "test-select-no-suite-applies": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "type:tool")),
+    "test-select-nothing-to-probe": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "type:skill")),
+    "eval-select-matches-nothing": ("eval", 4, lambda tmp, _: _eval_compiled(tmp, "--select", "nothing")),
+    "eval-select-no-eval": ("eval", 4, lambda tmp, _: _eval_compiled(tmp, "--select", "type:semantic_view")),
     # An unpublished eval run needs no compiled manifest, and fails when the agent picks the wrong tools.
-    "test-unpublished": ("test", 1, lambda tmp, mp: _test_unpublished(tmp, mp)),
-    "test-unpublished-capture": (
-        "test",
+    "eval-unpublished": ("eval", 1, lambda tmp, mp: _eval_unpublished(tmp, mp)),
+    "eval-unpublished-capture": (
+        "eval",
         3,
-        lambda tmp, _: _run("test", "--unpublished", "--capture-baseline", "--reason", "why"),
+        lambda tmp, _: _run("eval", "--unpublished", "--capture-baseline", "--reason", "why"),
     ),
     # A comparison exits 0 whatever it scored; it is refused beside a capture, and a refresh of a
     # file SST did not write cannot use it.
-    "test-compare-models": ("test", 0, lambda tmp, mp: _test_compare(tmp, mp)),
-    "test-compare-models-capture": (
-        "test",
+    "eval-compare-models": ("eval", 0, lambda tmp, mp: _eval_compare(tmp, mp)),
+    "eval-compare-models-capture": (
+        "eval",
         3,
-        lambda tmp, _: _run("test", "--compare-models", "--capture-baseline", "--reason", "why"),
+        lambda tmp, _: _run("eval", "--compare-models", "--capture-baseline", "--reason", "why"),
     ),
-    "test-refresh-cost-unusable": ("test", 4, lambda tmp, mp: _test_refresh_unusable(tmp, mp)),
+    "eval-refresh-cost-unusable": ("eval", 4, lambda tmp, mp: _eval_refresh_unusable(tmp, mp)),
     "enrich-not-production": ("enrich", 3, lambda tmp, _: _run("enrich", *common(project_copy(tmp)))),
     "enrich-allow-non-prod": ("enrich", 0, lambda tmp, mp: _enrich_allowed(tmp, mp)),
 }
@@ -300,44 +310,49 @@ def _enrich_allowed(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
 
 
 def _test_compiled(tmp: Path, *flags: str) -> Result:
-    """Run `sst test`, naming no suite, on a compiled copy of the reference project."""
+    """Run `sst test` on a compiled copy of the reference project."""
     project = project_copy(tmp)
     compile_project(project)
     return _run("test", *common(project), *flags)
 
 
+def _eval_compiled(tmp: Path, *flags: str) -> Result:
+    """Run `sst eval` on a compiled copy of the reference project."""
+    project = project_copy(tmp)
+    compile_project(project)
+    return _run("eval", *common(project), *flags)
+
+
 def _test_smoke(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str, applied: bool) -> Result:
-    """Run the smoke suite on a compiled copy, every artifact applied or none."""
+    """Run `sst test` on a compiled copy, every artifact applied or none."""
     project = project_copy(tmp)
     compile_project(project)
     port = applied_port(project) if applied else FakeSnowflake(state={})
-    return invoke_with_port(
-        monkeypatch, port, ["test", *common(project), "--target", "dev", "--suite", "smoke", *flags]
-    )
+    return invoke_with_port(monkeypatch, port, ["test", *common(project), "--target", "dev", *flags])
 
 
-def _test_unpublished(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
-    """Run the eval suite unpublished on an uncompiled copy, every question answered with no tool."""
-    args = ["test", *common(project_copy(tmp)), "--target", "dev", "--suite", "evals", "--unpublished"]
+def _eval_unpublished(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+    """Run the evals unpublished on an uncompiled copy, every question answered with no tool."""
+    args = ["eval", *common(project_copy(tmp)), "--target", "dev", "--unpublished"]
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
 
 
-def _test_compare(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _eval_compare(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     """Compare two models on a compiled copy, the comparison's outcome canned."""
     project = project_copy(tmp)
     compile_project(project)
     outcome = jaffle_outcome()
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *a, **k: outcome)
     monkeypatch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
-    args = ["test", *common(project), "--target", "dev", "--compare-models", "claude-opus-4-8,openai-gpt-5"]
+    args = ["eval", *common(project), "--target", "dev", "--compare-models", "claude-opus-4-8,openai-gpt-5"]
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--compare-report", str(project / "c")])
 
 
-def _test_refresh_unusable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
+def _eval_refresh_unusable(tmp: Path, monkeypatch: pytest.MonkeyPatch) -> Result:
     project = project_copy(tmp)
     (project / "c.json").write_text('{"schema": "sst.plan/1"}', encoding="utf-8")
     return invoke_with_port(
-        monkeypatch, FakeSnowflake(state={}), ["test", *common(project), "--refresh-cost", str(project / "c.json")]
+        monkeypatch, FakeSnowflake(state={}), ["eval", *common(project), "--refresh-cost", str(project / "c.json")]
     )
 
 

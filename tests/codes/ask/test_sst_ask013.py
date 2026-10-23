@@ -20,7 +20,7 @@ def test_sst_ask013_fires() -> None:
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "eval 'concierge' cannot run unpublished: it evaluates a CoWork profile"
     assert diagnostic.suggestion == (
-        "run it published with `sst test --suite evals`, or leave it out with `--exclude eval:cowork_profile:concierge`"
+        "run it published with `sst eval`, or leave it out with `--exclude eval:cowork_profile:concierge`"
     )
     assert diagnostic.subject == "eval:cowork_profile:concierge"
 

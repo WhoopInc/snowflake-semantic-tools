@@ -31,7 +31,8 @@ envelope on stdout and nothing else.
 | [`sst plan`](#sst-plan) | Observe live Snowflake state and compute a non-writing plan. |
 | [`sst apply`](#sst-apply) | Apply a current reviewed plan; smoke probes never run here. |
 | [`sst diff`](#sst-diff) | Compare two states -- local, a dbt target, or a saved plan -- and list what differs. |
-| [`sst test`](#sst-test) | Run the smoke and eval suites: those --suite names, else every one that applies. |
+| [`sst test`](#sst-test) | Smoke-probe what `sst apply` published: each view, metric, verified query, tool, and agent. |
+| [`sst eval`](#sst-eval) | Run agent evals in Snowflake and gate them against their baselines; billed. |
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
@@ -78,7 +79,7 @@ These go before the command name.
 | Code | Name | Meaning |
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change: every live object carries the marker state records, and the properties plan compares are as apply read them back. |
-| 1 | `ERROR` | Errors were reported, an apply, a test suite, or a check failed, or an apply skipped a blocked change. |
+| 1 | `ERROR` | Errors were reported, an apply, a smoke probe, an eval gate, or a check failed, or an apply skipped a blocked change. |
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
@@ -698,32 +699,16 @@ sst diff [OPTIONS]
 
 ## sst test
 
-Run the smoke and eval suites: those --suite names, else every one that applies.
+Smoke-probe what `sst apply` published: each view, metric, verified query, tool, and agent.
 
-Both suites test what `sst apply` published, so they apply once `sst compile` has written
-the manifest: the smoke suite when a semantic view compiles, the eval suite when an eval
-does. `--select` and `--exclude` narrow every suite to those artifacts. Exit 1 when the
-project does not compile, a suite fails, or another run holds the target's run lock; 4
-when, with no --suite, no suite applies, or a suite finds the compiled manifest missing
-or stale; and 5 when a suite cannot reach Snowflake. Unless one --suite is given, the worst exit wins and
-the summary counts the suites that passed, failed, and were skipped: not named, not
-applying, or not reached once --fail-fast stopped. The eval suite holds the target's run
-lock while it runs, and `--break-stale-lock` takes it over only from a run that has
-expired; progress on its runs goes to stderr, except under --quiet or --output json.
-`--capture-baseline` exits 3 unless the eval suite runs.
-
-`--unpublished` runs the eval suite, alone unless --suite names smoke too, against each
-agent as it compiles now, through temporary agents: it needs no `sst compile` or `sst
-apply` first, takes no lock, and reads and writes no baseline or eval state. Only
-`tool_selection_accuracy`, which it scores exactly, can fail it; the metrics it judges are
-approximate and reported only. It exits 3 with `--capture-baseline`, or with a --suite
-that does not name evals.
-
-`--compare-models` runs the eval suite, alone unless --suite names smoke too, as a model
-comparison (`cli.compare`): it gates nothing and exits 1 only when a precheck refuses or a
-version could not be committed or restored. `--refresh-cost` rereads an earlier
-comparison's cost and runs nothing, exiting 4 for a file SST did not write. Both exit 3
-with `--capture-baseline`, `--unpublished`, or a --suite that does not name evals.
+Once `sst compile` has written the manifest, SST proves it owns each published object the
+selection compiles, then runs a read-only query against it: each semantic view, its metrics
+and verified queries, and a DESCRIBE of each tool, agent, and CoWork profile. A probe passes
+when its query runs. Nothing is written, no lock is taken, and no agent runs; `sst eval`
+runs agents. `--select` and
+`--exclude` narrow the artifacts probed. Exit 1 when the project does not compile or a
+probe fails; 4 when the selection compiles nothing to probe, or the compiled manifest is
+missing or stale; and 5 when Snowflake cannot be reached.
 
 ```text
 sst test [OPTIONS]
@@ -731,18 +716,55 @@ sst test [OPTIONS]
 
 | Option | Value | Default | Description |
 |---|---|---|---|
-| `--suite` | smoke\|evals, repeatable |  | Repeatable. `smoke` probes deployed semantic views; `evals` runs agent evaluations. Defaults to every suite that applies. |
 | `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), members such as `metric:<name>` and `tool_ref:<name>` work inside them. |
 | `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
-| `--threads` | INTEGER RANGE |  | Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
-| `--fail-fast` | flag |  | Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and run no suite after one that fails. |
-| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the eval suite does not apply. |
+| `--threads` | INTEGER RANGE |  | Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
+| `--fail-fast` | flag |  | Stop at the first failing probe, running the probes one at a time. |
+
+## sst eval
+
+Run agent evals in Snowflake and gate them against their baselines; billed.
+
+Without a mode flag, each selected eval runs against the agent `sst apply` published, once
+`sst compile` has written the manifest, and the gate compares its scores with the eval's
+baseline. `--select` and `--exclude` narrow the evals run. Exit 1 when the project does
+not compile, the gate fails, or another run holds the target's run lock; 4 when the
+selection compiles no eval or the compiled manifest is missing or stale; and 5 when
+Snowflake cannot be reached. The run holds the target's run lock while it runs, and
+`--break-stale-lock` takes it over only from a run that has expired; progress on its runs
+goes to stderr, except under --quiet or --output json. `--capture-baseline` records the
+scores as the baselines later gates compare with.
+
+`--unpublished` runs each eval against its agent as it compiles now, through temporary
+agents: it needs no `sst compile` or `sst apply` first, takes no lock, and reads and writes
+no baseline or eval state. Only `tool_selection_accuracy`, which it scores exactly, can fail
+it; the metrics it judges are approximate and reported only.
+
+`--compare-models` runs the evals as a model comparison (`cli.compare`): it gates nothing
+and exits 1 only when a precheck refuses or a version could not be committed or restored.
+`--refresh-cost` rereads an earlier comparison's cost and runs nothing, exiting 4 for a file
+SST did not write. Both exit 3 with `--capture-baseline` or `--unpublished`.
+
+```text
+sst eval [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), members such as `metric:<name>` and `tool_ref:<name>` work inside them. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
+| `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
+| `--threads` | INTEGER RANGE |  | Eval runs at once when neither `evals.+concurrency` nor an eval's `concurrency` setting paces them, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
+| `--fail-fast` | flag |  | Stop at the first failing eval, running the evals one at a time. |
+| `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`; refused with `--unpublished`, `--compare-models` or `--refresh-cost`. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |
-| `--unpublished` | flag |  | Run the eval suite against each agent as it compiles now, through temporary agents, publishing nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`. |
-| `--compare-models` | TEXT |  | Compare orchestration models on the selected evals' published agents and CoWork profiles: each model in LIST, comma-separated, else each eval's `evals.+candidate_models`, runs on a version committed for it, aliased `EVAL_<MODEL>`, beside the pinned model on the release; the default, the release's alias and the live version end as they were. Runs the eval suite, gates nothing, and writes `compare.json` and `report.html`. Refused with `--capture-baseline`, `--unpublished`, or a `--suite` that does not name `evals`. |
+| `--unpublished` | flag |  | Run the evals against each agent as it compiles now, through temporary agents, publishing nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged approximately and never gate. Refused with `--capture-baseline`, `--compare-models` or `--refresh-cost`. |
+| `--compare-models` | TEXT |  | Compare orchestration models on the selected evals' published agents and CoWork profiles: each model in LIST, comma-separated, else each eval's `evals.+candidate_models`, runs on a version committed for it, aliased `EVAL_<MODEL>`, beside the pinned model on the release; the default, the release's alias and the live version end as they were. Gates nothing, and writes `compare.json` and `report.html`. Refused with `--capture-baseline` or `--unpublished`. |
 | `--compare-runs` | INTEGER RANGE |  | Runs of each model a comparison makes, at least 1; else each eval's `evals.+compare_runs`, else 2. Requires `--compare-models`. |
 | `--compare-report` | DIRECTORY |  | Directory a comparison writes `compare.json` and `report.html` to; else `sst_target/compare/<eval>_<UTC time>/`. Requires `--compare-models`. |
 | `--refresh-cost` | FILE |  | Read the usage of the runs a comparison's `compare.json` names again, fill in the cost that was pending, rank and decide again, and rewrite the report where it is. Runs nothing; refused with `--compare-models`. |

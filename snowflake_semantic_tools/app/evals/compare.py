@@ -1,6 +1,6 @@
 """Compare orchestration models on the evals of published agents and CoWork profiles.
 
-`RunEvalComparison` is `sst test --suite evals --compare-models`'s use case. Under the target's
+`RunEvalComparison` is `sst eval --compare-models`'s use case. Under the target's
 run lease -- the local lock and the remote one `sst apply` and the eval gate take -- it:
 
 1. reads authoritative state and refuses to start unless every eval is published as the manifest

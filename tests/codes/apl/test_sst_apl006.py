@@ -1,4 +1,4 @@
-"""SST-APL006: the smoke suite ran probes that failed, so it is not a success."""
+"""SST-APL006: `sst test` ran probes that failed, so it is not a success."""
 
 from __future__ import annotations
 

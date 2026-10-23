@@ -84,7 +84,7 @@ No fixed baseline: it depends on the project the user names. Pass criteria:
 
 - `sst plan` exits 2 before the first apply, or 0 when the scratch schema already matches
 - `sst apply` exits 0
-- `sst test --suite smoke` ends with `smoke suite passed: N probe(s)`
+- `sst test` ends with `N smoke probe(s) passed`
 - A second `sst plan` exits 0
 
 ## Known Diagnostics (Expected, Non-Blocking)

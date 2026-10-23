@@ -17,7 +17,7 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
   metric, dimension, and filter expression, with the target's role, after `DESCRIBE TABLE` on
   each table the views read; publishing writes them into the semantic view.
 - **Agent instructions, tool definitions, and skills** are published as written, and decide
-  what an agent does when someone calls it. `sst test --suite evals` runs the agents.
+  what an agent does when someone calls it. `sst eval` runs the agents.
 - **Profiles, hooks, MCP configs, and commands** are published to the profile registry, and
   CoCo Desktop installs them for everyone who selects the profile: a hook's script and an MCP
   server's command run for those people, not for you.
@@ -28,8 +28,8 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
 - `sst plan`, `sst apply`, `sst drop`, `sst state recover`, `sst state convert`, and `sst enrich`;
 - `sst validate`, unless `--no-snowflake-syntax-check` is given or
   `validation.snowflake_syntax_check: false` is set (`sst init` writes `true`);
-- `sst test` with `--suite smoke` or `--suite evals`, and `sst test` with no `--suite`, which
-  runs every suite that applies, the connected ones included, once `sst compile` has run;
+- `sst test`, which queries every published object it probes, and `sst eval`, which runs
+  the agents;
 - `sst ask`, which also creates scratch copies of the edited views and tools and
   runs the agent on them, with the target's role;
 - `sst state unlock`;
@@ -212,7 +212,7 @@ before (see [state and ownership](../concepts.md#state-and-ownership)).
 - **Give evals one primary role.** An eval runs as Snowflake tasks, and a task runs with the
   session's primary role only, never its secondary roles. That role needs `CREATE TASK`,
   `CREATE STAGE`, and `CREATE FILE FORMAT` on each agent's schema, directly or through a role
-  granted to it. `sst test --suite evals` checks this before any run starts: a privilege held
+  granted to it. `sst eval` checks this before any run starts: a privilege held
   only through a secondary role is `SST-VAL727`, one held by no role in the session
   `SST-VAL728`.
 - **Develop against a scratch schema.** Point a personal target in `profiles.yml` at a schema

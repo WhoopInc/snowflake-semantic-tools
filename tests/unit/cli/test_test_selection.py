@@ -1,4 +1,4 @@
-"""`sst test --select` and `--exclude`: which artifacts the suites cover."""
+"""`--select` and `--exclude` on `sst test` and `sst eval`: which artifacts each covers."""
 
 from __future__ import annotations
 
@@ -15,14 +15,14 @@ from tests.helpers.reference_project import project_copy
 
 
 def _smoke_probes(monkeypatch: pytest.MonkeyPatch, project: Path, *flags: str) -> int:
-    """Run the smoke suite on `project`, every artifact applied; return how many probes it ran."""
-    args = ["test", *common(project), "--target", "dev", "--suite", "smoke", *flags, "-o", "json"]
+    """Run `sst test` on `project`, every artifact applied; return how many probes it ran."""
+    args = ["test", *common(project), "--target", "dev", *flags, "-o", "json"]
     result = invoke_with_port(monkeypatch, applied_port(project), args)
     assert result.exit_code == 0, result.output
     return int(json.loads(result.output)["data"]["attempted"])
 
 
-def test_select_and_exclude_narrow_the_smoke_suite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_select_and_exclude_narrow_the_smoke_probes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
     every = _smoke_probes(monkeypatch, project)
@@ -36,7 +36,7 @@ def test_select_and_exclude_narrow_the_smoke_suite(tmp_path: Path, monkeypatch: 
     assert "SST-DIS010" in {item["code"] for item in json.loads(nothing.stdout)["diagnostics"]}
 
 
-def test_a_selected_connected_suite_still_checks_the_whole_compiled_manifest(
+def test_a_selected_connected_run_still_checks_the_whole_compiled_manifest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = project_copy(tmp_path)
@@ -46,7 +46,7 @@ def test_a_selected_connected_suite_still_checks_the_whole_compiled_manifest(
         raise SnowflakePortError("unreachable", diagnostic=None)
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.main.SnowflakeConnector", unreachable)
-    smoke = CliRunner().invoke(cli, ["test", *common(project), "--suite", "smoke", "--select", "jaffle_minimal"])
+    smoke = CliRunner().invoke(cli, ["test", *common(project), "--select", "jaffle_minimal"])
     assert smoke.exit_code == 5, smoke.output
-    evals = CliRunner().invoke(cli, ["test", *common(project), "--suite", "evals", "--select", "type:eval"])
+    evals = CliRunner().invoke(cli, ["eval", *common(project), "--select", "type:eval"])
     assert evals.exit_code == 5, evals.output

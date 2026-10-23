@@ -412,7 +412,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "setting now requires; the gate has no signal"
         ),
         note=(
-            'Capture a new baseline: `sst test --suite evals --capture-baseline --reason "<why>"`. '
+            'Capture a new baseline: `sst eval --capture-baseline --reason "<why>"`. '
             "An eval with no baseline at all is SST-VAL758."
         ),
     ),
@@ -583,7 +583,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the eval gate finds no baseline stored for the eval on this target, before the eval's "
             "run starts; the eval starts no run, and the gate has no signal"
         ),
-        note='Capture one: `sst test --suite evals --capture-baseline --reason "<why>"`.',
+        note='Capture one: `sst eval --capture-baseline --reason "<why>"`.',
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -602,7 +602,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "The message names each part that differs. The run's agent version is part of the "
             "identity: it matches the version the baseline was captured on, or any version whose "
             "comment carries the same `sst-spec:` fingerprint. Any other version needs a new "
-            'baseline: `sst test --suite evals --select <eval> --capture-baseline --reason "<why>"`. '
+            'baseline: `sst eval --select <eval> --capture-baseline --reason "<why>"`. '
             "An edited custom metric is SST-VAL745 instead."
         ),
         precheck=Precheck.RUNTIME,
@@ -629,7 +629,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the eval gate finds the baseline is 30 or more days old, before the eval's run starts or "
             "once it ends; the gate has no signal"
         ),
-        note='Capture a replacement: `sst test --suite evals --capture-baseline --reason "<why>"`.',
+        note='Capture a replacement: `sst eval --capture-baseline --reason "<why>"`.',
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -687,7 +687,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Eval routed into a personal database",
         "eval '{artifact}' would create {kind} in {found}, a personal database, which holds no table, dataset or stage",
         "route the agent to a schema of an ordinary database, or try its evals with "
-        "`sst test --suite evals --unpublished`, which creates none of them",
+        "`sst eval --unpublished`, which creates none of them",
         condition=(
             "an eval's agent resolves to a database whose name starts with `USER$`, so the eval's "
             "source table, dataset and config stage, which publish in the agent's schema, would be "

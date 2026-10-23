@@ -19,8 +19,8 @@ CoWork profiles, skills, and CoCo Desktop profiles, then publishes them. This ki
 1. **Never publish without being asked.** `sst apply`, `sst drop`, and anything else marked
    *writes* below changes Snowflake. Run them only when the user asks for that command, and
    show the plan first.
-2. **Never spend credits without being asked.** `sst test --suite evals` runs agents in
-   Snowflake, and `sst test` with no `--suite` runs that suite too once an eval compiles.
+2. **Never spend credits without being asked.** `sst eval` runs agents in Snowflake; `sst test`
+   only reads what was published.
    To check a change offline, use `sst validate --no-snowflake-syntax-check` and `sst compile`.
 3. **Stay offline by default.** `sst validate` connects unless told not to, and so do
    `sst debug`, `sst plan`, and `sst diff`. Use the offline forms in the table unless the user
@@ -67,7 +67,8 @@ CoWork profiles, skills, and CoCo Desktop profiles, then publishes them. This ki
 | `sst diff` | reads Snowflake | Offline only when `--from` and `--to` are both `local` or saved plans. |
 | `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `sst_target/plan.json`. |
 | `sst enrich` | reads Snowflake, edits files | Reads the warehouse into model YAML; `--include synonyms` calls Cortex, which costs credits. |
-| `sst test` | billed | Smoke reads, evals run agents. Always pass `--suite`. |
+| `sst test` | reads Snowflake | Smoke-probes what `sst apply` published; never writes and runs no agent. |
+| `sst eval` | billed | Runs agents against their evals; `--capture-baseline` writes the eval baseline. Only when asked. |
 | `sst ask` | billed | Runs one agent on one question, on scratch copies of your edits; publishes nothing. Always pass the question: without one it opens a full-screen conversation for a person. |
 | `sst apply` | writes Snowflake | Publishes. Only when asked, and from a reviewed plan. |
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
@@ -91,7 +92,7 @@ When the user wants a connected check or a release:
 sst validate                                # also has Snowflake compile each expression
 sst plan                                    # what would change; exit 2 = changes pending
 sst apply --plan sst_target/plan.json --yes # only when the user asks to publish
-sst test --suite smoke                      # queries what was published
+sst test                                    # queries what was published
 ```
 
 `sst plan` and `sst apply` read the manifest `sst compile` writes, so compile first.
@@ -101,7 +102,7 @@ sst test --suite smoke                      # queries what was published
 | Code | Meaning |
 |---|---|
 | 0 | Success; for `plan`, nothing to change. |
-| 1 | Errors were reported, or an apply, a suite, or a check failed. |
+| 1 | Errors were reported, or an apply, a smoke probe, an eval gate, or a check failed. |
 | 2 | Differences: `plan` has changes, `diff` found a difference, a `--check` would rewrite. |
 | 3 | The command line is invalid. |
 | 4 | The project, its configuration, or a saved plan cannot be used. |

@@ -41,7 +41,8 @@ where it is explained.
   `SST-VAL405` and a severity of error, warning, or info. See
   [diagnostics](concepts.md#diagnostics).
 - **Eval.** A fixed set of questions an agent is run against and scored on,
-  published with the agent. See [evals](guides/evals.md).
+  published with the agent and run by [`sst eval`](reference/cli.md#sst-eval).
+  See [evals](guides/evals.md).
 - **Eval baseline.** The recorded pass flags of an agent's eval runs, which a
   later run is gated against; stored in Snowflake, and unrelated to the
   baseline file. See [eval baselines](guides/evals.md#baselines).
@@ -100,9 +101,9 @@ where it is explained.
   [precedence](guides/configuration.md#precedence).
 - **Skill.** A `SKILL.md` folder SST publishes as a version of a skill-type
   Cortex Extension. See [skills](guides/skills.md).
-- **Smoke suite.** The part of `sst test` that proves SST owns each published
-  object, then queries each published view, its metrics, and its verified
-  queries. See [`sst test`](reference/cli.md#sst-test).
+- **Smoke probe.** A read-only query `sst test` runs against a published object,
+  once it has proved SST owns it: each view, its metrics, its verified queries,
+  and a DESCRIBE of each tool, agent, and CoWork profile. See [`sst test`](reference/cli.md#sst-test).
 - **State.** The table, `SST_STATE` by default, in which apply records what it
   published to a target. See [state and ownership](concepts.md#state-and-ownership).
 - **Strict.** `--strict` or `validation.strict: true`, which promotes every

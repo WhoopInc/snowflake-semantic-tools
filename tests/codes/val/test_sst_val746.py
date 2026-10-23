@@ -1,6 +1,6 @@
 """SST-VAL746: system judge versions move on Snowflake's cadence.
 
-Capturing a baseline through the eval suite records the version each system metric's judge
+Capturing a baseline through `sst eval` records the version each system metric's judge
 came with; gating a run against that baseline records nothing new.
 """
 

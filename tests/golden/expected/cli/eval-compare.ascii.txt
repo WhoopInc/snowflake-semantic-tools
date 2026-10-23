@@ -1,11 +1,11 @@
-$ sst --project-dir <project> --manifest <manifest> test --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+$ sst --project-dir <project> --manifest <manifest> eval --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
 --- exit 0
 --- stdout
-eval:jaffle_analytics_agent  2 questions × 2 runs  winner claude-opus-4-8
+eval:jaffle_analytics_agent  2 questions x 2 runs  winner claude-opus-4-8
   #  model              role       answer_correctness             logical_consistency  credits/q    p95   version
-  1  openai-gpt-5       candidate  1.00  [         ●]  1.00-1.00  1.00                 0.1500       <n>s  VERSION$7 EVAL_OPENAI_GPT_5
-  2  claude-opus-4-8    candidate  1.00  [         ●]  1.00-1.00  1.00                 pending      <n>s  VERSION$6 EVAL_CLAUDE_OPUS_4_8
-  3  claude-sonnet-4-6  pinned     0.62  [    ├─●┤  ]  0.50-0.75  1.00                 0.1050       <n>s  VERSION$4
+  1  openai-gpt-5       candidate  1.00  [         o]  1.00-1.00  1.00                 0.1500       <n>s  VERSION$7 EVAL_OPENAI_GPT_5
+  2  claude-opus-4-8    candidate  1.00  [         o]  1.00-1.00  1.00                 pending      <n>s  VERSION$6 EVAL_CLAUDE_OPUS_4_8
+  3  claude-sonnet-4-6  pinned     0.62  [    |-o|  ]  0.50-0.75  1.00                 0.1050       <n>s  VERSION$4
   4  claude-haiku-4-5   candidate  failed                         -                    unavailable  -     not committed
      claude-haiku-4-5: ADD VERSION failed: Insufficient privileges
   questions that differ
@@ -19,6 +19,6 @@ eval:jaffle_analytics_agent  2 questions × 2 runs  winner claude-opus-4-8
   note     Usage views lag up to an hour; values marked pending fill in with --refresh-cost.
 report  sst_target/compare/run/compare.json
 --- stderr
-✓ compared models on 1 eval: claude-opus-4-8 won · 0 errors, 0 warnings · <n>s
+ok compared models on 1 eval: claude-opus-4-8 won - 0 errors, 0 warnings - <n>s
   hidden: 3 info (--show-info)
-  next: run `sst test --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending
+  next: run `sst eval --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending

@@ -1,4 +1,4 @@
-"""The flags the CLI reference documents beyond the core path: path overrides, schema checks, suites."""
+"""The flags the CLI reference documents beyond the core path: path overrides, schema checks, smoke runs."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pytest
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.cli.runner import CommandResult
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from tests.helpers.cli_projects import applied_port, common, compile_project, invoke_with_port
 from tests.helpers.reference_project import project_copy
@@ -56,47 +55,20 @@ def test_list_without_a_manifest_compiles_in_memory_and_writes_nothing(tmp_path:
     assert not target_dir(project).exists()
 
 
-def _evals_pass(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Answer the eval suite with a pass, so a test of suite selection needs no eval runs."""
-    monkeypatch.setattr(
-        "snowflake_semantic_tools.cli.commands.test._run_evals",
-        lambda *args: CommandResult(0, data={"suite": "evals"}, human=lambda: None),
-    )
-
-
-def test_test_runs_every_applicable_suite_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_test_needs_the_compiled_manifest_then_probes_without_running_an_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     project = project_copy(tmp_path)
     uncompiled = CliRunner().invoke(cli, ["test", *common(project), "-o", "json"])
     assert uncompiled.exit_code == 4, uncompiled.output
     assert [item["code"] for item in json.loads(uncompiled.stdout)["diagnostics"]] == ["SST-MAN001"]
     compile_project(project)
-    _evals_pass(monkeypatch)
-    args = ["test", *common(project), "--target", "dev"]
-    result = invoke_with_port(monkeypatch, applied_port(project), [*args, "-o", "json"])
+    port = applied_port(project)
+    result = invoke_with_port(monkeypatch, port, ["test", *common(project), "--target", "dev", "-o", "json"])
     assert result.exit_code == 0, result.output
-    data = json.loads(result.stdout)["data"]
-    assert (data["suites"], data["skipped_suites"], data["passed"]) == (["smoke", "evals"], [], 2)
-    human = invoke_with_port(monkeypatch, applied_port(project), args)
-    assert "2 suites passed, 0 failed, 0 skipped" in human.output
-    smoke_only = invoke_with_port(monkeypatch, applied_port(project), [*args, "--exclude", "type:eval", "-o", "json"])
-    data = json.loads(smoke_only.stdout)["data"]
-    assert (data["suites"], data["skipped_suites"]) == (["smoke"], ["evals"])
-
-
-def test_fail_fast_counts_the_selected_suites_it_never_ran_as_skipped(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = project_copy(tmp_path)
-    compile_project(project)
-    _evals_pass(monkeypatch)
-    args = ["test", *common(project), "--target", "dev", "--suite", "smoke", "--suite", "evals", "--fail-fast"]
-    # Nothing is applied, so the smoke suite fails and the eval suite never runs.
-    stopped = invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "-o", "json"])
-    assert stopped.exit_code == 1, stopped.output
-    data = json.loads(stopped.stdout)["data"]
-    assert (data["suites"], data["skipped_suites"], data["skipped"]) == (["smoke"], ["evals"], 1)
-    human = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
-    assert "0 suites passed, 1 failed, 1 skipped: smoke failed" in human.output
+    envelope = json.loads(result.stdout)
+    assert envelope["command"] == "test" and envelope["data"]["attempted"] > 0
+    assert not any("EXECUTE_AI_EVALUATION" in str(sql) for sql in port.queries)
 
 
 def test_debug_lists_fragile_signatures_and_refuses_an_unsupported_manifest(tmp_path: Path) -> None:

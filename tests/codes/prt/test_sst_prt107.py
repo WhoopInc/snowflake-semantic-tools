@@ -34,11 +34,11 @@ def test_sst_prt107_fires_naming_the_eval_runs_an_interrupt_left_running(
         raise EvalRunsInterrupted(("EVAL_A_1", "EVAL_A_1_R2"))
 
     monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.compile.compile_result", interrupt)
-    result = CliRunner().invoke(cli, ["test", *common(project_copy(tmp_path)), "--output", "json"])
+    result = CliRunner().invoke(cli, ["eval", *common(project_copy(tmp_path)), "--output", "json"])
     [diagnostic] = json.loads(result.output)["diagnostics"]
     assert (result.exit_code, diagnostic["code"], diagnostic["severity"]) == (130, "SST-PRT107", "info")
     assert diagnostic["message"] == (
-        "interrupted after sst test started; evaluation runs were started and may still be running: "
+        "interrupted after sst eval started; evaluation runs were started and may still be running: "
         "EVAL_A_1, EVAL_A_1_R2; check their status or cancel them in Snowflake"
     )
     assert "nothing was written" not in result.output

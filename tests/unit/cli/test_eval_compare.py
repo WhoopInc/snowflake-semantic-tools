@@ -1,4 +1,4 @@
-"""`sst test --compare-models` and `--refresh-cost` on the command line: what each refuses, writes and prints."""
+"""`sst eval --compare-models` and `--refresh-cost` on the command line: what each refuses, writes and prints."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ MODELS = "claude-opus-4-8,openai-gpt-5"
 
 
 def run(*args: str) -> Result:
-    return CliRunner().invoke(cli, ["-o", "json", "test", *args])
+    return CliRunner().invoke(cli, ["-o", "json", "eval", *args])
 
 
 def refusal(result: Result) -> str:
@@ -43,7 +43,6 @@ def refusal(result: Result) -> str:
     [
         (("--compare-models", "--capture-baseline", "--reason", "x"), "--compare-models never captures a baseline"),
         (("--compare-models", MODELS, "--unpublished"), "--compare-models compares published versions"),
-        (("--compare-models", "--suite", "smoke"), "--compare-models runs the eval suite; add --suite evals"),
         (("--refresh-cost", "c.json", "--compare-models"), "--refresh-cost rereads a comparison's cost"),
         (("--refresh-cost", "c.json", "--unpublished"), "--refresh-cost compares published versions"),
         (("--compare-runs", "2"), "--compare-runs sets how --compare-models compares"),
@@ -79,7 +78,7 @@ def compare(
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *a, **k: chosen)
     monkeypatch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
     directory = project / "out"
-    args = ["-o", "json", "test", *common(project), "--target", "dev", "--compare-report", str(directory), *flags]
+    args = ["-o", "json", "eval", *common(project), "--target", "dev", "--compare-report", str(directory), *flags]
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), args), directory
 
 
@@ -94,7 +93,7 @@ def test_a_comparison_writes_compare_json_and_reports_it_as_its_data(
     assert envelope["data"] == written == expected
     assert list(written) == ["schema", "generated_at", "cost_read_at", "target", "run_id", "git_sha", "evals"]
     assert [item["code"] for item in envelope["diagnostics"]] == ["SST-VAL773", "SST-VAL774", "SST-VAL775"]
-    assert envelope["next_steps"][0].startswith("run `sst test --refresh-cost out/compare.json`")
+    assert envelope["next_steps"][0].startswith("run `sst eval --refresh-cost out/compare.json`")
 
 
 def test_a_comparison_whose_versions_did_not_commit_exits_one(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,7 +129,7 @@ def test_another_run_holding_the_lock_refuses_the_comparison(tmp_path: Path, mon
     project = compiled(tmp_path)
     refused = EvalGateRefused("cannot compare models while apply-run holds the target lock")
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *a, **k: refused)
-    args = ["-o", "json", "test", *common(project), "--target", "dev", "--compare-models", MODELS]
+    args = ["-o", "json", "eval", *common(project), "--target", "dev", "--compare-models", MODELS]
     result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
     assert result.exit_code == 1
     assert json.loads(result.stdout)["data"]["error"] == refused.reason
@@ -151,7 +150,7 @@ def test_refreshing_a_report_rewrites_it_with_the_cost_that_landed(
         port.agent_usage_rows[request] = AgentUsage(request, 0.5, 0.0, "2026-10-22T14:00:00+00:00")
     monkeypatch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
     result = invoke_with_port(
-        monkeypatch, port, ["-o", "json", "test", *common(project), "--target", "dev", "--refresh-cost", str(path)]
+        monkeypatch, port, ["-o", "json", "eval", *common(project), "--target", "dev", "--refresh-cost", str(path)]
     )
     assert result.exit_code == 0, result.output
     rewritten = json.loads(path.read_text(encoding="utf-8"))
@@ -168,7 +167,7 @@ def test_refreshing_a_file_sst_did_not_write_is_refused_with_exit_four(
     path = project / "c.json"
     path.write_text(content, encoding="utf-8")
     result = invoke_with_port(
-        monkeypatch, FakeSnowflake(state={}), ["-o", "json", "test", *common(project), "--refresh-cost", str(path)]
+        monkeypatch, FakeSnowflake(state={}), ["-o", "json", "eval", *common(project), "--refresh-cost", str(path)]
     )
     assert result.exit_code == 4
     assert json.loads(result.stdout)["diagnostics"][0]["code"] == "SST-MAN032"
@@ -189,7 +188,7 @@ def test_a_report_goes_under_sst_target_compare_unless_a_directory_is_given(
     outcome = jaffle_outcome()
     monkeypatch.setattr("snowflake_semantic_tools.app.evals.compare.RunEvalComparison.run", lambda *a, **k: outcome)
     monkeypatch.setattr("snowflake_semantic_tools.cli.compare.compare_report_writer", JsonReportWriter)
-    args = ["test", *common(project), "--target", "dev", "--compare-models", MODELS]
+    args = ["eval", *common(project), "--target", "dev", "--compare-models", MODELS]
     result = invoke_with_port(monkeypatch, FakeSnowflake(state={}), args)
     assert result.exit_code == 0, result.output
     [written] = (project / "sst_target" / "compare").glob("*/compare.json")

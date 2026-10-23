@@ -552,9 +552,9 @@ those checks off.
 
 **Revisit when.** Snowflake refuses a dangling reference at `CREATE AGENT`.
 
-### Smoke probes are a separate suite, not part of apply
+### Smoke probes are a separate command, not part of apply
 
-**Chosen.** `sst test --suite smoke` queries the published views, their metrics,
+**Chosen.** `sst test` queries the published views, their metrics,
 and their verified queries, after proving SST owns each object. `apply` runs no
 probes, and `validation.smoke_query` is a removed key.
 
@@ -588,7 +588,7 @@ Drawn from: [syntax check key](../../snowflake_semantic_tools/domain/model/confi
 [window checks](../../snowflake_semantic_tools/domain/validate/semantic/windows.py),
 [relationship codes](../../snowflake_semantic_tools/domain/diagnostics/specs/val_relationship.py),
 [agent reference lookup](../../snowflake_semantic_tools/app/compile/agents/observe.py),
-[smoke suite](../../snowflake_semantic_tools/app/smoke.py),
+[smoke probes](../../snowflake_semantic_tools/app/smoke.py),
 [eval gate](../../snowflake_semantic_tools/app/evals/gate.py),
 [eval runs](../../snowflake_semantic_tools/app/evals/run.py),
 [network guard](../../tests/helpers/network_guard.py),

@@ -178,10 +178,10 @@ def test_apply_lists_what_it_did() -> None:
 
 
 @pytest.mark.parametrize("exit_code", [0, 1, 2, 3, 4, 5, 130])
-@pytest.mark.parametrize("command", ["validate", "plan", "apply", "drop", "baseline add", "test"])
+@pytest.mark.parametrize("command", ["validate", "plan", "apply", "drop", "baseline add", "test", "eval"])
 def test_next_never_tells_an_agent_to_change_snowflake_on_its_own(command: str, exit_code: int) -> None:
     for step in default_next_steps(command, exit_code, errors=1, warnings=1, audience="agent"):
-        assert not re.search(r"\brun `sst (apply|drop|baseline add)\b", step), step
+        assert not re.search(r"\brun `sst (apply|drop|baseline add|eval)\b", step), step
 
 
 def test_project_text_keeps_its_characters_and_loses_its_control_codes() -> None:

@@ -1,6 +1,6 @@
 """Draw a tree with connectors: each row under its parent, the last of its rows marked `└── `.
 
-Every other row is marked `├── `. `lineage` draws its traces this way and `test` its eval
+Every other row is marked `├── `. `lineage` draws its traces this way and `eval` its
 results; a terminal without unicode gets `|-- ` and `` `-- `` instead. A row's text may run
 onto more lines, which keep the connectors of the rows around it, so a long answer stays
 inside its branch.

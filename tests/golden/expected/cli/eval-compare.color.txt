@@ -1,4 +1,4 @@
-$ sst --project-dir <project> --manifest <manifest> test --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+$ sst --project-dir <project> --manifest <manifest> eval --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
 --- exit 0
 --- stdout
 [1meval:jaffle_analytics_agent[0m  2 questions × 2 runs  [32m[1mwinner claude-opus-4-8[0m
@@ -21,4 +21,4 @@ $ sst --project-dir <project> --manifest <manifest> test --compare-models claude
 --- stderr
 [32m[1m✓[0m [1mcompared models on 1 eval: claude-opus-4-8 won[0m · 0 errors, 0 warnings · <n>s
 [2m  hidden: 3 info (--show-info)[0m
-  [36mnext:[0m run `sst test --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending
+  [36mnext:[0m run `sst eval --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending

@@ -61,7 +61,7 @@ def test_the_evals_suite_builds_compiles_and_applies_verify_before_it_runs() -> 
         first("dbt build --target verify"),
         first("compile --target verify"),
         first("apply --target verify --yes --no-strict"),
-        first("test --suite evals --target verify"),
+        first("eval --target verify"),
     ]
     assert order == sorted(order) and len(set(order)) == 4
     manifests = {found[1] for run in runs if "poetry run sst" in run if (found := re.search(r"--manifest (\S+)", run))}

@@ -1,4 +1,4 @@
-$ sst --project-dir <project> --manifest <manifest> -v test --suite evals --unpublished --target dev
+$ sst --project-dir <project> --manifest <manifest> -v eval --unpublished --target dev
 --- exit 1
 --- stdout
 [1meval:jaffle_analytics_agent[0m  unpublished  [32m[1mCOMPLETED[0m  3/4 questions passed
@@ -62,5 +62,5 @@ eval:jaffle_analytics_agent: question 4 answered
   [34m[1m=[0m [2msst explain SST-ASK007[0m
   [34m[1m=[0m [2mphase: ask · fingerprint: f748b56c8b924149[0m
 
-[31m[1m✗[0m [1mtest failed[0m: 1 error, 0 warnings · <n>s
-  [36mnext:[0m fix the error, then run `sst test` again
+[31m[1m✗[0m [1meval failed[0m: 1 error, 0 warnings · <n>s
+  [36mnext:[0m fix the error, then run `sst eval` again

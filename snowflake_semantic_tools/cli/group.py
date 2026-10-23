@@ -129,6 +129,7 @@ COMMAND_ORDER = (
     "apply",
     "diff",
     "test",
+    "eval",
     "explain",
     "docs",
     "clean",

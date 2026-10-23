@@ -23,14 +23,14 @@ name: Snowflake checks (manual)
 #
 # Suites:
 #   live       the real connector against the port contract, apply in a real account, and the CLI
-#              end to end through the smoke suite (`pytest -m live`). Each run works in scratch
+#              end to end through `sst test` (`pytest -m live`). Each run works in scratch
 #              schemas of its own, SST_IT_<UTC stamp>_<run>_<worker>, which the tests drop and the
 #              teardown step drops again even when a step failed.
 #   sweep      drop SST_IT_* scratch schemas older than `older_than_hours`, the cleanup for a
 #              cancelled job or a killed runner
 #   recording  re-capture the recorded session and diff it against the committed recording
 #   evals      the reference project on its `verify` target: `dbt build`, then `sst compile`,
-#              `sst apply --no-strict` and `sst test --suite evals`, all against SNOWFLAKE_DATABASE
+#              `sst apply --no-strict` and `sst eval`, all against SNOWFLAKE_DATABASE
 #              and SNOWFLAKE_SCHEMA. Needs SNOWFLAKE_SCHEMA and a role that may create the
 #              project's objects and agents (docs/guides/testing-live.md). What it publishes stays
 #              in place for the next run; it is not a scratch schema.
@@ -257,7 +257,7 @@ jobs:
           --project-dir tests/fixtures/reference_project
           --profiles-dir "$RUNNER_TEMP/profiles"
           --manifest tests/fixtures/reference_project/target/manifest.json
-          test --suite evals --target verify
+          eval --target verify
           > evals.json
 
       - name: Upload eval results

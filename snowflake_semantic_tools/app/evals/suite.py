@@ -1,6 +1,6 @@
 """Run the eval suite against published agents and gate it on stored baselines.
 
-`RunEvalGate` is the evals test suite's use case: it holds the target's run lease -- the
+`RunEvalGate` is `sst eval`'s use case: it holds the target's run lease -- the
 local lock and the remote one `sst apply` takes -- for the run, refuses to start unless
 every eval is published exactly as the compiled manifest renders it, refuses before it starts
 each eval whose stored baseline cannot gate it, runs the others as `RunEvalSuite` does, and
@@ -254,7 +254,7 @@ class RunEvalGate:
                 (*lock_diagnostics, *state_diagnostics, *publication, *eval_role_diagnostics(self._port, evals))
             )
             if preflight.has_errors:
-                return EvalGateOutcome(preflight, None, False, {"suite": "evals", **empty_eval_suite_json()})
+                return EvalGateOutcome(preflight, None, False, empty_eval_suite_json())
             return self._run_suite(evals, state, preflight, defaults, lifecycle_config, request, target.name)
         finally:
             lease.release()
@@ -481,7 +481,6 @@ def _gate_data(
     else:
         verdict = "passed"
     return {
-        "suite": "evals",
         **eval_suite_json(suite),
         "captured_baselines": [record.eval_key for record in captured],
         "regression_count": sum(item.regression_count for item in verdicts),

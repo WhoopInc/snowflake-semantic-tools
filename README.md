@@ -64,7 +64,8 @@ semantic view end to end.
 | `sst plan` | Compare the project with Snowflake and save a reviewable plan |
 | `sst apply` | Execute a saved plan |
 | `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
-| `sst test` | Run smoke probes against published semantic views, and agent evals |
+| `sst test` | Run smoke probes against what `sst apply` published |
+| `sst eval` | Run agent evals in Snowflake and gate them against their baselines |
 | `sst ask` | Talk to an agent as it compiles now, on scratch copies of your edits, publishing nothing |
 | `sst list` | List compiled artifacts and their status |
 | `sst lineage` | Show what a dbt node, member, or artifact reads and what reads it, from dbt sources to agents and evals |

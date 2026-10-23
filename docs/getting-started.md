@@ -17,7 +17,7 @@ change goes through.
   lists the optional grants.
 
 Everything up to `sst compile` in step 7 runs offline; `sst plan`, `sst apply`,
-and `sst test --suite smoke` connect.
+and `sst test` connect.
 
 ## 1. Install
 
@@ -234,10 +234,10 @@ actually wrote.
 
 ```bash
 sst plan          # exits 0: nothing left to change
-sst test --suite smoke
+sst test
 ```
 
-The smoke suite queries each published view, its metrics, and its verified
+`sst test` queries each published view, its metrics, and its verified
 queries, and reports any that fail.
 
 ## Next

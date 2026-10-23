@@ -640,7 +640,7 @@ def print_verdict(
     verdict = Verdict(
         outcome=outcome,
         headline=title,
-        # A failure nothing counted (a suite, a check) is not "0 errors": it reports its own way.
+        # A failure nothing counted (a smoke run, an eval gate, a check) is not "0 errors": it reports its own way.
         errors=summary["error"] if _counted(counts, outcome, summary) else None,
         warnings=summary["warning"],
         baselined=summary["baselined"],

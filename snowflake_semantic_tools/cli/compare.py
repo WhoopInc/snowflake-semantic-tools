@@ -1,4 +1,4 @@
-"""`sst test --compare-models` and `--refresh-cost`: compare orchestration models on published evals.
+"""`sst eval --compare-models` and `--refresh-cost`: compare orchestration models on published evals.
 
 A comparison runs the selected evals on committed versions of their published agents and CoWork
 profiles, one per candidate model, and writes its report, `compare.json` and a page beside it,
@@ -113,7 +113,7 @@ def run_comparison(
     )
     if not isinstance(requests, Mapping):
         raise SstUsageError(requests.message, diagnostic=requests)
-    manifest = current_manifest(paths.project_dir, full, inputs, before="evals")
+    manifest = current_manifest(paths.project_dir, full, inputs, before="eval")
     directory = flags.report_dir or _default_directory(paths, evals)
     profile, port = connect(paths, target_name)
     params = profile.connection_params
@@ -149,7 +149,7 @@ def run_comparison(
         )
     port.close()
     if isinstance(outcome, EvalGateRefused):
-        return CommandResult(ERROR, outcome.diagnostics, {"suite": "evals", "error": outcome.reason})
+        return CommandResult(ERROR, outcome.diagnostics, {"error": outcome.reason})
     return _reported(paths, outcome, directory)
 
 
@@ -192,7 +192,7 @@ class RenderedReportWriter:
 
 def _reported(paths: ProjectPaths, outcome: CompareOutcome, directory: Path) -> CommandResult:
     if outcome.report is None:
-        return CommandResult(ERROR, outcome.diagnostics, {"suite": "evals"})
+        return CommandResult(ERROR, outcome.diagnostics)
     return _written(paths, outcome.report, outcome.diagnostics, directory, passed=outcome.passed)
 
 
@@ -214,7 +214,7 @@ def _written(
         document,
         human=lambda: _print(report, files),
         headline=headline,
-        next_steps=(f"run `sst test --refresh-cost {files[-1]}` in about an hour for the cost still pending",)
+        next_steps=(f"run `sst eval --refresh-cost {files[-1]}` in about an hour for the cost still pending",)
         if pending
         else None,
     )

@@ -1,4 +1,4 @@
-$ sst --project-dir <project> --manifest <manifest> -v test --suite evals --unpublished --target dev
+$ sst --project-dir <project> --manifest <manifest> -v eval --unpublished --target dev
 --- exit 1
 --- stdout
 eval:jaffle_analytics_agent  unpublished  COMPLETED  3/4 questions passed
@@ -62,5 +62,5 @@ error[SST-ASK007]: eval 'jaffle_analytics_agent': tool_selection_accuracy needs 
   = sst explain SST-ASK007
   = phase: ask · fingerprint: f748b56c8b924149
 
-✗ test failed: 1 error, 0 warnings · <n>s
-  next: fix the error, then run `sst test` again
+✗ eval failed: 1 error, 0 warnings · <n>s
+  next: fix the error, then run `sst eval` again

@@ -148,8 +148,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "else 4; 1 reads serially. The plan is the same for any count."
     ),
     ("sst test", "--threads"): (
-        "Smoke probes, and eval runs neither `evals.+concurrency` nor an eval's `concurrency` setting paces, "
-        "run at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
+        "Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
+    ),
+    ("sst eval", "--threads"): (
+        "Eval runs at once when neither `evals.+concurrency` nor an eval's `concurrency` setting paces them, "
+        "1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
     ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
     ("sst compile", "--emit-agent-spec"): (
@@ -246,16 +249,11 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "Previous run's build directory, else `$SST_STATE_DIR`: `state:` selectors compare with its "
         "`manifest.json`, and `--use-cached-state` plans from its `observation.<target>.json`."
     ),
-    ("sst test", "--suite"): (
-        "Repeatable. `smoke` probes deployed semantic views; `evals` runs agent evaluations. Defaults to "
-        "every suite that applies."
+    ("sst eval", "--capture-baseline"): (
+        "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires "
+        "`--reason`; refused with `--unpublished`, `--compare-models` or `--refresh-cost`."
     ),
-    ("sst test", "--capture-baseline"): (
-        "Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`, "
-        "and a run of the eval suite: refused with a `--suite` that does not name `evals`, or no `--suite` when the "
-        "eval suite does not apply."
-    ),
-    ("sst test", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
+    ("sst eval", "--reason"): "Why the baseline is changing; stored with it. Requires `--capture-baseline`.",
     ("sst ask", "--target"): (
         "Target from `profiles.yml`, else `$SST_TARGET`: the agent's names resolve, and its temporary agent "
         "runs, there. Defaults to the profile's own default target."
@@ -274,37 +272,34 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "The conversation's color theme, else `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`; "
         "Textual's own themes are named too, and Ctrl-P changes it for the session."
     ),
-    ("sst test", "--unpublished"): (
-        "Run the eval suite against each agent as it compiles now, through temporary agents, publishing "
+    ("sst eval", "--unpublished"): (
+        "Run the evals against each agent as it compiles now, through temporary agents, publishing "
         "nothing: no `sst apply` first, no lock, no baseline, no eval state. `tool_selection_accuracy` is "
         "scored exactly and gates on its threshold; `answer_correctness` and custom metrics are judged "
-        "approximately and never gate. Refused with `--capture-baseline`, or a `--suite` that does not name `evals`."
+        "approximately and never gate. Refused with `--capture-baseline`, `--compare-models` or `--refresh-cost`."
     ),
-    ("sst test", "--compare-models"): (
+    ("sst eval", "--compare-models"): (
         "Compare orchestration models on the selected evals' published agents and CoWork profiles: each "
         "model in LIST, comma-separated, else each eval's `evals.+candidate_models`, runs on a version "
         "committed for it, aliased `EVAL_<MODEL>`, beside the pinned model on the release; the default, "
-        "the release's alias and the live version end as they were. Runs the eval suite, gates nothing, "
-        "and writes `compare.json` and `report.html`. Refused with `--capture-baseline`, `--unpublished`, "
-        "or a `--suite` that does not name `evals`."
+        "the release's alias and the live version end as they were. Gates nothing, and writes "
+        "`compare.json` and `report.html`. Refused with `--capture-baseline` or `--unpublished`."
     ),
-    ("sst test", "--compare-runs"): (
+    ("sst eval", "--compare-runs"): (
         "Runs of each model a comparison makes, at least 1; else each eval's `evals.+compare_runs`, else 2. "
         "Requires `--compare-models`."
     ),
-    ("sst test", "--compare-report"): (
+    ("sst eval", "--compare-report"): (
         "Directory a comparison writes `compare.json` and `report.html` to; else "
         "`sst_target/compare/<eval>_<UTC time>/`. Requires `--compare-models`."
     ),
-    ("sst test", "--refresh-cost"): (
+    ("sst eval", "--refresh-cost"): (
         "Read the usage of the runs a comparison's `compare.json` names again, fill in the cost that was "
         "pending, rank and decide again, and rewrite the report where it is. Runs nothing; refused with "
         "`--compare-models`."
     ),
-    ("sst test", "--fail-fast"): (
-        "Stop the smoke or eval suite at its first failing probe or eval, running them one at a time, and "
-        "run no suite after one that fails."
-    ),
+    ("sst test", "--fail-fast"): "Stop at the first failing probe, running the probes one at a time.",
+    ("sst eval", "--fail-fast"): "Stop at the first failing eval, running the evals one at a time.",
     ("sst validate", "--verify-schema"): "Connects: confirm each column a semantic view reads exists in the warehouse.",
     ("sst list", "--wide"): "For a member type, also show the columns each member reads and its expression.",
     ("sst list", "--no-manifest"): "Compile the project's files in memory instead of reading the compiled manifest.",
