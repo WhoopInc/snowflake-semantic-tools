@@ -104,8 +104,19 @@ def test_a_crafted_baseline_is_refused_as_unreadable(tmp_path: Path, crafted: st
 @pytest.mark.parametrize("crafted", CRAFTED, indirect=True)
 def test_a_crafted_dbt_manifest_is_refused_as_unreadable(tmp_path: Path, crafted: str) -> None:
     path = tmp_path / "manifest.json"
-    path.write_text(crafted, encoding="utf-8")
+    # Under a key SST reads: nesting under one it skips is never decoded at all (below).
+    text = crafted.replace('{"k": ', '{"nodes": {"model.p.m": {"meta": ', 1) + "}}" if "[[" in crafted else crafted
+    path.write_text(text, encoding="utf-8")
     assert refused_codes(lambda: load_manifest_catalog(path)) == ["SST-PRT009"]
+
+
+def test_nesting_only_under_manifest_keys_sst_never_reads_is_skipped_with_them(tmp_path: Path) -> None:
+    # The bound is so nothing SST runs walks deeper than it; a part it never decodes is not walked.
+    path = tmp_path / "manifest.json"
+    deep = "[" * (json_files.MAX_JSON_DEPTH + 50) + "]" * (json_files.MAX_JSON_DEPTH + 50)
+    metadata = '{"dbt_schema_version": "https://schemas.getdbt.com/dbt/manifest/v12.json"}'
+    path.write_text(f'{{"metadata": {metadata}, "nodes": {{}}, "macros": {deep}}}', encoding="utf-8")
+    assert load_manifest_catalog(path).models == ()
 
 
 @pytest.mark.parametrize("crafted", CRAFTED, indirect=True)

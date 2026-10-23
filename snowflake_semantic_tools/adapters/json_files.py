@@ -76,12 +76,12 @@ def parse_json(raw: bytes | str, *, max_depth: int | None = None) -> object:
     except ValueError as exc:
         # JSONDecodeError, and UnicodeDecodeError for bytes that are not UTF-8, in their own words.
         raise JsonFileError(str(exc)) from exc
-    if _deeper_than(value, limit):
+    if nests_deeper_than(value, limit):
         raise JsonFileError(f"it nests arrays or objects deeper than {limit} levels")
     return value
 
 
-def _deeper_than(value: object, limit: int) -> bool:
+def nests_deeper_than(value: object, limit: int) -> bool:
     """Whether arrays and objects in `value` nest more than `limit` levels, found without recursing."""
     stack: list[tuple[object, int]] = [(value, 1)]
     while stack:

@@ -19,6 +19,7 @@ Installed with the package (`pip install snowflake-semantic-tools`).
 | cryptography | >=46.0.5 | Apache 2.0 or BSD-3-Clause | ✅ Permissive |
 | click | >=8.3.3,<9.0 | BSD-3-Clause | ✅ Permissive |
 | textual | >=8.2,<9.0 | MIT | ✅ Permissive |
+| msgspec | >=0.22,<0.23 | BSD-3-Clause | ✅ Permissive |
 
 The `secure-local-storage` extra adds keyring (MIT) to cache SSO tokens.
 
@@ -30,6 +31,10 @@ every certifi before 2026.10.19 trusts the emSign root behind the compromised eM
 intermediates ([GHSA-6q48-6c7w-9gw2](https://github.com/certifi/python-certifi/security/advisories/GHSA-6q48-6c7w-9gw2)).
 
 Textual draws the `sst ask` conversation; its tree is listed below with the connector's.
+
+msgspec decodes dbt's `manifest.json` into typed structs that skip every field SST does not read,
+which is most of a large manifest. It has no runtime dependencies of its own. It is 0.x, so the range
+stops at the next minor release.
 
 ## Transitive Runtime Dependencies
 

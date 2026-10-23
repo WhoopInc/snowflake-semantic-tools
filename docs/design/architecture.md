@@ -36,7 +36,7 @@ hands it to a use case. A use case receives everything it touches through a
 protocol in `domain/ports/`, or a union of those declared beside it, so `app` and
 `adapters` meet only in `cli`.
 
-`poetry run lint-imports` enforces nine contracts, by these exact names:
+`poetry run lint-imports` enforces ten contracts, by these exact names:
 
 | Contract | Why it exists |
 |---|---|
@@ -49,6 +49,7 @@ protocol in `domain/ports/`, or a union of those declared beside it, so `app` an
 | only roundtrip and the yaml adapter import ruamel | Writing a file back with `ruamel` preserves comments and layout; confining it keeps that delicate step to `adapters/roundtrip.py` and the formatter in `adapters/yaml/format.py`. |
 | only bounded_yaml and the yaml and dbt adapters import PyYAML | Each file is parsed at the edge that owns its format, through the depth-bounded loader in `adapters/bounded_yaml.py`: `adapters.yaml` for SST's own files, `adapters.dbt` for dbt's. Every module is covered and the importers are an allow-list, so a new module that imports `yaml` breaks the contract; only direct imports count, so everything else reaches YAML through those. |
 | only the cli's tui package imports Textual | The full-screen `sst ask` conversation is the one thing that needs Textual, and only `sst ask` opens it, lazily, so no other command pays to import it. |
+| only the manifest schema imports msgspec | The typed decode of dbt's `manifest.json` is one seam, `adapters/dbt/manifest_schema.py`; everything else reads the plain values it returns, so the decoder can be swapped without touching them. |
 
 A contract that has never rejected anything proves nothing, so
 `tests/unit/test_ring_boundaries.py` writes a module that crosses each boundary

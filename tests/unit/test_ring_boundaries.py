@@ -148,6 +148,12 @@ CROSSINGS = [
         "only the cli's tui package imports Textual",
         id="cli-command-may-not-import-textual",
     ),
+    pytest.param(
+        "adapters/dbt/_boundary_probe.py",
+        "import msgspec\n",
+        "only the manifest schema imports msgspec",
+        id="dbt-adapter-may-not-decode-with-msgspec",
+    ),
 ]
 
 # Everything the package root may hold: the four rings and the version module.
@@ -231,7 +237,7 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 9 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 10 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:

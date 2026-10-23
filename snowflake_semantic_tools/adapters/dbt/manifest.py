@@ -8,8 +8,9 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, NoReturn
 
+from snowflake_semantic_tools.adapters.dbt.manifest_schema import decode_manifest
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.json_files import read_json_file
+from snowflake_semantic_tools.adapters.json_files import parse_json, read_bounded
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtNode, DbtSource
 from snowflake_semantic_tools.domain.text import unstorable
@@ -636,13 +637,20 @@ def load_manifest_catalog(
         ProjectError: the manifest is absent (SST-PRT006), cannot be read or is not JSON
             (SST-PRT009), or is refused as `catalog_from_document` says.
 
+    The bytes are decoded keeping only the keys SST reads (`manifest_schema`); a document that
+    decode does not read as the plain one would, or whose kept part nests past the bound, is read
+    the plain way instead, so what it reports is unchanged. Nesting only inside keys SST never
+    reads is skipped with them, so it does not refuse the manifest.
+
     Diagnostics:
         SST-PRT006: no manifest exists at the path; raised.
         SST-PRT009: the manifest exists and cannot be read, or is not UTF-8 JSON within the
             size and nesting `adapters.json_files` bounds; raised.
     """
     try:
-        document = read_json_file(path)
+        raw = read_bounded(path)
+        kept = decode_manifest(raw)
+        document = kept if kept is not None else parse_json(raw)
     except FileNotFoundError as exc:
         diagnostic = D("SST-PRT006", path=str(path))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,)) from exc
