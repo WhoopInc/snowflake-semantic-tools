@@ -89,3 +89,10 @@ def test_sst_val815_silent_for_a_variable_a_placeholder_a_url_path_a_shebang_or_
     path: str, text: str
 ) -> None:
     assert _hazards({path: text}) == []
+
+
+def test_sst_val815_reports_a_repeated_path_once_per_file() -> None:
+    assert _hazards({"run.sh": "open('/tmp/x.csv')\nopen('/tmp/x.csv')\nopen('/tmp/y.csv')\n"}) == [
+        "the absolute path '/tmp/x.csv'",
+        "the absolute path '/tmp/y.csv'",
+    ]

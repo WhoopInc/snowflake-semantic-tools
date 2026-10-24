@@ -31,3 +31,9 @@ def test_sst_val810_fires() -> None:
 
 def test_sst_val810_silent() -> None:
     assert "SST-VAL810" not in codes(check_skill_files(skill(files={"SKILL.md": REF.format(ref="reference/steps.md")})))
+
+
+def test_sst_val810_reports_a_repeated_path_once_per_file() -> None:
+    path = "skills/finance/month-close/reference/steps.md"
+    found = check_skill_files(skill(files={"SKILL.md": REF.format(ref=f"{path}, then again {path}")}))
+    assert [item.code for item in found].count("SST-VAL810") == 1

@@ -106,9 +106,11 @@ def _check_references(skill: Skill, item: SkillFile, tree: _Tree, emit: Emitter)
     folder, to a file or to every file below a folder. A path that walks down a `skills/` tree
     to one of the skill's own files names that file, from the repository root. A path in prose
     or a code block also names a file by its file name, when exactly one file of the skill has
-    that name, since the agent finds it by reading the folder.
+    that name, since the agent finds it by reading the folder. A path is reported once per file,
+    at its first mention: a repeat differs only in line, so no baseline could hold both.
     """
     referenced: set[str] = set()
+    reported: set[tuple[str, str]] = set()
     for reference in scan_references(item.text or "", item.path):
         if _skip(reference):
             continue
@@ -119,16 +121,25 @@ def _check_references(skill: Skill, item: SkillFile, tree: _Tree, emit: Emitter)
         anchored = _anchored_target(reference, skill.name, tree.paths)
         if anchored is not None:
             referenced.add(anchored)
-            origin = skill.origin_of(item.path, reference.line, reference.col)
-            emit("SST-VAL810", origin=origin, path=reference.text, target=anchored)
+            if _first(reported, "SST-VAL810", reference.text):
+                origin = skill.origin_of(item.path, reference.line, reference.col)
+                emit("SST-VAL810", origin=origin, path=reference.text, target=anchored)
             continue
         linked = reference.form in _LINK_FORMS
         by_name = () if linked else tree.by_basename.get(posixpath.basename(reference.text), ())
         if len(by_name) == 1:
             referenced.update(by_name)
-        elif linked and not reference.suppressed:
+        elif linked and not reference.suppressed and _first(reported, "SST-VAL808", reference.text):
             emit("SST-VAL808", origin=skill.origin_of(item.path, reference.line, reference.col), path=reference.text)
     return referenced
+
+
+def _first(reported: set[tuple[str, str]], code: str, text: str) -> bool:
+    """Record `code` for `text`, and tell whether this is its first report in the file."""
+    if (code, text) in reported:
+        return False
+    reported.add((code, text))
+    return True
 
 
 def _resolve(reference: PathReference, tree: _Tree) -> tuple[str, ...]:
@@ -175,7 +186,11 @@ def _check_hazards(skill: Skill, emit: Emitter) -> None:
         text = item.text
         if text is None:
             continue
+        reported: set[str] = set()
         for start, detail in _hazards(text, script=not item.is_markdown):
+            if detail in reported:
+                continue
+            reported.add(detail)
             line = text.count("\n", 0, start) + 1
             emit("SST-VAL815", origin=skill.origin_of(item.path, line), path=item.path, detail=detail)
 
