@@ -1,22 +1,24 @@
-"""A semantic view's definition: what SST renders for it, and what `DESCRIBE SEMANTIC VIEW` shows.
+"""A semantic view's definition: what SST renders for it, and what Snowflake shows of the live one.
 
-Both sides list the same members under the same names: each table with its base table, keys,
+Every side lists the same members under the same names: each table with its base table, keys,
 synonyms and comment; each distinct-range constraint; each relationship; each fact, dimension,
-filter and metric by its qualified name; each verified query; the two custom instruction texts;
-and the view's comment without its ownership marker. The desired side holds only what the view's
-scope admits, as the renderer does.
+filter and metric by its qualified name; each variable; each verified query; the two custom
+instruction texts; the view's comment without its ownership marker; and its staleness. The
+desired side holds only what the view's scope admits, as the renderer does.
 
-DESCRIBE leaves out a row for what a member does not set, so the live side states an empty value
-for each property it knows DESCRIBE leaves out that way. What DESCRIBE has not been seen to report
--- variables, a window metric's expression, `USING`, ASOF and range relationships, the staleness
--- is left out of both sides, so `sst plan` reports a change to only those as a changed definition
-without naming a member.
+The live side is read from `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW` (`live_view_from_yaml`), which
+reports all of it, a window metric's expression, `USING`, and ASOF and range relationships
+included, as measured on a live account. Where that function cannot be called, `DESCRIBE SEMANTIC VIEW`
+is read instead (`live_view`). It has not been seen to report variables or the staleness, so its
+definition declares it did not read those kinds, which are then not compared; nor the properties
+it does not report, which only the other sides state.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle.marker import unmarked_comment
@@ -30,6 +32,7 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 )
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import DescribedMember
+from snowflake_semantic_tools.domain.render.semantic_view import render_window
 
 # The order members are listed in, by kind.
 _ORDER = (
@@ -40,10 +43,14 @@ _ORDER = (
     "dimension",
     "filter",
     "metric",
+    "variable",
     "verified_query",
     "instruction",
     "view",
+    "setting",
 )
+# The kinds DESCRIBE has not been seen to report, which a definition read from it does not compare.
+_UNDESCRIBED = frozenset(("variable", "setting"))
 _COLUMN_KINDS = {
     ColumnKind.FACT: "fact",
     ColumnKind.DIMENSION: "dimension",
@@ -72,9 +79,16 @@ def desired_view(view: SemanticView) -> Definition:
         ]
         if relationship.asof_index is None and relationship.range_bounds is None:
             properties.append(("ref_columns", _upper(relationship.to_columns)))
+        asof = relationship.to_columns[relationship.asof_index] if relationship.asof_index is not None else ""
+        ranged = " AND ".join(relationship.range_bounds) if relationship.range_bounds is not None else ""
+        properties += [("asof_column", asof.upper()), ("range", ranged.upper())]
         members.append(Member("relationship", _display(relationship.name), tuple(properties)))
     members.extend(_column(column) for column in view.columns if scope.admits_column(column))
     members.extend(_metric(metric) for metric in view.metrics if scope.admits_metric(metric.name))
+    members.extend(
+        _variable(variable.name, str(variable.data_type), str(variable.default), variable.comment or "")
+        for variable in view.variables
+    )
     for query in view.verified_queries:
         members.append(
             Member(
@@ -92,11 +106,15 @@ def desired_view(view: SemanticView) -> Definition:
     members.append(Member("instruction", "sql_generation", (("text", view.ai_sql_generation or ""),)))
     members.append(Member("instruction", "question_categorization", (("text", view.ai_question_categorization or ""),)))
     members.append(Member("view", "comment", (("text", unmarked_comment(view.comment)),)))
+    members.append(_staleness(view.max_staleness or ""))
     return Definition(_sorted(members))
 
 
 def live_view(rows: Iterable[DescribedMember]) -> Definition:
-    """Return the definition `DESCRIBE SEMANTIC VIEW` shows, from its rows."""
+    """Return the definition `DESCRIBE SEMANTIC VIEW` shows, from its rows.
+
+    The variables and the staleness, which DESCRIBE does not report, are kinds it did not read.
+    """
     grouped: dict[tuple[str | None, str | None, str | None], dict[str, list[str]]] = {}
     for row in rows:
         values = grouped.setdefault((row.kind, row.parent, row.name), {})
@@ -116,7 +134,200 @@ def live_view(rows: Iterable[DescribedMember]) -> Definition:
         Member("instruction", label, (("text", instructions.get(prop, "")),)) for prop, label in _INSTRUCTIONS
     )
     members.append(Member("view", "comment", (("text", comment),)))
+    return Definition(_sorted(members), frozenset(_ORDER) - _UNDESCRIBED)
+
+
+def live_view_from_yaml(document: Mapping[str, Any]) -> Definition:
+    """Return the definition `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW` shows, from its parsed document.
+
+    Raises:
+        ValueError: the document names one member twice, or is not a semantic view's.
+    """
+    if not isinstance(document.get("tables"), list):
+        raise ValueError("the document holds no `tables` list")
+    members: list[Member] = []
+    for table in _items(document.get("tables")):
+        name = str(table.get("name") or "")
+        members.append(_yaml_table(table))
+        members.extend(
+            _constraint(
+                str(item.get("name") or ""),
+                "DISTINCT_RANGE",
+                str(_entry(item.get("distinct_range")).get("start_column") or ""),
+                str(_entry(item.get("distinct_range")).get("end_column") or ""),
+            )
+            for item in _items(table.get("constraints"))
+            if isinstance(item.get("distinct_range"), Mapping)
+        )
+        for section in ("facts", "dimensions", "time_dimensions"):
+            members.extend(_yaml_column(section, name, item) for item in _items(table.get(section)))
+        members.extend(_yaml_metric(f"{name}.{item.get('name')}", item) for item in _items(table.get("metrics")))
+    members.extend(_yaml_relationship(item) for item in _items(document.get("relationships")))
+    members.extend(_yaml_metric(str(item.get("name") or ""), item) for item in _items(document.get("metrics")))
+    members.extend(
+        _variable(
+            str(item.get("name") or ""),
+            str(item.get("data_type") or ""),
+            str(item.get("default_value") if item.get("default_value") is not None else ""),
+            str(item.get("description") or ""),
+        )
+        for item in _items(document.get("variables"))
+    )
+    members.extend(_yaml_query(item) for item in _items(document.get("verified_queries")))
+    instructions = _entry(document.get("module_custom_instructions"))
+    members.extend(
+        Member("instruction", label, (("text", str(instructions.get(label) or "")),)) for _, label in _INSTRUCTIONS
+    )
+    members.append(Member("view", "comment", (("text", unmarked_comment(str(document.get("description") or ""))),)))
+    members.append(_staleness(str(document.get("max_staleness") or "")))
     return Definition(_sorted(members))
+
+
+def _yaml_table(table: Mapping[str, Any]) -> Member:
+    base = _entry(table.get("base_table"))
+    parts = tuple(str(base.get(key) or "") for key in ("database", "schema", "table"))
+    qualified = QualifiedName(*(Identifier.shown(part) for part in parts)).sql if all(parts) else ""
+    return Member(
+        "table",
+        _display(str(table.get("name") or "")),
+        (
+            ("base_table", qualified),
+            ("primary_key", _upper(_strings(_entry(table.get("primary_key")).get("columns")))),
+            (
+                "unique_keys",
+                tuple(", ".join(_upper(_strings(key.get("columns")))) for key in _items(table.get("unique_keys"))),
+            ),
+            ("synonyms", _strings(table.get("synonyms"))),
+            ("comment", str(table.get("description") or "")),
+        ),
+    )
+
+
+def _yaml_column(section: str, table: str, item: Mapping[str, Any]) -> Member:
+    labels = {str(label).casefold() for label in _strings(item.get("labels"))}
+    kind = "filter" if "filter" in labels else "fact" if section == "facts" else "dimension"
+    properties: list[tuple[str, Value]] = [
+        ("expression", str(item.get("expr") or "")),
+        ("synonyms", _strings(item.get("synonyms"))),
+        ("comment", str(item.get("description") or "")),
+        ("sample_values", _strings(item.get("sample_values"))),
+    ]
+    if kind == "dimension":
+        properties.append(("is_enum", "true" if item.get("is_enum") is True else ""))
+    return Member(kind, _display(f"{table}.{item.get('name')}"), tuple(properties))
+
+
+def _yaml_metric(qualified: str, item: Mapping[str, Any]) -> Member:
+    expression = str(item.get("expr") or "")
+    properties: list[tuple[str, Value]] = []
+    if _windowed(expression):
+        properties.append(("window_expression", _spaced(expression)))
+    else:
+        properties.append(("expression", expression))
+    properties += [
+        ("using", _upper(_strings(item.get("using_relationships")))),
+        (
+            "non_additive_by",
+            tuple(_yaml_sort_key(entry) for entry in _items(item.get("non_additive_dimensions"))),
+        ),
+        ("synonyms", _strings(item.get("synonyms"))),
+        ("comment", str(item.get("description") or "")),
+        ("access", "private" if str(item.get("access_modifier") or "") == "private_access" else "public"),
+    ]
+    return Member("metric", _display(qualified), tuple(properties))
+
+
+def _yaml_relationship(item: Mapping[str, Any]) -> Member:
+    """A relationship; an ASOF or range one compares its referenced column or bounds, not its columns."""
+    columns = _items(item.get("relationship_columns"))
+    asof = next((str(entry.get("right_column") or "") for entry in columns if entry.get("type") == "asof"), "")
+    ranged = next((_entry(entry.get("right_range")) for entry in columns if entry.get("type") == "range"), None)
+    properties: list[tuple[str, Value]] = [
+        ("table", _display(str(item.get("left_table") or ""))),
+        ("columns", _upper(tuple(str(entry.get("left_column") or "") for entry in columns))),
+        ("ref_table", _display(str(item.get("right_table") or ""))),
+    ]
+    if not asof and ranged is None:
+        properties.append(("ref_columns", _upper(tuple(str(entry.get("right_column") or "") for entry in columns))))
+    bounds = f"{ranged.get('start_column') or ''} AND {ranged.get('end_column') or ''}" if ranged is not None else ""
+    properties += [("asof_column", asof.upper()), ("range", bounds.upper())]
+    return Member("relationship", _display(str(item.get("name") or "")), tuple(properties))
+
+
+def _yaml_query(item: Mapping[str, Any]) -> Member:
+    verified_at = item.get("verified_at")
+    return Member(
+        "verified_query",
+        _display(str(item.get("name") or "")),
+        (
+            ("question", str(item.get("question") or "")),
+            ("sql", str(item.get("sql") or "")),
+            ("verified_at", "" if verified_at is None else str(verified_at)),
+            ("verified_by", str(item.get("verified_by") or "")),
+            ("onboarding_question", "true" if item.get("use_as_onboarding_question") is True else ""),
+        ),
+    )
+
+
+def _yaml_sort_key(item: Mapping[str, Any]) -> str:
+    column = f"{item.get('table')}.{item.get('dimension')}".upper()
+    descending = str(item.get("sort_direction") or "").casefold() == "descending"
+    nulls = str(item.get("null_order") or ("first" if descending else "last")).upper()
+    return f"{column} {'DESC' if descending else 'ASC'} NULLS {nulls}"
+
+
+def _variable(name: str, data_type: str, default: str, comment: str) -> Member:
+    """A variable, its type by its family alone and its default unquoted, as both sides spell them alike."""
+    return Member(
+        "variable",
+        _display(name),
+        (
+            ("data_type", data_type.split("(", 1)[0].strip().upper()),
+            ("default", default.strip().strip("'").casefold()),
+            ("comment", comment),
+        ),
+    )
+
+
+def _staleness(text: str) -> Member:
+    return Member("setting", "max_staleness", (("text", " ".join(text.split()).casefold()),))
+
+
+def _windowed(expression: str) -> bool:
+    """Report whether a metric expression ends in an `OVER (...)` outside any parentheses or quotes."""
+    depth = 0
+    quoted = False
+    upper = expression.upper()
+    for index, char in enumerate(upper):
+        if char == "'":
+            quoted = not quoted
+        elif not quoted and char == "(":
+            depth += 1
+        elif not quoted and char == ")":
+            depth -= 1
+        elif not quoted and depth == 0 and upper.startswith("OVER", index):
+            before = upper[index - 1] if index else " "
+            after = upper[index + 4 : index + 5]
+            if not (before.isalnum() or before == "_") and after in (" ", "("):
+                return True
+    return False
+
+
+def _spaced(text: str) -> str:
+    """Text with each run of whitespace one space, as a window's rendered and live forms compare."""
+    return " ".join(text.split())
+
+
+def _items(value: object) -> tuple[Mapping[str, Any], ...]:
+    return tuple(item for item in value if isinstance(item, Mapping)) if isinstance(value, list) else ()
+
+
+def _entry(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
+
+
+def _strings(value: object) -> tuple[str, ...]:
+    return tuple(str(item) for item in value) if isinstance(value, list) else ()
 
 
 def _live_member(kind: str | None, parent: str | None, name: str, values: dict[str, list[str]]) -> Member | None:
@@ -234,9 +445,13 @@ def _column(column: Column) -> Member:
 def _metric(metric: Metric) -> Member:
     properties: list[tuple[str, Value]] = []
     if metric.window is None:
-        # A window metric's expression with its OVER clause has not been seen in DESCRIBE.
         properties.append(("expression", metric.expr.text))
+    else:
+        # DESCRIBE has not been seen to report a window metric's expression; the YAML read does,
+        # with its OVER clause, which only this name compares.
+        properties.append(("window_expression", _spaced(f"{metric.expr.text} {render_window(metric.window)}")))
     properties += [
+        ("using", _upper(metric.using_relationships)),
         ("non_additive_by", tuple(_sort_key(key) for key in metric.non_additive_by)),
         ("synonyms", metric.synonyms),
         ("comment", metric.comment or ""),

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
@@ -237,6 +238,11 @@ class FakeCatalog(SnowflakeWorld):
             "owner": self.dataset_owners.get(qualified_name.sql, self.role),
             "versions": json.dumps(self.dataset_version_names.get(qualified_name.sql, [])),
         }
+
+    def read_semantic_view_yaml(self, qualified_name: QualifiedName) -> Mapping[str, Any] | None:
+        self._check("read_semantic_view_yaml")
+        # A view with no document is read through DESCRIBE, as on an account without the function.
+        return self.view_documents.get(qualified_name.sql)
 
     def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
         self._check("describe_semantic_view")

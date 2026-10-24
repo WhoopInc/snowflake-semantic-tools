@@ -1065,3 +1065,38 @@ def test_the_state_table_kind_never_reaches_the_driver_but_every_sibling_learns_
     assert seen == [{"account": "a"}, {"account": "a"}]
     assert (connector._state_table_kind, sibling._state_table_kind) == ("hybrid", "hybrid")
     assert SnowflakeConnector({"account": "a"})._state_table_kind == "standard"
+
+
+def test_read_semantic_view_yaml_reads_plain_scalars_as_snowflake_wrote_them() -> None:
+    # Snowflake writes YAML 1.2: an unquoted timestamp and `no` are text, as they were returned.
+    text = "name: V\ntables:\n  - name: T\n    dimensions:\n      - name: AT\n        sample_values:\n"
+    text += "          - 2016-09-01 00:00:00.000\n          - no\n"
+    session = FakeDriverSession(rows={"SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW": ((text,),)})
+    document = FakeDriverConnector(session).read_semantic_view_yaml(QualifiedName.parse("DB.S.V"))
+    assert document is not None
+    assert document["tables"][0]["dimensions"][0]["sample_values"] == ["2016-09-01 00:00:00.000", "no"]
+    [(statement, _)] = session.executed
+    assert statement == "SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW('DB.S.V')"
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        ProgrammingError(
+            msg="SQL compilation error:\nUnknown function SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW", errno=2140
+        ),
+        ProgrammingError(msg="Semantic view 'DB.S.V' does not exist or not authorized.", errno=2003, sqlstate="02000"),
+    ],
+)
+def test_read_semantic_view_yaml_is_none_where_describe_must_be_read(failure: ProgrammingError) -> None:
+    session = FakeDriverSession(failures={"SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW": failure})
+    assert FakeDriverConnector(session).read_semantic_view_yaml(QualifiedName.parse("DB.S.V")) is None
+
+
+def test_read_semantic_view_yaml_raises_other_refusals() -> None:
+    refused = ProgrammingError(
+        msg="Insufficient privileges to operate on semantic view 'V'", errno=3001, sqlstate="42501"
+    )
+    session = FakeDriverSession(failures={"SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW": refused})
+    with pytest.raises(SnowflakePortError):
+        FakeDriverConnector(session).read_semantic_view_yaml(QualifiedName.parse("DB.S.V"))

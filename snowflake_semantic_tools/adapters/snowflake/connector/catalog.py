@@ -13,12 +13,15 @@ per schema for a table's existence. Either keeps exactly the rows the lookup by 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Mapping
 from types import MappingProxyType
 from typing import Any
 
+from snowflake_semantic_tools.adapters.bounded_yaml import YAMLError, safe_load_core
 from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _variant_value
 from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
@@ -86,6 +89,8 @@ _SEMANTIC_VIEW_TAG_DOMAIN = "TABLE"
 # The domain of each type whose tags are read: only a semantic view's, which a replace without
 # WITH TAG removes (docs/design/snowflake-behavior.md).
 _TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": _SEMANTIC_VIEW_TAG_DOMAIN}
+# An account without SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW answers so; DESCRIBE is read instead.
+_UNKNOWN_FUNCTION = re.compile(r"unknown function", re.IGNORECASE)
 # The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
 _PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
 
@@ -98,31 +103,7 @@ class CatalogMethods(Session, CatalogPort):
         rows = self._dict_rows(
             sql("SHOW {kind} IN SCHEMA {scope}", kind=keyword(normalized_type, plural=True), scope=_scope(scope))
         )
-        return tuple(
-            sorted(
-                (
-                    ShowRow(
-                        name=str(row["name"]),
-                        # SHOW FUNCTIONS and SHOW PROCEDURES name the database `catalog_name`.
-                        database_name=str(row.get("database_name") or row.get("catalog_name") or scope.database.folded),
-                        schema_name=str(row.get("schema_name") or scope.schema.folded),
-                        owner=str(row.get("owner") or ""),
-                        created_on=str(row.get("created_on") or ""),
-                        comment=_show_comment(row),
-                        object_type=normalized_type,
-                        # What a drift digest reads of a routine or search service: SHOW
-                        # lists each, so comparing them costs plan no further query.
-                        is_secure=_optional_text(row.get("is_secure")),
-                        target_lag=_optional_text(row.get("target_lag")),
-                        warehouse=_optional_text(row.get("warehouse")),
-                    )
-                    for row in rows
-                    # Both also list every built-in routine in every schema; none is an artifact.
-                    if str(row.get("is_builtin") or "").upper() != "Y"
-                ),
-                key=lambda item: item.qualified_name.folded,
-            )
-        )
+        return shown_rows(rows, normalized_type, scope.database.folded, scope.schema.folded)
 
     def show_grants(
         self,
@@ -232,6 +213,27 @@ class CatalogMethods(Session, CatalogPort):
             )
             for row in rows
         )
+
+    def read_semantic_view_yaml(self, qualified_name: QualifiedName) -> Mapping[str, Any] | None:
+        try:
+            result = self.query(
+                sql("SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW({name})", name=literal(qualified_name.sql))
+            )
+        except SnowflakePortError as error:
+            failure = session_failure(str(error), errno=error.errno, sqlstate=error.sqlstate)
+            if failure is SessionFailure.NOT_VISIBLE or _UNKNOWN_FUNCTION.search(str(error)):
+                return None
+            raise
+        value = result.rows[0][0] if result.rows else None
+        if value is None:
+            return None
+        try:
+            document = safe_load_core(str(value))
+        except YAMLError as exc:
+            raise SnowflakePortError(
+                f"SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW returned YAML SST cannot read: {exc}"
+            ) from exc
+        return document if isinstance(document, Mapping) else None
 
     def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
         if not self.object_exists(object_type, qualified_name):
@@ -555,4 +557,38 @@ def _unexpected_describe(described: str) -> SnowflakePortError:
     """
     return SnowflakePortError(
         f"the DESCRIBE of {described} returned an unexpected shape", diagnostic=D("SST-SNO025", value=described)
+    )
+
+
+def shown_rows(rows: tuple[dict[str, Any], ...], object_type: str, database: str, schema: str) -> tuple[ShowRow, ...]:
+    """Return SHOW's rows of one object type as `ShowRow`s, built-in routines left out, sorted by name.
+
+    Args:
+        database, schema: The names a row that does not list its own is given, as SHOW ... IN
+            SCHEMA leaves them out for some types.
+    """
+    return tuple(
+        sorted(
+            (
+                ShowRow(
+                    name=str(row["name"]),
+                    # SHOW FUNCTIONS and SHOW PROCEDURES name the database `catalog_name`.
+                    database_name=str(row.get("database_name") or row.get("catalog_name") or database),
+                    schema_name=str(row.get("schema_name") or schema),
+                    owner=str(row.get("owner") or ""),
+                    created_on=str(row.get("created_on") or ""),
+                    comment=_show_comment(row),
+                    object_type=object_type,
+                    # What a drift digest reads of a routine or search service: SHOW
+                    # lists each, so comparing them costs plan no further query.
+                    is_secure=_optional_text(row.get("is_secure")),
+                    target_lag=_optional_text(row.get("target_lag")),
+                    warehouse=_optional_text(row.get("warehouse")),
+                )
+                for row in rows
+                # Both also list every built-in routine in every schema; none is an artifact.
+                if str(row.get("is_builtin") or "").upper() != "Y"
+            ),
+            key=lambda item: item.qualified_name.folded,
+        )
     )

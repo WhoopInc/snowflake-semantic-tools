@@ -164,8 +164,16 @@ def _described() -> tuple[DescribedMember, ...]:
 
 def test_a_published_view_and_its_render_agree_on_every_member() -> None:
     desired, live = desired_view(_view()), live_view(_described())
-    assert [member.key for member in desired.members] == [member.key for member in live.members]
+    read = [member.key for member in desired.members if live.kinds is None or member.kind in live.kinds]
+    assert read == [member.key for member in live.members]
     assert diff_definitions(live, desired) == ()
+
+
+def test_describe_reads_neither_variables_nor_the_staleness() -> None:
+    live = live_view(_described())
+    assert live.kinds is not None and not {"variable", "setting"} & live.kinds
+    staler = desired_view(_view(variables=(), max_staleness="1 hour"))
+    assert diff_definitions(live, staler) == ()
 
 
 def test_members_are_named_as_a_person_reads_them_in_a_fixed_kind_order() -> None:
@@ -184,11 +192,13 @@ def test_members_are_named_as_a_person_reads_them_in_a_fixed_kind_order() -> Non
         "metric orders.running",
         "metric per_order",
         "metric supplies.stock",
+        "variable threshold",
         "verified_query bare",
         "verified_query orders_by_location",
         "instruction question_categorization",
         "instruction sql_generation",
         "view comment",
+        "setting max_staleness",
     ]
 
 

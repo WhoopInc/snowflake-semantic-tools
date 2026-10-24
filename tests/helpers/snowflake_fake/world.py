@@ -21,6 +21,7 @@ import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, GrantRow, OwnershipMarker, QueryResult, ShowRow
@@ -178,6 +179,8 @@ class SnowflakeWorld:
         self.descriptions: dict[str, Mapping[str, str]] = {}
         # DESCRIBE SEMANTIC VIEW rows by the view's qualified name.
         self.view_descriptions: dict[str, tuple[DescribedMember, ...]] = {}
+        # A view's SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW document; one without is read through DESCRIBE.
+        self.view_documents: dict[str, Mapping[str, Any]] = {}
         self.object_parameters: dict[tuple[str, str, str], str] = {}
         # Snowflake private preview (PrPr): CoWork profiles. The account's CoWork objects, as SHOW
         # SNOWFLAKE INTELLIGENCES lists them (none by default), and the agents attached to each, by

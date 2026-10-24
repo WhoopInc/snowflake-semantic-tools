@@ -380,6 +380,40 @@ SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
 `test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones`
 in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
 
+### SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW reports what DESCRIBE does not, as YAML 1.2
+
+**Docs say**: the function returns a semantic view's definition as a semantic model YAML
+document. They do not list which of the view's clauses the document carries, nor the YAML
+version it is written in.
+
+**Server does**: it returns every clause SST renders except `WITH TAG`. That includes what
+`DESCRIBE SEMANTIC VIEW` has not been seen to report:
+
+- the variables, each with its `data_type` spelled with its precision (`NUMBER(38,0)` for
+  `NUMBER`) and its `default_value` as text;
+- `max_staleness`;
+- a window metric's `expr` with its `OVER (...)` clause, as written;
+- a metric's `using_relationships`;
+- an ASOF relationship column as `type: asof`, and a range one as `type: range` with its
+  `right_range`.
+
+It writes YAML 1.2. A plain `2016-09-01 00:00:00.000` or `no` is text there; a YAML 1.1 loader
+reads them as a datetime and a boolean.
+
+**Evidence**: `Enforced`. The connector reads it with the core-schema loader, and a test pins
+that a timestamp and `no` stay text. The definition tests pin each document shape above, taken
+from a probe view that used every one of those clauses. On every view jaffle publishes, the
+compiled definition, the YAML read and the DESCRIBE read agree member for member.
+
+**SST depends on it at**: `read_semantic_view_yaml` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py) and
+`safe_load_core` in [bounded_yaml.py](../../snowflake_semantic_tools/adapters/bounded_yaml.py);
+`live_view_from_yaml` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/plan/definitions/semantic_view.py);
+[test_plan_definitions_semantic_view_yaml.py](../../tests/unit/domain/test_plan_definitions_semantic_view_yaml.py)
+and `test_read_semantic_view_yaml_reads_plain_scalars_as_snowflake_wrote_them` in
+[test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
+
 ## Column tags
 
 ### TAG_REFERENCES_ALL_COLUMNS lists inherited tags on every column

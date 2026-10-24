@@ -74,6 +74,36 @@ def test_an_update_whose_members_all_agree_carries_an_empty_diff() -> None:
     assert change.member_diff == ()
 
 
+def test_the_views_yaml_is_read_where_snowflake_returns_it() -> None:
+    port = FakeSnowflake()
+    port.view_documents["DB.SCH.SALES"] = {
+        "name": "SALES",
+        "tables": [
+            {
+                "name": "ORDERS",
+                "base_table": {"database": "DB", "schema": "MARTS", "table": "ORDERS"},
+                "primary_key": {"columns": ["ORDER_ID"]},
+                "dimensions": [{"name": "ORDER_ID", "expr": "ORDERS.ORDER_ID"}],
+                "metrics": [{"name": "ORDER_COUNT", "expr": "COUNT(ORDERS.ORDER_ID)", "description": "Orders."}],
+            }
+        ],
+        "max_staleness": "1 hour",
+    }
+    [change], refused = diff_updates((_change(),), _compiled(_model()), Fanout(port))
+    assert refused == ()
+    assert {(item.name, prop.name) for item in change.member_diff or () for prop in item.properties} == {
+        ("orders.order_count", "comment"),
+        ("max_staleness", "text"),
+    }
+
+
+def test_a_yaml_document_that_is_no_view_is_a_refused_read() -> None:
+    port = FakeSnowflake()
+    port.view_documents["DB.SCH.SALES"] = {"name": "SALES"}
+    [change], [diagnostic] = diff_updates((_change(),), _compiled(_model()), Fanout(port))
+    assert change.member_diff is None and diagnostic.code == "SST-PLN041"
+
+
 def test_the_object_observed_is_the_one_read() -> None:
     port = FakeSnowflake()
     port.view_descriptions["DB.SCH.OLD_SALES"] = described_view(_model())

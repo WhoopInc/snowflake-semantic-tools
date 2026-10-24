@@ -53,9 +53,11 @@ sample questions, tools and skills, from the version it serves; a procedure's,
 function's or search service's settings, comment and body; and a skill's,
 plugin's or profile's files and an eval's config and questions. A list shows the
 items it loses and gains, text shows the lines that change, and sample values
-are counted rather than listed. What Snowflake's DESCRIBE has not been seen to
-report (a view's variables, a window metric's expression, `USING`) is not
-compared, so an update that changes only those says
+are counted rather than listed. A semantic view is read with
+`SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW`, which reports its variables, staleness,
+window metric expressions, `USING` and ASOF and range relationships too. Where
+that function cannot be called, plan reads `DESCRIBE` instead, which reports
+none of those; an update that changes only them then says
 `definition (no member-level difference)`.
 
 The terminal cuts a long diff short; every plan writes all of it, as a unified

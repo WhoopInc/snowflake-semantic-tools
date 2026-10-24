@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, is_eval_model_comment
@@ -431,6 +431,21 @@ class CatalogPort(Protocol):
 
         Raises:
             SnowflakePortError: the DESCRIBE failed, as when the view does not exist.
+        """
+        ...
+
+    def read_semantic_view_yaml(self, qualified_name: QualifiedName) -> Mapping[str, Any] | None:
+        """Return a semantic view's definition as `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW` writes it, parsed.
+
+        Never writes. Unlike DESCRIBE, it reports variables, the staleness, a window metric's
+        expression, `USING`, and ASOF and range relationships.
+
+        Returns:
+            The document; None when the view does not exist, the role cannot see it, or the
+            account does not have the function, so the caller reads DESCRIBE instead.
+
+        Raises:
+            SnowflakePortError: Snowflake refused the read for another reason.
         """
         ...
 

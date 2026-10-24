@@ -45,7 +45,7 @@ from snowflake_semantic_tools.domain.plan.definitions.agent import (
     spec_definition,
     with_properties,
 )
-from snowflake_semantic_tools.domain.plan.definitions.semantic_view import desired_view, live_view
+from snowflake_semantic_tools.domain.plan.definitions.semantic_view import desired_view, live_view, live_view_from_yaml
 from snowflake_semantic_tools.domain.plan.definitions.tool import (
     desired_routine,
     desired_search,
@@ -180,11 +180,26 @@ def _live_tool(port: SnowflakePort, compiled: CompiledArtifact, live: LiveObject
     return live_routine(member.name, described_routine, live.comment, procedure=member.type == ToolKind.PROCEDURE.value)
 
 
+def _live_view(port: SnowflakePort, _compiled: CompiledArtifact, live: LiveObject) -> Definition:
+    """The view as `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW` reads it, else as DESCRIBE does.
+
+    The YAML read reports every member and property the desired side states; DESCRIBE, read only
+    where the function cannot be called, leaves out what it does not report.
+
+    Raises:
+        SnowflakePortError: a read was refused, or the YAML read returned no semantic view.
+    """
+    document = port.read_semantic_view_yaml(live.name)
+    if document is None:
+        return live_view(port.describe_semantic_view(live.name))
+    try:
+        return live_view_from_yaml(document)
+    except ValueError as exc:
+        raise SnowflakePortError(f"the view's YAML could not be read as a semantic view: {exc}") from exc
+
+
 COMPARISONS: Mapping[str, Comparison] = {
-    "semantic_view": Comparison(
-        lambda compiled: desired_view(compiled_as(compiled, CompiledView).view),
-        lambda port, _compiled, live: live_view(port.describe_semantic_view(live.name)),
-    ),
+    "semantic_view": Comparison(lambda compiled: desired_view(compiled_as(compiled, CompiledView).view), _live_view),
     "agent": Comparison(_desired_agent, _live_agent),
     # Snowflake private preview (PrPr): CoWork profiles
     "cowork_profile": Comparison(_desired_cowork_profile, _live_agent),
