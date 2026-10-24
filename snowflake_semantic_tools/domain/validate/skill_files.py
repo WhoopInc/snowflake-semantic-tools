@@ -40,8 +40,14 @@ _URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*:")
 _KEY_WORD = r"(?:password|passwd|secret|api[_-]?key|private[_-]?key|access[_-]?token|auth[_-]?token)"
 _SECRET = re.compile(
     rf"(?i)(?<![A-Za-z0-9])(?:[A-Za-z0-9]+_)*{_KEY_WORD}(?:_[A-Za-z0-9]+)*\s*[:=]\s*"
-    r"(?:['\"](?![$<{])[^'\"\s]{6,}|(?![$<{'\"])[^\s'\"()\[\].,;]{6,}(?=[\s;]|$))"
+    r"(?:['\"](?![$<{])([^'\"\s]{6,})|(?![$<{'\"])([^\s'\"()\[\].,;]{6,})(?=[\s;]|$))"
 )
+# An open shell expansion `${NAME:-default}` before the key: `:-` is a default, not an assignment.
+_EXPANSION = re.compile(r"\$\{[^}]*$")
+# A value written to be replaced: `YOUR_TOKEN`, `xxxxxx`, `changeme`.
+_PLACEHOLDER = re.compile(r"(?i)(?:your|my)[_-][A-Za-z0-9_-]+|x{6,}|\*{6,}|changeme|placeholder|redacted")
+# The interpreter line of a script, which names no file the script reads.
+_SHEBANG = re.compile(r"\A#![^\n]*")
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,7 +182,19 @@ def _check_hazards(skill: Skill, emit: Emitter) -> None:
 
 def _hazards(text: str, *, script: bool) -> list[tuple[int, str]]:
     """Locate absolute paths, in a script only, then credential literals, each with how it reads."""
-    absolute: Iterable[re.Match[str]] = _ABSOLUTE.finditer(text) if script else ()
+    shebang = shebang_match.end() if (shebang_match := _SHEBANG.match(text)) else 0
+    absolute: Iterable[re.Match[str]] = _ABSOLUTE.finditer(text, shebang) if script else ()
     found = [(match.start(), f"the absolute path '{match.group(1)}'") for match in absolute]
-    found.extend((match.start(), "a credential literal") for match in _SECRET.finditer(text))
+    found.extend(
+        (match.start(), "a credential literal") for match in _SECRET.finditer(text) if _is_literal(text, match)
+    )
     return found
+
+
+def _is_literal(text: str, match: re.Match[str]) -> bool:
+    """Tell a credential literal from a key inside a `${...}` expansion or a placeholder value."""
+    line_start = text.rfind("\n", 0, match.start()) + 1
+    if _EXPANSION.search(text[line_start : match.start()]):
+        return False
+    value = match.group(1) or match.group(2) or ""
+    return _PLACEHOLDER.fullmatch(value) is None

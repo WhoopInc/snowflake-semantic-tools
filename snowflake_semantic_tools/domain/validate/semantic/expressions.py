@@ -247,16 +247,34 @@ def bare_column_identifiers(
     )
 
 
+# The functions whose arguments take a `FROM` that reads no table, as `EXTRACT(YEAR FROM d)`.
+_FROM_FUNCTIONS = frozenset(("extract", "trim", "substring", "position", "overlay"))
+_INNER_GROUP = re.compile(r"(\b[A-Za-z_][A-Za-z0-9_$]*)?(\s*)\(([^()]*)\)")
+_FROM = re.compile(r"(?i)\bFROM\b")
+
+
+def _fold_group(match: re.Match[str]) -> str:
+    """Rewrite one innermost `(...)` as `[...]`, dropping its FROM when a FROM-taking function owns it."""
+    name, gap, body = match.group(1) or "", match.group(2), match.group(3)
+    if name.casefold() in _FROM_FUNCTIONS:
+        body = _FROM.sub(" ", body)
+    return f"{name}{gap}[{body}]"
+
+
 def sql_tables(sql: str) -> tuple[str, ...]:
     """The logical tables a verified query reads: FROM/JOIN names that are not its own CTEs.
 
-    String literals are masked first, so `IN ('Join Flow')` is not read as a join.
+    String literals are masked first, so `IN ('Join Flow')` is not read as a join, then the
+    `FROM` of `IS [NOT] DISTINCT FROM` and of a function such as `EXTRACT(YEAR FROM d)`.
     """
     lines = "\n".join(line for line in sql.splitlines() if not line.lstrip().startswith("--"))
     statement = re.sub(r"'(?:[^']|'')*'", "''", lines)
-    names = re.findall(r"(?i)\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_$]*)", statement)
     ctes = {
         name.casefold()
         for name in re.findall(r"(?i)(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_$]*)\s+AS\s*\(", statement)
     }
+    statement = re.sub(r"(?i)\bDISTINCT\s+FROM\b", "DISTINCT ", statement)
+    while (folded := _INNER_GROUP.sub(_fold_group, statement)) != statement:
+        statement = folded
+    names = re.findall(r"(?i)\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_$]*)", statement)
     return tuple(dict.fromkeys(name.casefold() for name in names if name.casefold() not in ctes))

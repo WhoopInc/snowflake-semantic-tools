@@ -64,6 +64,7 @@ def _hazards(files: dict[str, str]) -> list[str]:
         ("run.sh", "cat /etc/passwd\n", "the absolute path '/etc/passwd'"),
         ("reference/steps.md", "password: hunter2hunter2\n", "a credential literal"),
         ("run.sh", "open('/tmp/x.csv')\n", "the absolute path '/tmp/x.csv'"),
+        ("run.sh", "#!/usr/bin/env python3\nopen('/tmp/x.csv')\n", "the absolute path '/tmp/x.csv'"),
     ],
 )
 def test_sst_val815_fires_for_a_root_path_or_a_prefixed_or_unquoted_credential(
@@ -79,7 +80,12 @@ def test_sst_val815_fires_for_a_root_path_or_a_prefixed_or_unquoted_credential(
         ("reference/steps.md", "password: <yours>\n"),
         ("run.sh", 'curl "https://example.com/api/v2/statements"\n'),
         ("run.sh", "connect(password=get_password())\n"),
+        ("run.sh", "#!/usr/bin/env python3\nprint(1)\n"),
+        ("run.sh", 'git config credential "${DBT_ENV_SECRET_GIT_CREDENTIAL:-unset}"\n'),
+        ("reference/steps.md", "npx figma-mcp --figma-api-key=YOUR_TOKEN --stdio\n"),
     ],
 )
-def test_sst_val815_silent_for_a_variable_a_placeholder_or_a_url_path(path: str, text: str) -> None:
+def test_sst_val815_silent_for_a_variable_a_placeholder_a_url_path_a_shebang_or_an_expansion(
+    path: str, text: str
+) -> None:
     assert _hazards({path: text}) == []
