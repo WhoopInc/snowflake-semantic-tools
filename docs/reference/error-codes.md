@@ -1476,7 +1476,7 @@ Raised when a key that SST now works out for itself, or reads from elsewhere, is
 
 Fix: remove the field
 
-Note: `sst migrate refs --write` removes the member `tables:` and `derived:` keys.
+Note: `sst migrate refs --write` removes the member `tables:` and `derived:` keys, first writing each listed table the member names bare as `ref()`; a member it cannot rewrite keeps `tables:` and is reported.
 
 ### SST-PRS127
 

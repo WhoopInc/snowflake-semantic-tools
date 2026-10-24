@@ -205,14 +205,15 @@ def migrate_refs(text: str) -> MigrationResult:
     )
 
 
-def rewrite_member_keys(result: MigrationResult) -> MigrationResult:
+def rewrite_member_keys(result: MigrationResult, keep: frozenset[int] = frozenset()) -> MigrationResult:
     """Drop the member keys SST infers, and write a verified query's `sql_file:` as a `file()` call.
 
     Each metric's, filter's and verified query's `tables:` and `derived:` key is dropped with
     the lines indented below it, so a block `tables:` list goes too. A verified query's
     `sql_file: x` becomes `sql: "{{ file('x') }}"`, its comment kept. A key written as an
     entry's first line, after its `- `, is left alone: dropping it would leave the entry
-    without its dash.
+    without its dash. A key on a 0-based line in `keep` stays: a `tables:` that names a table
+    the member names nowhere else.
     """
     lines = result.text.splitlines(keepends=True)
     kept: list[str] = []
@@ -229,7 +230,7 @@ def rewrite_member_keys(result: MigrationResult) -> MigrationResult:
         if (top := _ROOT_KEY.match(body)) is not None:
             root = top.group(1)
         key = _INFERRED_KEY.match(body)
-        if key is not None and root in _INFERRING_ROOTS:
+        if key is not None and root in _INFERRING_ROOTS and index not in keep:
             changes.append(Rewrite(index + 1, indent + 1, body.strip(), "", "inferred"))
             skip_below = indent
             continue

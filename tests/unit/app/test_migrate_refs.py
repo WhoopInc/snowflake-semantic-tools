@@ -127,3 +127,92 @@ def test_migrate_refs_writes_a_0_3_2_view_scope_in_the_1_0_form() -> None:
         "  exclude_columns: [\"{{ ref('orders', 'notes') }}\"]\n"
     )
     assert migrated.counts() == counts(ref=1, column=1, reference=2, setting=1) and report.untouched == 0
+
+
+ORPHANS = """snowflake_metrics:
+  - name: upgrades
+    tables:
+      - {{ table('orders') }}
+    expr: SUM(CASE WHEN is_upgrade = TRUE THEN amount::NUMBER ELSE 0 END)
+  - name: order_count
+    tables:
+      - {{ table('orders') }}
+    expr: COUNT(*)
+  - name: mixed
+    tables:
+      - {{ table('orders') }}
+      - {{ table('items') }}
+    expr: "{{ metric('upgrades') }} / SUM({{ column('orders', 'amount') }})"
+snowflake_filters:
+  - name: recent
+    tables: [orders]
+    expr: order_date >= DATEADD(day, -7, CURRENT_DATE())
+snowflake_verified_queries:
+  - name: q
+    question: How many?
+    tables:
+      - {{ table('orders') }}
+      - {{ table('items') }}
+    sql: |
+      SELECT COUNT(*)
+      FROM orders o
+      JOIN items AS i ON i.order_id = o.id
+      WHERE o.x = 'FROM orders' AND o.y IN (SELECT y FROM other.orders)
+"""
+
+
+def test_migrate_refs_names_each_listed_table_before_dropping_tables_or_keeps_the_list() -> None:
+    report = MigrateRefs(RefsFiles({"m.yml": ORPHANS}), lambda text, path: (), outline).run()
+    [migrated] = report.files
+    assert migrated.result.text == (
+        "snowflake_metrics:\n  - name: upgrades\n"
+        "    expr: \"SUM(CASE WHEN {{ ref('orders', 'is_upgrade') }} = TRUE"
+        " THEN {{ ref('orders', 'amount') }}::NUMBER ELSE 0 END)\"\n"
+        "  - name: order_count\n    tables:\n      - {{ ref('orders') }}\n    expr: COUNT(*)\n"
+        "  - name: mixed\n"
+        "    expr: \"{{ metric('upgrades') }} / SUM({{ ref('orders', 'amount') }})\"\n"
+        "snowflake_filters:\n  - name: recent\n"
+        "    expr: \"{{ ref('orders', 'order_date') }} >= DATEADD(day, -7, CURRENT_DATE())\"\n"
+        "snowflake_verified_queries:\n  - name: q\n    question: How many?\n    sql: |\n"
+        "      SELECT COUNT(*)\n      FROM {{ ref('orders') }} o\n"
+        "      JOIN {{ ref('items') }} AS i ON i.order_id = o.id\n"
+        "      WHERE o.x = 'FROM orders' AND o.y IN (SELECT y FROM {{ ref('orders') }})\n"
+    )
+    left = {item.text: item.reason for item in migrated.result.untouched}
+    assert set(left) == {"order_count"}
+    assert "COUNT({{ ref('orders', '<primary key>') }})" in left["order_count"]
+
+
+def test_migrate_refs_keeps_tables_when_the_sql_is_in_a_file_or_an_escaped_scalar() -> None:
+    source = (
+        "snowflake_verified_queries:\n  - name: q\n    tables: [orders]\n    sql_file: q.sql\n"
+        '  - name: r\n    tables: [orders]\n    sql: "SELECT \\"x\\" FROM orders"\n'
+    )
+    [migrated] = MigrateRefs(RefsFiles({"v.yml": source}), lambda text, path: (), outline).run().files
+    assert migrated.result.text.count("tables: [orders]") == 2
+    assert {item.text for item in migrated.result.untouched} == {"q", "r"}
+
+
+def test_migrate_refs_names_a_qualified_table_in_folded_sql_and_leaves_a_derived_metric() -> None:
+    source = (
+        "snowflake_verified_queries:\n  - name: q\n    tables: [orders]\n    sql: >\n"
+        "      SELECT x\n      FROM ANALYTICS.CORE.ORDERS AS o\n      WHERE o.y = 1\n"
+        "snowflake_metrics:\n  - name: share\n    tables: [orders]\n"
+        "    expr: \"{{ metric('a') }} / {{ metric('b') }}\"\n"
+    )
+    [migrated] = MigrateRefs(RefsFiles({"v.yml": source}), lambda text, path: (), outline).run().files
+    assert migrated.result.text == (
+        "snowflake_verified_queries:\n  - name: q\n    sql: >\n"
+        "      SELECT x\n      FROM {{ ref('orders') }} AS o\n      WHERE o.y = 1\n"
+        "snowflake_metrics:\n  - name: share\n"
+        "    expr: \"{{ metric('a') }} / {{ metric('b') }}\"\n"
+    )
+    assert migrated.result.untouched == ()
+
+
+def test_migrate_refs_keeps_two_tables_an_expression_names_by_bare_columns() -> None:
+    source = "snowflake_metrics:\n  - name: m\n    tables: [orders, items]\n    expr: SUM(amount)\n"
+    [migrated] = MigrateRefs(RefsFiles({"m.yml": source}), lambda text, path: (), outline).run().files
+    assert migrated.result.text == source
+    [left] = migrated.result.untouched
+    assert left.text == "m" and "lists 2 tables" in left.reason

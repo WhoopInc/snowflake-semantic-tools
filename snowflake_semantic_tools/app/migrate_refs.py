@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.migrate.agents import (
 )
 from snowflake_semantic_tools.domain.migrate.calls import tool_arity
 from snowflake_semantic_tools.domain.migrate.changes import Changes, merged
+from snowflake_semantic_tools.domain.migrate.inferred_tables import inferred_tables
 from snowflake_semantic_tools.domain.migrate.outline import Node
 from snowflake_semantic_tools.domain.migrate.refs import (
     FilterSite,
@@ -124,7 +125,7 @@ class MigrateRefs:
         migrated: list[FileMigration] = []
         for path, text in sorted(files.semantic.items()):
             arity = tool_arity(text)
-            result = _chained(arity, rewrite_member_keys(migrate_refs(arity.text)))
+            result = _chained(arity, self._member_keys(migrate_refs(arity.text)))
             result = self._passes(result, "semantic", path, index)
             migrated.append(FileMigration(path, add_filter_labels(result, self._locate(result.text, path))))
         for path, result in tools.items():
@@ -138,6 +139,14 @@ class MigrateRefs:
             migrated.append(FileMigration(path, _chained(arity, command_skill(arity.text))))
         migrated.extend(FileMigration(path, tool_arity(text)) for path, text in files.config.items())
         return MigrationReport(tuple(sorted(migrated, key=lambda item: item.path)))
+
+    def _member_keys(self, result: MigrationResult) -> MigrationResult:
+        """Name each member's listed tables where it does not, then drop the keys SST infers."""
+        root = self._outline(result.text)
+        if root is None or not root.is_map:
+            return rewrite_member_keys(result)
+        changes, keep = inferred_tables(result.text.splitlines(keepends=True), root)
+        return rewrite_member_keys(merged(result, changes), keep)
 
     def _passes(self, result: MigrationResult, kind: str, path: str, index: Mapping[str, ToolInfo]) -> MigrationResult:
         """Run a file's reference pass, then its structure pass, each on a fresh outline of the text."""

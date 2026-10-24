@@ -150,9 +150,24 @@ below):
 | `- "{{ table('orders') }}"` in a view's `tables:` list, or in `tables: [...]` | `- "{{ ref('orders') }}"` |
 | `left_table: orders`, or `"{{ table('orders') }}"` | `left_table: "{{ ref('orders') }}"` |
 | `{{ column('orders', 'order_id') }}` | `{{ ref('orders', 'order_id') }}` |
-| a metric's, filter's or verified query's `tables:` or `derived:` | dropped: the models its `ref()` calls name |
+| a metric's, filter's or verified query's `tables:` or `derived:` | dropped: the models its `ref()` calls name, after each listed table it names bare is written as `ref()` (below) |
 | `sql_file: sql/x.sql` | `sql: "{{ file('sql/x.sql') }}"` |
 | a boolean filter with no `labels:` | the same filter with `labels: [filter]` |
+
+Before it drops a member's `tables:`, `sst migrate refs` writes each table the list names and
+the member does not into the member, so no table is lost:
+
+- a verified query's `FROM` or `JOIN` of a listed table, bare (`FROM orders o`) or qualified
+  (`FROM ANALYTICS.CORE.ORDERS o`), becomes `FROM {{ ref('orders') }} o`;
+- a metric's or filter's bare column, when `tables:` lists one table, becomes
+  `{{ ref('orders', 'amount') }}`;
+- a member that calls `metric()` takes its tables from the metrics it calls, and keeps none.
+
+A member it cannot rewrite keeps its `tables:` and is reported as left alone, with the reason:
+a `COUNT(*)`, which names no column (write `COUNT({{ ref('orders', '<primary key>') }})`), an
+expression over two or more tables written with bare columns, SQL kept in a file, or a scalar it
+cannot edit in place. Name each table with `ref()` and delete the `tables:` key, which 1.0 refuses
+(`SST-PRS126`).
 
 Every field that names a member or a file takes one template call
 ([References](references.md)); a bare name is `SST-REF050`:

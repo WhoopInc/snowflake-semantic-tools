@@ -500,7 +500,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{field}' is no longer written: {reason}",
         "remove the field",
         condition="a key that SST now works out for itself, or reads from elsewhere, is written",
-        note="`sst migrate refs --write` removes the member `tables:` and `derived:` keys.",
+        note=(
+            "`sst migrate refs --write` removes the member `tables:` and `derived:` keys, first writing each "
+            "listed table the member names bare as `ref()`; a member it cannot rewrite keeps `tables:` and is reported."
+        ),
     ),
     spec(
         "SST-PRS127",
