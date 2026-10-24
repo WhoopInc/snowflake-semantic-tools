@@ -412,14 +412,7 @@ def _source_table(args: tuple[str, ...], view: _View, logical_by_model: Mapping[
     """
     source_name, table_name = args
     pair = f"{source_name}.{table_name}"
-    found = next(
-        (
-            item
-            for item in view.catalog.sources
-            if item.relation_name and f"{item.source_name}.{item.name}".casefold() == pair.casefold()
-        ),
-        None,
-    )
+    found = view.catalog.source(source_name, table_name)
     if found is None or found.relation_name is None:
         diagnostic = D("SST-DBT011", value=pair, subject=view.key)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))

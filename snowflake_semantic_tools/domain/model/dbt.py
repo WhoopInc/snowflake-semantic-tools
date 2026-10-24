@@ -151,6 +151,8 @@ class DbtSource:
     description: str | None = None
     # The source table's `meta.sst.synonyms`.
     synonyms: tuple[str, ...] = ()
+    # The dbt package that declares it; None when the manifest does not say.
+    package: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,6 +197,22 @@ class DbtCatalog:
     nodes: tuple[DbtNode, ...] = ()
     # What reading the manifest found wrong with nodes SST skipped or with the project as a whole.
     diagnostics: tuple[Diagnostic, ...] = ()
+
+    def source(self, source_name: str, name: str) -> DbtSource | None:
+        """Return the declaration `source('<source_name>', '<name>')` reads, as dbt resolves it.
+
+        Names compare casefolded, and only a declaration with a relation counts. When the pair is
+        declared more than once, the root project's declaration wins, as it does in dbt for a
+        call the root project makes; otherwise the first in unique-id order, which SST-DBT012
+        reports as ambiguous.
+        """
+        pair = f"{source_name}.{name}".casefold()
+        found = [
+            item for item in self.sources if item.relation_name and f"{item.source_name}.{item.name}".casefold() == pair
+        ]
+        own = [item for item in found if self.project_name is not None and item.package == self.project_name]
+        chosen = own or found
+        return chosen[0] if chosen else None
 
     def model(self, name: str) -> DbtModel | None:
         """Return a model by its dbt logical name, case-insensitively."""

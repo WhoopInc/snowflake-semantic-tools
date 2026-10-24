@@ -120,14 +120,7 @@ def _relation(call: TemplateCall, catalog: DbtCatalog, origin: Origin, subject: 
             return replace(unreadable, origin=origin)
         return D("SST-REF001", origin=origin, subject=subject, model=call.args[0])
     pair = f"{call.args[0]}.{call.args[1]}".casefold()
-    source = next(
-        (
-            item
-            for item in catalog.sources
-            if item.relation_name and f"{item.source_name}.{item.name}".casefold() == pair
-        ),
-        None,
-    )
+    source = catalog.source(call.args[0], call.args[1])
     if source is None or source.relation_name is None:
         return D("SST-DBT011", origin=origin, subject=subject, value=f"{call.args[0]}.{call.args[1]}")
     return pair, source.relation_name.upper()

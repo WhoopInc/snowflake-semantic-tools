@@ -92,10 +92,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-DBT012",
         Severity.WARNING,
         "Duplicate source name or source.table pair",
-        "source '{value}' is declared more than once",
-        "rename one of them",
-        condition="the manifest declares one `source.table` pair more than once; once per pair",
-        note="dbt tolerates the duplicate; SST cannot tell which declaration a reference means.",
+        "source '{value}' is declared more than once, and not once by the root project",
+        "rename one of them, or declare it once in the root project, whose declaration dbt reads",
+        condition=(
+            "the manifest declares one `source.table` pair more than once, and the root project does not "
+            "declare it exactly once; once per pair"
+        ),
+        note=(
+            "A pair the root project declares once resolves to that declaration, as dbt resolves a call "
+            "the root project makes, whatever packages also declare it; SST does the same and reports "
+            "nothing. Otherwise SST reads the first declaration in unique-id order."
+        ),
     ),
     spec(
         "SST-DBT013",

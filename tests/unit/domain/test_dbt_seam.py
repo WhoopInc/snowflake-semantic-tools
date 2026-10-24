@@ -95,3 +95,19 @@ def test_the_seam_summary_counts_models_sources_refs_and_consumed_columns() -> N
     summary = seam_summary(catalog, ("ORDERS",), 3)
     assert summary.code == "SST-DBT025"
     assert summary.message == "2 models read, 1 sources read, 3 refs resolved, 2 columns checked"
+
+
+def test_a_source_resolves_to_the_root_projects_declaration_as_dbt_does() -> None:
+    def declared(package: str, relation: str) -> DbtSource:
+        return DbtSource(f"source.{package}.raw.orders", "raw", "orders", relation, package=package)
+
+    # `aa_package` sorts first by unique id; the root project's declaration still wins.
+    both = (declared("aa_package", "DB.CDC.ORDERS"), declared("zz_root", "DB.PROD.ORDERS"))
+    root = DbtCatalog("v12", "1.11", "zz_root", (), sources=both)
+    found = root.source("RAW", "Orders")
+    assert found is not None and found.relation_name == "DB.PROD.ORDERS"
+    # With no root declaration, the first in unique-id order; an unknown pair resolves to nothing.
+    other = DbtCatalog("v12", "1.11", "elsewhere", (), sources=both)
+    found = other.source("raw", "orders")
+    assert found is not None and found.relation_name == "DB.CDC.ORDERS"
+    assert root.source("raw", "items") is None

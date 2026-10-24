@@ -479,12 +479,16 @@ def _disabled_models(root: Mapping[str, Any]) -> tuple[str, ...]:
     return tuple(sorted(names))
 
 
-def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diagnostic, ...]]:
-    """Read the declared sources, in sorted unique-id order, and each `source.table` pair that repeats.
+def _sources(root: Mapping[str, Any], project: str | None) -> tuple[tuple[DbtSource, ...], tuple[Diagnostic, ...]]:
+    """Read the declared sources, in sorted unique-id order, and each ambiguous `source.table` pair.
+
+    A pair the root project `project` declares once resolves to that declaration, as dbt resolves
+    it, whatever packages also declare it; any other pair declared more than once is ambiguous.
 
     Diagnostics:
         SST-PRS003: a source's `meta.sst.synonyms` holds an item that is not text; it is left out.
-        SST-DBT012: a `source.table` pair is declared more than once, once per pair.
+        SST-DBT012: a `source.table` pair is declared more than once and not once by the root
+            project, once per pair.
     """
     raw = root.get("sources")
     wrong: list[Diagnostic] = []
@@ -512,14 +516,29 @@ def _sources(root: Mapping[str, Any]) -> tuple[tuple[DbtSource, ...], tuple[Diag
                 relation_name=_text(node.get("relation_name")),
                 description=_text(node.get("description")),
                 synonyms=synonyms,
+                package=_text(node.get("package_name")) or _id_package(str(unique_id)),
             )
         )
     counts: dict[str, int] = {}
+    own: dict[str, int] = {}
     for source in sources:
         pair = f"{source.source_name}.{source.name}".casefold()
         counts[pair] = counts.get(pair, 0) + 1
-    duplicates = (D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1)
+        if project is not None and source.package == project:
+            own[pair] = own.get(pair, 0) + 1
+    duplicates = (
+        D("SST-DBT012", value=pair) for pair, count in sorted(counts.items()) if count > 1 and own.get(pair) != 1
+    )
     return tuple(sources), (*wrong, *duplicates)
+
+
+def _id_package(unique_id: str) -> str | None:
+    """Return the package a dbt unique id names; None if it names none.
+
+    A source's id is `source.<package>.<source>.<table>`.
+    """
+    parts = unique_id.split(".")
+    return parts[1] if len(parts) > 2 and parts[1] else None
 
 
 def _graph(root: Mapping[str, Any]) -> tuple[DbtNode, ...]:
@@ -611,7 +630,7 @@ def catalog_from_document(
             relationless.append(model[0])
             unreadable[model[0].casefold()] = model[1]
     unreadable.update({name.casefold(): "disabled" for name in _disabled_models(root)})
-    sources, duplicate_sources = _sources(root)
+    sources, duplicate_sources = _sources(root, _text(metadata.get("project_name")))
     return DbtCatalog(
         schema_version=str(metadata.get("dbt_schema_version") or ""),
         dbt_version=_text(metadata.get("dbt_version")),

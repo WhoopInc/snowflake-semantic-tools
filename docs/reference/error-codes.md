@@ -6074,13 +6074,13 @@ Fix: declare the source
 
 **Duplicate source name or source.table pair** (warning)
 
-`source '<value>' is declared more than once`
+`source '<value>' is declared more than once, and not once by the root project`
 
-Raised when the manifest declares one `source.table` pair more than once; once per pair.
+Raised when the manifest declares one `source.table` pair more than once, and the root project does not declare it exactly once; once per pair.
 
-Fix: rename one of them
+Fix: rename one of them, or declare it once in the root project, whose declaration dbt reads
 
-Note: dbt tolerates the duplicate; SST cannot tell which declaration a reference means.
+Note: A pair the root project declares once resolves to that declaration, as dbt resolves a call the root project makes, whatever packages also declare it; SST does the same and reports nothing. Otherwise SST reads the first declaration in unique-id order.
 
 ### SST-DBT013
 
