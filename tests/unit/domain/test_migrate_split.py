@@ -171,3 +171,29 @@ def test_the_last_member_keeps_its_last_line_when_the_file_has_no_trailing_newli
             "metric:\n  name: b\n  expr: |-\n    SUM(CASE WHEN y THEN 1\n    END)\n"
             "  synonyms:\n    - first\n    - last\n"
         )
+
+
+def test_views_go_under_semantic_views_in_the_subfolder_their_file_sat_in() -> None:
+    text = (
+        "semantic_views:\n  - name: sales\n    tables: [orders]\nsnowflake_metrics:\n  - name: revenue\n    expr: x\n"
+    )
+    plan = split_semantic(lines(text), outline(text), "models/sales/semantic.yml", "models")
+    assert plan is not None and [item.path for item in plan.files] == [
+        "models/semantic_views/sales/sales.yml",
+        "models/sales/revenue.yml",
+    ]
+    top = split_semantic(lines(text), outline(text), "models/semantic.yml", "models")
+    assert top is not None and top.files[0].path == "models/semantic_views/sales.yml"
+    kept = split_semantic(lines(text), outline(text), "models/semantic_views/core/semantic.yml", "models")
+    assert kept is not None and kept.files[0].path == "models/semantic_views/core/sales.yml"
+
+
+def test_a_view_file_outside_semantic_views_moves_there_whole() -> None:
+    text = "# Sales.\nsemantic_view:\n  name: sales\n  custom_instructions: \"{{ file('notes.md') }}\"\n"
+    plan = split_semantic(lines(text), outline(text), "models/sales/sales_view.yml", "models")
+    assert plan is not None and plan.refused is None
+    [moved] = plan.files
+    assert moved.path == "models/semantic_views/sales/sales_view.yml" and moved.name == "sales"
+    assert moved.text == text.replace("file('notes.md')", "file('../../sales/notes.md')")
+    assert split_semantic(lines(text), outline(text), "models/semantic_views/sales_view.yml", "models") is None
+    assert split_semantic(lines(text), outline(text), "models/sales/sales_view.yml") is None

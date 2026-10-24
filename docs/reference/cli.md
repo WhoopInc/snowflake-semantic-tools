@@ -174,6 +174,9 @@ sst migrate refs [OPTIONS]
 
 Write each listed member to a file of its own, tool group members to their group's folder.
 
+Semantic views go under `<semantic_models_dir>/semantic_views/`, in the subfolder their file
+sat in, and a `semantic_view:` file outside it moves there whole.
+
 Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
 configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
 the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that

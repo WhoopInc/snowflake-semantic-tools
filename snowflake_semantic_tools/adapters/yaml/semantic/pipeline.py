@@ -405,14 +405,14 @@ def _load_context(
     """Gather the fixed inputs every later phase reads.
 
     Raises:
-        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory (SST-DIS001).
+        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory (SST-DIS014).
 
     Diagnostics:
-        SST-DIS001: `<semantic_models_dir>/semantic_views` does not exist; raised.
+        SST-DIS014: `<semantic_models_dir>/semantic_views` does not exist; raised.
     """
     views_dir = project_dir / inputs.semantic_models_dir / "semantic_views"
     if not views_dir.is_dir():
-        diagnostic = D("SST-DIS001", path=str(views_dir.relative_to(project_dir)))
+        diagnostic = D("SST-DIS014", path=str(views_dir.relative_to(project_dir)))
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
     catalog = catalog or DbtCatalog(
         schema_version="", dbt_version=None, project_name=None, models=tuple(models.values())

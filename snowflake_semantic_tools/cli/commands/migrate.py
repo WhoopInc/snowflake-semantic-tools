@@ -99,6 +99,9 @@ def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResul
 def migrate_split_command(paths: ProjectPaths, write_files: bool) -> CommandResult:
     """Write each listed member to a file of its own, tool group members to their group's folder.
 
+    Semantic views go under `<semantic_models_dir>/semantic_views/`, in the subfolder their file
+    sat in, and a `semantic_view:` file outside it moves there whole.
+
     Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
     configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
     the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that
@@ -111,8 +114,10 @@ def migrate_split_command(paths: ProjectPaths, write_files: bool) -> CommandResu
     tools_dir = _dir(paths, "tools_dir", "tools")
     plugins = files_under(project_dir, _dir(paths, "plugins_dir", "plugins"), YAML_SUFFIXES)
     config_file = paths.config_file
+    semantic_dir = semantic_models_dir(paths)
     files = SplitFiles(
-        semantic=semantic_files(project_dir, semantic_models_dir(paths)),
+        semantic=semantic_files(project_dir, semantic_dir),
+        semantic_dir=semantic_dir,
         tools=files_under(project_dir, tools_dir, YAML_SUFFIXES),
         tools_dir=tools_dir,
         config=(paths.config_name, config_file.read_text(encoding="utf-8")) if config_file is not None else None,
