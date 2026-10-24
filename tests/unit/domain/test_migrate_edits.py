@@ -112,3 +112,15 @@ def test_merged_keeps_earlier_reports_and_applies_edits() -> None:
     replaced = Changes()
     replaced.replace(Node(SCALAR, 0, 0, 0, 1, value="a"), "Z", "reference")
     assert merged(MigrationResult("a\n"), replaced).text == "Z\n"
+
+
+def test_value_end_keeps_the_last_line_of_a_text_with_no_trailing_newline() -> None:
+    doc = "a:\n  - name: b\n    syn:\n      - x\n      - last"
+    item = outline(doc).find("a").items[0]  # type: ignore[union-attr]
+    syn = item.entry("syn")
+    assert syn is not None and value_end(lines(doc), syn.value, syn.col) == 5
+    assert value_end(lines(doc), item, 2) == 5
+    # A block that a sibling key ends still stops on the line before that key.
+    sibling = "a:\n  - name: b\n    syn:\n      - x\n    k: v"
+    syn = outline(sibling).find("a").items[0].entry("syn")  # type: ignore[union-attr]
+    assert syn is not None and value_end(lines(sibling), syn.value, syn.col) == 4

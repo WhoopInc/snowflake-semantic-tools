@@ -156,3 +156,18 @@ def test_a_group_in_a_subfolder_routes_by_its_path_and_keeps_a_body_on_two_lines
     )
     plan = split_tools(lines(text), outline(text), "tools/t.yml", "tools", set().__contains__)
     assert plan is not None and plan.files[0].text.endswith("  body: \"{{ file('a', 'b') }}\"\n  meta: {a: 1}\n")
+
+
+def test_the_last_member_keeps_its_last_line_when_the_file_has_no_trailing_newline() -> None:
+    text = (
+        "snowflake_metrics:\n  - name: a\n    expr: COUNT(x)\n"
+        "  - name: b\n    expr: |-\n      SUM(CASE WHEN y THEN 1\n      END)\n"
+        "    synonyms:\n      - first\n      - last"
+    )
+    for authored in (text, text + "\n"):
+        plan = split_semantic(lines(authored), outline(authored), "semantic_models/m/metrics.yml")
+        assert plan is not None
+        assert plan.files[-1].text == (
+            "metric:\n  name: b\n  expr: |-\n    SUM(CASE WHEN y THEN 1\n    END)\n"
+            "  synonyms:\n    - first\n    - last\n"
+        )

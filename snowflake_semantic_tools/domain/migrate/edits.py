@@ -85,12 +85,14 @@ def value_end(lines: Sequence[str], node: Node, floor: int) -> int:
     """Return the line after the last one a value occupies, trailing blank lines left out.
 
     A block collection ends where the next token starts, so its content stops on the line
-    before; a scalar or a flow collection ends just past its text. A trailing comment indented
-    no deeper than `floor`, the column of the key or dash that holds the value, belongs to what
-    follows, and is left out too.
+    before -- unless the text ends without a newline, when it ends just past the last line's
+    text, on that line; a scalar or a flow collection ends just past its text. A trailing
+    comment indented no deeper than `floor`, the column of the key or dash that holds the
+    value, belongs to what follows, and is left out too.
     """
     block = node.kind != SCALAR and not node.flow
-    last = node.end_line - 1 if block or node.end_col == 0 else node.end_line
+    at_eof = bool(lines) and node.end_line == len(lines) - 1 and node.end_col >= len(lines[-1].rstrip("\r\n"))
+    last = node.end_line - 1 if (block and not at_eof) or node.end_col == 0 else node.end_line
     last = min(last, len(lines) - 1)
     while last > node.line and (is_blank(lines[last]) or (is_comment(lines[last]) and indent(lines[last]) <= floor)):
         last -= 1
