@@ -26,7 +26,7 @@ def test_sst_pln105_fires() -> None:
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.subject == "cowork_profile:everyone"
     assert diagnostic.message == (
-        "cowork_profile:everyone: the account has no CoWork object, so the profile publishes unattached"
+        "cowork_profile:everyone: the account has no CoWork object, so the CoWork profile publishes unattached"
     )
 
 

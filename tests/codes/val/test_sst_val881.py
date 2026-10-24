@@ -19,7 +19,7 @@ def test_sst_val881_fires() -> None:
         "dataset 'cowork_profiles/concierge/evals/dataset.yml': row 0 expects agent('partner_agent'), "
         "not a subagent of cowork profile 'concierge'"
     )
-    assert diagnostic.suggestion == "name one of the profile's subagents: agent('sales'), tool('partner_agent')"
+    assert diagnostic.suggestion == "name one of the CoWork profile's subagents: agent('sales'), tool('partner_agent')"
     assert diagnostic.subject == "eval:cowork_profile:concierge"
 
 

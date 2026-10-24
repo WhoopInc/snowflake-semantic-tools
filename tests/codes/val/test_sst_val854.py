@@ -26,7 +26,7 @@ def test_sst_val854_fires() -> None:
     diagnostic = only(desktop_registry_diagnostics(QualifiedName.parse("DB.S.REHEARSAL")), "SST-VAL854")
     assert diagnostic.severity is Severity.INFO
     assert diagnostic.message == (
-        "profiles publish to DB.S.REHEARSAL; CoCo Desktop reads only CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
+        "CoCo Desktop profiles publish to DB.S.REHEARSAL; CoCo Desktop reads only CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
     )
     assert diagnostic.subject is None
 

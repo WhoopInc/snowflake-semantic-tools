@@ -58,7 +58,7 @@ def test_deferring_to_a_target_the_profile_does_not_declare_is_refused(tmp_path:
         resolve_deferral(project_paths(tmp_path))
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.subject) == ("SST-CFG010", "config:defer.target")
-    assert diagnostic.message == "target 'qa' is absent from profile 'fixture'"
+    assert diagnostic.message == "target 'qa' is absent from dbt profile 'fixture'"
 
 
 def _deferred_manifest(path: Path) -> None:

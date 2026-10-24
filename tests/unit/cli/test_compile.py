@@ -55,7 +55,7 @@ def test_compile_rejects_an_unknown_target_before_rendering(tmp_path: Path) -> N
         ],
     )
     assert result.exit_code != 0
-    assert "target 'does_not_exist' is absent from profile 'sst_reference_impl'" in result.output
+    assert "target 'does_not_exist' is absent from dbt profile 'sst_reference_impl'" in result.output
 
 
 def test_compile_writes_one_deterministic_file_per_view(tmp_path: Path) -> None:
@@ -320,8 +320,8 @@ def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> Non
     assert "SST-VAL836" in {item["code"] for item in diagnostics}
     blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL855"]
     assert blocked == [
-        "profile 'analyst': skill 'month-close' has errors, so the profile cannot publish",
-        "profile 'analyst': plugin 'kit' has errors, so the profile cannot publish",
+        "CoCo Desktop profile 'analyst': skill 'month-close' has errors, so the profile cannot publish",
+        "CoCo Desktop profile 'analyst': plugin 'kit' has errors, so the profile cannot publish",
     ]
 
 

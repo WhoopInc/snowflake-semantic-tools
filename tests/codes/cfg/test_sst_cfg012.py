@@ -20,7 +20,7 @@ def test_sst_cfg012_fires(tmp_path: Path) -> None:
         _ = target.connection_params  # reading the arguments is what opening a connection does
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG012", Severity.ERROR)
-    assert diagnostic.message == "profile 'test' has no user"
+    assert diagnostic.message == "dbt profile 'test' has no user"
 
 
 def test_sst_cfg012_silent(tmp_path: Path) -> None:
@@ -46,7 +46,7 @@ def test_sst_cfg012_fires_for_a_target_without_a_schema(tmp_path: Path) -> None:
         load_profile_target(project_paths(_without(tmp_path, "schema")))
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG012", Severity.ERROR)
-    assert diagnostic.message == "profile 'test' has no schema on target 'x'"
+    assert diagnostic.message == "dbt profile 'test' has no schema on target 'x'"
     assert diagnostic.subject == "config:profiles.yml"
 
 
@@ -54,7 +54,7 @@ def test_sst_cfg012_fires_for_both_where_the_dbt_target_is_resolved(tmp_path: Pa
     with pytest.raises(ProjectError) as raised:
         resolve_target(project_paths(_without(tmp_path, "database", "schema")))
     assert [item.message for item in raised.value.diagnostics] == [
-        "profile 'test' has no database and schema on target 'x'"
+        "dbt profile 'test' has no database and schema on target 'x'"
     ]
 
 

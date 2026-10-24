@@ -21,12 +21,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "CoWork profile relies on a Snowflake private preview",
         "cowork profile '{artifact}' relies on CoWork profiles, a Snowflake private preview",
-        "expect the profile contract to change before general availability, and recompile after each SST upgrade",
+        "expect the CoWork profile contract to change before general availability, and recompile after each SST "
+        "upgrade",
         condition="a CoWork profile compiles; reported once per compiled profile",
         note=(
             "Snowflake private preview: "
             "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles . "
-            "SST renders the profile to the preview's contract as measured, the agent_router tool and "
+            "SST renders the CoWork profile to the preview's contract as measured, the agent_router tool and "
             "its subagent list included, and Snowflake may change that contract before general "
             "availability."
         ),
@@ -41,7 +42,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "an enabled CoWork profile's `spec.subagents` is missing or empty, or none of its entries can be read"
         ),
         note=(
-            "Snowflake private preview. Snowflake accepts such a profile, but a profile with no "
+            "Snowflake private preview. Snowflake accepts such a CoWork profile, but a profile with no "
             "subagent list fails every run with \"agent_router tool 'router' is missing a "
             'corresponding entry in tool_resources", and an empty list routes to no agent; '
             "measured on a preview account."
@@ -90,7 +91,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "Snowflake private preview. A subagent entry without all of name, display_name, "
-            "description, and source makes the profile drop its whole subagent list, with no error, "
+            "description, and source makes the CoWork profile drop its whole subagent list, with no error, "
             "and the router chooses between agents by their descriptions. "
             "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing"
         ),
@@ -108,10 +109,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "CoWork profile tool is not one a profile carries",
         "cowork profile '{artifact}': spec.tools[{index}] has type '{type}', not web_search or code_execution",
-        "keep only web_search or code_execution on the profile, and give the tool to an agent it routes to",
+        "keep only web_search or code_execution on the CoWork profile, and give the tool to an agent it routes to",
         condition="a `spec.tools` entry of a CoWork profile has a type other than web_search or code_execution",
         note=(
-            "Snowflake private preview. A profile routes data questions to its agents; analyst, "
+            "Snowflake private preview. A CoWork profile routes data questions to its agents; analyst, "
             "search, and chart tools belong on an agent. SST renders the profile's agent_router "
             "tool itself, so `spec.tools` cannot declare one either. "
             "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing"
@@ -128,7 +129,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SNOWFLAKE_INTELLIGENCE.PROFILES"
         ),
         note=(
-            "Snowflake private preview. The profile routes when it is run directly, but CoWork lists only "
+            "Snowflake private preview. The CoWork profile routes when it is run directly, but CoWork lists only "
             "the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, "
             "such as one published by a dev target, and is never attached to CoWork."
         ),
@@ -151,8 +152,9 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL880",
         Severity.WARNING,
-        "Agent publishes where CoWork lists profiles",
-        "agent '{artifact}' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a profile",
+        "Agent publishes where CoWork lists CoWork profiles",
+        "agent '{artifact}' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a CoWork "
+        "profile",
         "publish the agent to another schema, and route to it from a CoWork profile",
         condition=(
             "a project agent's database and schema, compared as Snowflake resolves them, are "
@@ -166,16 +168,16 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL881",
         Severity.ERROR,
-        "Expected subagent is not one of the profile's",
+        "Expected subagent is not one of the CoWork profile's",
         "dataset '{artifact}': row {index} expects {function}('{name}'), not a subagent of cowork profile '{value}'",
-        "name one of the profile's subagents: {detail}",
+        "name one of the CoWork profile's subagents: {detail}",
         condition=(
             "a `ground_truth_subagents` entry of a CoWork profile eval's row calls `agent()` or `tool()` "
             "with a name, ignoring case, that no entry of the profile's `spec.subagents` calls that "
             "function with"
         ),
         note=(
-            "Snowflake private preview. The router can only choose one of the profile's subagents, so "
+            "Snowflake private preview. The router can only choose one of the CoWork profile's subagents, so "
             "an expectation naming any other agent can never be met."
         ),
     ),
@@ -191,7 +193,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         note=(
             "Snowflake private preview, measured on a preview account: neither metric sees a router "
             "call, so every record reports that no tool was invoked, and a row that expects the "
-            "profile to decline scores 1.0 whatever the router did."
+            "CoWork profile to decline scores 1.0 whatever the router did."
         ),
     ),
     spec(
@@ -219,7 +221,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         "give each row the subagents it should route to in ground_truth_subagents, [] for one to decline",
         condition="no row of a CoWork profile eval's dataset sets `ground_truth.ground_truth_subagents`",
-        note="Snowflake private preview. A profile's own failures are routing failures.",
+        note="Snowflake private preview. A CoWork profile's own failures are routing failures.",
     ),
     spec(
         "SST-VAL885",
@@ -232,7 +234,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "it to an empty list"
         ),
         note=(
-            "Snowflake private preview. A profile that routes a question it should decline is a "
+            "Snowflake private preview. A CoWork profile that routes a question it should decline is a "
             "failure only a decline row catches."
         ),
     ),
@@ -241,7 +243,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "CoWork profile eval left out where CoWork lists the profile",
         "eval '{artifact}' is not compiled: its cowork profile publishes to {target}, where CoWork lists it",
-        "evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way",
+        "evaluate the CoWork profile's rehearsal on a target that publishes it elsewhere; it routes the same way",
         condition=(
             "a CoWork profile's eval, on a target that publishes the profile to "
             "SNOWFLAKE_INTELLIGENCE.PROFILES; the eval does not compile, so no eval object is planned there"
@@ -261,7 +263,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "eval config for '{artifact}': metric '{name}', which {field} enables, is left out: it does not "
             "see the router's calls of a CoWork profile"
         ),
-        "nothing to do; write metrics.system in the profile's eval config to choose its system metrics",
+        "nothing to do; write metrics.system in the CoWork profile's eval config to choose its system metrics",
         condition=(
             "the config of a CoWork profile's eval has no `metrics.system`, and the `metrics` setting it "
             "inherits from a folder route or the `evals:` block root lists `tool_selection_accuracy` or "
@@ -269,7 +271,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "Snowflake private preview, measured on a preview account: neither metric sees a router "
-            "call. A profile's config that names either one itself, in `metrics.system` or its own "
+            "call. A CoWork profile's config that names either one itself, in `metrics.system` or its own "
             "`config.metrics`, is SST-VAL882 instead. Score the router with `routing_accuracy` under "
             "`metrics.routing`."
         ),

@@ -12,7 +12,7 @@ def test_sst_val880_fires() -> None:
     [diagnostic] = coded(compile_profiles(agents=(described_agent(),), tree=tree).diagnostics, "SST-VAL880")
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "agent 'sales' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a profile"
+        "agent 'sales' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a CoWork profile"
     )
     assert (diagnostic.subject, diagnostic.origin) == ("agent:sales", AGENT_ORIGIN)
 

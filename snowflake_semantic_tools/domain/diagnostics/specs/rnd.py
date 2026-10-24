@@ -144,7 +144,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`target_lag`, or a defined procedure has no `warehouse`"
         ),
         note=(
-            "A warehouse falls back to the profile target's when neither the member's `config:`, a "
+            "A warehouse falls back to the dbt profile target's when neither the member's `config:`, a "
             "folder route nor `tools.+warehouse` names one; a target lag has no fallback."
         ),
     ),

@@ -19,7 +19,8 @@ def test_sst_val851_fires(tmp_path: Path) -> None:
     diagnostic = only(catalog.diagnostics, "SST-VAL851")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "profile 'analyst': 'active' is not accepted: delete the profile and apply with --prune to deactivate it"
+        "CoCo Desktop profile 'analyst': 'active' is not accepted: delete the profile and apply with --prune to "
+        "deactivate it"
     )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 

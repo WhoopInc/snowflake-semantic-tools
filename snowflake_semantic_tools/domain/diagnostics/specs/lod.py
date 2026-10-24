@@ -66,7 +66,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "re-save the file as UTF-8",
         condition=(
             "a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a "
-            "verified-query SQL file or a routine body, a `SKILL.md`, or a profile's `AGENTS.md` or rule"
+            "verified-query SQL file or a routine body, a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule"
         ),
     ),
     spec(
@@ -165,7 +165,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "re-save without a BOM",
         condition=(
             "the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar "
-            "(a hook script among them), a `SKILL.md`, or a profile's `AGENTS.md` or rule; the mark is "
+            "(a hook script among them), a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule; the mark is "
             "refused rather than removed, since removing it would change what is published"
         ),
     ),
@@ -216,7 +216,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone "
             "UTF-16 surrogate, such as a YAML `\\0` or `\\ud800` escape: project YAML, a `file()` "
-            "sidecar, a `SKILL.md`, a profile's `AGENTS.md` or rule, or a dbt description, synonym "
+            "sidecar, a `SKILL.md`, a CoCo Desktop profile's `AGENTS.md` or rule, or a dbt description, synonym "
             "or sample value a view uses"
         ),
         note="refused wherever it is written, an agent's specification included",

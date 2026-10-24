@@ -148,7 +148,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Warehouse does not exist or is not authorized",
         "warehouse {value} does not exist or is not authorized",
         "grant USAGE, or name an existing warehouse",
-        condition="the warehouse the profile names does not exist, or the role cannot see it; reported once per plan",
+        condition=(
+            "the warehouse the dbt profile names does not exist, or the role cannot see it; reported once per plan"
+        ),
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -323,7 +325,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage",
         demotable=False,
         condition=(
-            "the skill bundle stage, the profile stage, or the `apply.agent_spec_stage` stage exists "
+            "the skill bundle stage, the CoCo Desktop profile stage, or the `apply.agent_spec_stage` stage exists "
             "but is not INTERNAL with SNOWFLAKE_SSE encryption"
         ),
         precheck=Precheck.OBSERVE,
@@ -358,7 +360,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST never alters the registry; fix the table or point "
         "coco_desktop_profiles.+registry_table at a compatible one",
         demotable=False,
-        condition="the profile registry table lacks a column SST writes, or types it differently",
+        condition="the CoCo Desktop profile registry table lacks a column SST writes, or types it differently",
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -607,7 +609,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`+attach` is on, and SHOW AGENTS IN SNOWFLAKE INTELLIGENCE does not list it"
         ),
         note=(
-            "Snowflake private preview. The update rewrites the profile's comment with SST's "
+            "Snowflake private preview. The update rewrites the CoWork profile's comment with SST's "
             "ownership marker, which apply reads back, then runs ALTER SNOWFLAKE INTELLIGENCE ... "
             "ADD AGENT, committing no version. Attaching is not part of the profile's definition, "
             "so a profile "
@@ -619,15 +621,15 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-PLN105",
         Severity.WARNING,
-        "The account has no CoWork object to attach a profile to",
-        "{artifact}: the account has no CoWork object, so the profile publishes unattached",
+        "The account has no CoWork object to attach a CoWork profile to",
+        "{artifact}: the account has no CoWork object, so the CoWork profile publishes unattached",
         "create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`",
         condition=(
             "a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `+attach` on is "
             "planned, and SHOW SNOWFLAKE INTELLIGENCES lists nothing"
         ),
         note=(
-            "Snowflake private preview. The profile is still published, and a later plan attaches it "
+            "Snowflake private preview. The CoWork profile is still published, and a later plan attaches it "
             "once the account has a CoWork object (SST-PLN104)."
         ),
         precheck=Precheck.OBSERVE,
@@ -635,7 +637,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-PLN106",
         Severity.ERROR,
-        "No role in the session may attach a profile to CoWork",
+        "No role in the session may attach a CoWork profile to CoWork",
         "{artifact}: no role in the session holds MODIFY or OWNERSHIP on the CoWork object {value}",
         "grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`",
         condition=(
@@ -644,7 +646,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
         note=(
             "Snowflake private preview. A secondary role in the session counts. The change is blocked, "
-            "so apply never publishes a profile it cannot attach; USAGE on the profile is granted "
+            "so apply never publishes a CoWork profile it cannot attach; USAGE on the profile is granted "
             "outside SST."
         ),
         precheck=Precheck.OBSERVE,

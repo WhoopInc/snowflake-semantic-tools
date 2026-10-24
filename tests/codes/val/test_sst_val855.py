@@ -24,7 +24,10 @@ def test_sst_val855_fires() -> None:
     ).run_result()
     diagnostic = only(result.diagnostics, "SST-VAL855")
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile 'analyst': skill 'month-close' has errors, so the profile cannot publish"
+    assert (
+        diagnostic.message
+        == "CoCo Desktop profile 'analyst': skill 'month-close' has errors, so the profile cannot publish"
+    )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
     assert result.compiled == ()
 

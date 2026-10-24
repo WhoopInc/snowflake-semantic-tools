@@ -29,7 +29,7 @@ def test_sst_val846_fires() -> None:
         "SST-VAL846",
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile 'analyst': hook 'nope' is not defined under the hooks directory"
+    assert diagnostic.message == "CoCo Desktop profile 'analyst': hook 'nope' is not defined under the hooks directory"
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 

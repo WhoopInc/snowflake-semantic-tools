@@ -27,7 +27,7 @@ def test_sst_val844_fires() -> None:
         validate_coco_desktop_profile_catalog(profile_catalog(profile(skills=("ghost",))), SKILLS), "SST-VAL844"
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile 'analyst': skill 'ghost' is not a skill in this project"
+    assert diagnostic.message == "CoCo Desktop profile 'analyst': skill 'ghost' is not a skill in this project"
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 

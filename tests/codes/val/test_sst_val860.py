@@ -31,7 +31,9 @@ def test_sst_val860_fires() -> None:
         "SST-VAL860",
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == ("profile 'analyst': plugin 'ghost-kit' is not a plugin under the plugins directory")
+    assert diagnostic.message == (
+        "CoCo Desktop profile 'analyst': plugin 'ghost-kit' is not a plugin under the plugins directory"
+    )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 

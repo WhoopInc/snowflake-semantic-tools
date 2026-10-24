@@ -105,7 +105,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Credential resolved to an empty value",
         "{value} resolved to an empty credential",
-        "set the environment variable, or the profile field",
+        "set the environment variable, or the dbt profile field",
         condition="a credential field written for the selected `profiles.yml` target renders empty",
     ),
     spec(

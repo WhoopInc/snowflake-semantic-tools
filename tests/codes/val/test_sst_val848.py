@@ -31,7 +31,7 @@ def test_sst_val848_fires() -> None:
         "SST-VAL848",
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile 'analyst': MCP server 'dbt' is not a configuration object"
+    assert diagnostic.message == "CoCo Desktop profile 'analyst': MCP server 'dbt' is not a configuration object"
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 

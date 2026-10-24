@@ -191,7 +191,7 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
         assert ("SST-VAL836", "plugin:kit") in {(item.code, item.subject) for item in bundle_errors}
         assert result.compiled == ()
         assert [item.message for item in result.diagnostics if item.code == "SST-VAL855"] == [
-            "profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"
+            "CoCo Desktop profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"
         ]
 
 

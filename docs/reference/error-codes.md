@@ -360,29 +360,29 @@ Fix: create profiles.yml, or set DBT_PROFILES_DIR
 
 ### SST-CFG010
 
-**Profile or target not found** (error)
+**dbt profile or target not found** (error)
 
-`target '<target>' is absent from profile '<profile>'`
+`target '<target>' is absent from dbt profile '<profile>'`
 
-Raised when `profiles.yml` does not declare the project's profile, or the profile's outputs do not declare the selected target or the `defer.target`.
+Raised when `profiles.yml` does not declare the project's dbt profile, or the profile's outputs do not declare the selected target or the `defer.target`.
 
 Fix: add the target, or pass --target with a declared name
 
 ### SST-CFG011
 
-**Profile type is not snowflake** (error)
+**dbt profile type is not snowflake** (error)
 
-`profile '<profile>' declares type '<found>'`
+`dbt profile '<profile>' declares type '<found>'`
 
 Raised when the selected `profiles.yml` target declares a `type` other than `snowflake`.
 
-Fix: point SST at a Snowflake profile
+Fix: point SST at a Snowflake dbt profile
 
 ### SST-CFG012
 
-**Required field missing from the resolved profile** (error)
+**Required field missing from the resolved dbt profile** (error)
 
-`profile '<profile>' has no <field>`
+`dbt profile '<profile>' has no <field>`
 
 Raised when account or user is absent or empty in the resolved target when a connection opens, or the target sets no `database` or no `schema`, which SST publishes into and keeps its state table in.
 
@@ -400,9 +400,9 @@ Fix: set {var}, or give env_var() a default
 
 ### SST-CFG014
 
-**Profile field silently empty** (warning)
+**dbt profile field silently empty** (warning)
 
-`profile '<profile>' leaves <field> empty`
+`dbt profile '<profile>' leaves <field> empty`
 
 Raised when the selected `profiles.yml` target sets no `role`, or no `warehouse`.
 
@@ -638,7 +638,7 @@ Fix: delete the key
 
 Raised when configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is absent, or `sst init` runs in a directory with no dbt_project.yml.
 
-Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and profiles only
+Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and CoCo Desktop profiles only
 
 ### SST-CFG047
 
@@ -676,7 +676,7 @@ Fix: SST renders {{ env_var('NAME') }} and {{ env_var('NAME', 'default') }} anyw
 
 `target '<target>': <detail>`
 
-Raised when the profile asks for an unsupported auth mode (refresh-token exchange, OAuth client credentials, two private keys) or an unreadable private_key.
+Raised when the dbt profile asks for an unsupported auth mode (refresh-token exchange, OAuth client credentials, two private keys) or an unreadable private_key.
 
 Fix: authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)
 
@@ -736,7 +736,7 @@ Fix: set {expected} once, at the root of {block}, and remove it here
 
 `no profiles.yml profile is named: <reason>`
 
-Raised when dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no `project.target_profile`, or the two name different profiles.
+Raised when dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no `project.target_profile`, or the two name different dbt profiles.
 
 Fix: set `profile:` in dbt_project.yml, or project.target_profile in sst_config.yml for a project without dbt; when both are set they must agree
 
@@ -1582,7 +1582,7 @@ Fix: remove one of the two keys
 
 `<file>: invalid UTF-8 at byte <offset>`
 
-Raised when a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a verified-query SQL file or a routine body, a `SKILL.md`, or a profile's `AGENTS.md` or rule.
+Raised when a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a verified-query SQL file or a routine body, a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule.
 
 Fix: re-save the file as UTF-8
 
@@ -1694,7 +1694,7 @@ Fix: quote the value if it is meant as a string, or write {} if it is meant as a
 
 `<file> begins with a BOM`
 
-Raised when the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar (a hook script among them), a `SKILL.md`, or a profile's `AGENTS.md` or rule; the mark is refused rather than removed, since removing it would change what is published.
+Raised when the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar (a hook script among them), a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule; the mark is refused rather than removed, since removing it would change what is published.
 
 Fix: re-save without a BOM
 
@@ -1744,7 +1744,7 @@ Fix: add the artifact's root key
 
 `<file>: '<field>' holds <found>, which Snowflake cannot store`
 
-Raised when a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone UTF-16 surrogate, such as a YAML `\0` or `\ud800` escape: project YAML, a `file()` sidecar, a `SKILL.md`, a profile's `AGENTS.md` or rule, or a dbt description, synonym or sample value a view uses.
+Raised when a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone UTF-16 surrogate, such as a YAML `\0` or `\ud800` escape: project YAML, a `file()` sidecar, a `SKILL.md`, a CoCo Desktop profile's `AGENTS.md` or rule, or a dbt description, synonym or sample value a view uses.
 
 Fix: remove the character
 
@@ -2146,7 +2146,7 @@ Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one t
 
 `<artifact>: <field> is '<found>'; it takes a {{ <function>(...) }} call`
 
-Raised when a field that names a file or a member, and so is read only as a template call, holds a bare value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a plugin's or profile's member, a hook's `script:` or a command's `skill:`.
+Raised when a field that names a file or a member, and so is read only as a template call, holds a bare value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a plugin's or CoCo Desktop profile's member, a hook's `script:` or a command's `skill:`.
 
 Fix: write the value as a {function}() call; a bare value is not read
 
@@ -4068,7 +4068,7 @@ Fix: treat it as an orchestration bound, not a spend cap, and say so in a commen
 
 ### SST-VAL548
 
-**Profile value outside its declared allowlist or form** (warning)
+**Agent profile value outside its declared allowlist or form** (warning)
 
 `agent '<artifact>': <field> '<found>' <detail>`
 
@@ -4182,13 +4182,13 @@ Note: Only `sst enrich` calls the synonym model, so validation reads its lifecyc
 
 **Agent profile exceeds the size limit** (error)
 
-`agent '<artifact>': profile renders <size> bytes of JSON, over Snowflake's 1,000-byte limit`
+`agent '<artifact>': agent profile renders <size> bytes of JSON, over Snowflake's 1,000-byte limit`
 
 Raised when the agent's `profile:` renders more than 1,000 bytes of JSON, encoded as UTF-8.
 
-Fix: shorten the profile's display_name, avatar or color
+Fix: shorten the agent profile's display_name, avatar or color
 
-Note: `ALTER AGENT ... SET PROFILE` refuses a larger profile, after the agent's other statements ran, so the publish would stop part way.
+Note: `ALTER AGENT ... SET PROFILE` refuses a larger agent profile, after the agent's other statements ran, so the publish would stop part way.
 
 ### SST-VAL559
 
@@ -5210,11 +5210,11 @@ Note: Snowflake private preview: CoWork profiles. CORTEX_AGENT_USAGE_HISTORY rec
 
 ### SST-VAL801
 
-**Skill, plugin, profile (Desktop or CoWork) or agent folder is misnamed** (error)
+**Skill, plugin, CoCo Desktop or CoWork profile, or agent folder is misnamed** (error)
 
 `'<artifact>': <detail>`
 
-Raised when a skill, plugin or profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml, or a CoWork profile folder both cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
+Raised when a skill, plugin, CoCo Desktop profile or CoWork profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml, or a CoWork profile folder both cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
 
 Fix: rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names
 
@@ -5250,7 +5250,7 @@ Note: A version that is not content-derived could change content under a pinned 
 
 `<artifact>: version <value> is referenced by no agent`
 
-Raised when the project defines agents, and a skill or plugin it publishes is pinned by none of them and included in no plugin, profile or the shared layer.
+Raised when the project defines agents, and a skill or plugin it publishes is pinned by none of them and included in no plugin, CoCo Desktop profile or the shared layer.
 
 Fix: reference it, or stop publishing it
 
@@ -5374,7 +5374,7 @@ Raised when any skill bundle builds; reports how its bytes split between SKILL.m
 
 `skill '<artifact>': PUT target '<path>' does not end in '/'`
 
-Raised when a bundle's or profile tree's stage upload location does not end in '/'.
+Raised when a bundle's or CoCo Desktop profile tree's stage upload location does not end in '/'.
 
 Fix: append a trailing slash
 
@@ -5384,17 +5384,17 @@ Fix: append a trailing slash
 
 `skill '<artifact>': '<path>' was uploaded with no PROFILE_REGISTRY pointer`
 
-Raised when no pointer in a profile's registry row reaches a tree the profile uploads.
+Raised when no pointer in a CoCo Desktop profile's registry row reaches a tree the profile uploads.
 
 Fix: write the pointer as part of the same publish
 
 ### SST-VAL823
 
-**Desktop profile content hash does not cover every shipped tree** (error)
+**CoCo Desktop profile content hash does not cover every shipped tree** (error)
 
 `skill '<artifact>': hash omits <value>`
 
-Raised when a profile ships a tree whose digest-named prefix is absent from what its VERSION is the digest of, so a change there would produce no new version.
+Raised when a CoCo Desktop profile ships a tree whose digest-named prefix is absent from what its VERSION is the digest of, so a change there would produce no new version.
 
 Fix: include every shipped tree in the hash
 
@@ -5446,7 +5446,7 @@ Fix: validate every interpolated identifier at parse time
 
 `skill '<artifact>': <detail>`
 
-Raised when apply reports no outcome, or several, for a skill, plugin or profile change, so the result would not show that channel's state.
+Raised when apply reports no outcome, or several, for a skill, plugin or CoCo Desktop profile change, so the result would not show that channel's state.
 
 Fix: report per-channel status separately
 
@@ -5466,9 +5466,9 @@ Fix: compare the two bundles
 
 `skill '<artifact>' is published nowhere`
 
-Raised when no `+bundle_stage` resolves for the skill, and no profile, plugin a profile names, or the shared layer includes it.
+Raised when no `+bundle_stage` resolves for the skill, and no CoCo Desktop profile, plugin a profile names, or the shared layer includes it.
 
-Fix: reference it from a profile, or give it a +bundle_stage
+Fix: reference it from a CoCo Desktop profile, or give it a +bundle_stage
 
 ### SST-VAL831
 
@@ -5584,51 +5584,51 @@ Fix: rename one of them; plans and reports that name the object become ambiguous
 
 ### SST-VAL844
 
-**Profile names a skill the project does not have** (error)
+**CoCo Desktop profile names a skill the project does not have** (error)
 
-`profile '<artifact>': skill '<name>' is not a skill in this project`
+`CoCo Desktop profile '<artifact>': skill '<name>' is not a skill in this project`
 
-Raised when the shared layer or a profile names a skill the project does not have.
+Raised when the shared layer or a CoCo Desktop profile names a skill the project does not have.
 
-Fix: add the skill under the skills directory, or remove it from the profile
+Fix: add the skill under the skills directory, or remove it from the CoCo Desktop profile
 
 ### SST-VAL845
 
-**Profile repeats a shared skill or command** (warning)
+**CoCo Desktop profile repeats a shared skill or command** (warning)
 
-`profile '<artifact>': <kind> '<name>' already reaches every profile through shared/`
+`CoCo Desktop profile '<artifact>': <kind> '<name>' already reaches every profile through shared/`
 
-Raised when a profile repeats a skill or command the shared layer already carries.
+Raised when a CoCo Desktop profile repeats a skill or command the shared layer already carries.
 
-Fix: remove it from the profile
+Fix: remove it from the CoCo Desktop profile
 
 ### SST-VAL846
 
-**Profile names an unknown hook** (error)
+**CoCo Desktop profile names an unknown hook** (error)
 
-`profile '<artifact>': hook '<name>' is not defined under the hooks directory`
+`CoCo Desktop profile '<artifact>': hook '<name>' is not defined under the hooks directory`
 
-Raised when a profile names a hook not defined under the hooks directory.
+Raised when a CoCo Desktop profile names a hook not defined under the hooks directory.
 
-Fix: add the hook, or remove it from the profile
+Fix: add the hook, or remove it from the CoCo Desktop profile
 
 ### SST-VAL847
 
-**Profile names an unknown MCP config** (error)
+**CoCo Desktop profile names an unknown MCP config** (error)
 
-`profile '<artifact>': MCP config '<name>' is not defined under the MCP servers directory`
+`CoCo Desktop profile '<artifact>': MCP config '<name>' is not defined under the MCP servers directory`
 
-Raised when a profile names an MCP config not defined under the MCP servers directory.
+Raised when a CoCo Desktop profile names an MCP config not defined under the MCP servers directory.
 
-Fix: add the config, or remove it from the profile
+Fix: add the config, or remove it from the CoCo Desktop profile
 
 ### SST-VAL848
 
 **MCP server entry is not a configuration** (error)
 
-`profile '<artifact>': MCP server '<name>' is not a configuration object`
+`CoCo Desktop profile '<artifact>': MCP server '<name>' is not a configuration object`
 
-Raised when an MCP server a profile uses is not a configuration object.
+Raised when an MCP server a CoCo Desktop profile uses is not a configuration object.
 
 Fix: replace the placeholder with a server definition, or stop referencing the config
 
@@ -5636,9 +5636,9 @@ Fix: replace the placeholder with a server definition, or stop referencing the c
 
 **Two MCP configs define one server** (error)
 
-`profile '<artifact>': MCP server '<name>' is defined by both '<a>' and '<b>'`
+`CoCo Desktop profile '<artifact>': MCP server '<name>' is defined by both '<a>' and '<b>'`
 
-Raised when two MCP configs a profile uses define one server name.
+Raised when two MCP configs a CoCo Desktop profile uses define one server name.
 
 Fix: rename one server, or reference only one of the configs
 
@@ -5650,15 +5650,15 @@ Fix: rename one server, or reference only one of the configs
 
 Raised when an MCP config sets a credential-like key to a literal value.
 
-Fix: use a ${VARIABLE} placeholder; published configs are readable by every profile user
+Fix: use a ${VARIABLE} placeholder; published configs are readable by every CoCo Desktop profile user
 
 ### SST-VAL851
 
-**Profile key is not accepted** (error)
+**CoCo Desktop profile key is not accepted** (error)
 
-`profile '<artifact>': '<key>' is not accepted: <reason>`
+`CoCo Desktop profile '<artifact>': '<key>' is not accepted: <reason>`
 
-Raised when a profile declares a key SST refuses.
+Raised when a CoCo Desktop profile declares a key SST refuses.
 
 Fix: delete the key
 
@@ -5686,21 +5686,21 @@ Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
 
 ### SST-VAL854
 
-**Desktop profile registry is not the one Desktop reads** (info)
+**CoCo Desktop profile registry is not the one Desktop reads** (info)
 
-`profiles publish to <value>; CoCo Desktop reads only <expected>`
+`CoCo Desktop profiles publish to <value>; CoCo Desktop reads only <expected>`
 
-Raised when profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`).
+Raised when CoCo Desktop profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`).
 
 Fix: unset coco_desktop_profiles.+registry_table to publish where Desktop reads, or keep this for rehearsal
 
 ### SST-VAL855
 
-**Profile includes a skill or plugin with errors** (error)
+**CoCo Desktop profile includes a skill or plugin with errors** (error)
 
-`profile '<artifact>': <kind> '<name>' has errors, so the profile cannot publish`
+`CoCo Desktop profile '<artifact>': <kind> '<name>' has errors, so the profile cannot publish`
 
-Raised when a profile includes a skill or plugin that has errors.
+Raised when a CoCo Desktop profile includes a skill or plugin that has errors.
 
 Fix: fix the errors reported for it
 
@@ -5726,11 +5726,11 @@ Fix: rename the file or folder; a stage rejects any other name, so apply would f
 
 ### SST-VAL858
 
-**Profile names an unknown command** (error)
+**CoCo Desktop profile names an unknown command** (error)
 
-`profile '<artifact>': command '<name>' is not a .md file under the commands directory`
+`CoCo Desktop profile '<artifact>': command '<name>' is not a .md file under the commands directory`
 
-Raised when the shared layer or a profile names a command that is not a .md file under the commands directory.
+Raised when the shared layer or a CoCo Desktop profile names a command that is not a .md file under the commands directory.
 
 Fix: name a command by its path below project.commands_dir without .md, such as sql/check
 
@@ -5746,11 +5746,11 @@ Fix: frontmatter is optional; when present it is a YAML mapping of description, 
 
 ### SST-VAL860
 
-**Profile names an unknown plugin** (error)
+**CoCo Desktop profile names an unknown plugin** (error)
 
-`profile '<artifact>': plugin '<name>' is not a plugin under the plugins directory`
+`CoCo Desktop profile '<artifact>': plugin '<name>' is not a plugin under the plugins directory`
 
-Raised when a profile names a plugin not under the plugins directory.
+Raised when a CoCo Desktop profile names a plugin not under the plugins directory.
 
 Fix: name a plugin folder that has a plugin.yml
 
@@ -5772,9 +5772,9 @@ Note: The apply drops nothing; it only removes the state entry, so a later exten
 
 Raised when a CoWork profile compiles; reported once per compiled profile.
 
-Fix: expect the profile contract to change before general availability, and recompile after each SST upgrade
+Fix: expect the CoWork profile contract to change before general availability, and recompile after each SST upgrade
 
-Note: Snowflake private preview: https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles . SST renders the profile to the preview's contract as measured, the agent_router tool and its subagent list included, and Snowflake may change that contract before general availability.
+Note: Snowflake private preview: https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles . SST renders the CoWork profile to the preview's contract as measured, the agent_router tool and its subagent list included, and Snowflake may change that contract before general availability.
 
 ### SST-VAL871
 
@@ -5786,7 +5786,7 @@ Raised when an enabled CoWork profile's `spec.subagents` is missing or empty, or
 
 Fix: name at least one agent under spec.subagents
 
-Note: Snowflake private preview. Snowflake accepts such a profile, but a profile with no subagent list fails every run with "agent_router tool 'router' is missing a corresponding entry in tool_resources", and an empty list routes to no agent; measured on a preview account.
+Note: Snowflake private preview. Snowflake accepts such a CoWork profile, but a profile with no subagent list fails every run with "agent_router tool 'router' is missing a corresponding entry in tool_resources", and an empty list routes to no agent; measured on a preview account.
 
 ### SST-VAL872
 
@@ -5822,7 +5822,7 @@ Raised when a CoWork profile's subagent has no display name, or no description, 
 
 Fix: write the subagent's display_name and description, or give the agent it names a comment
 
-Note: Snowflake private preview. A subagent entry without all of name, display_name, description, and source makes the profile drop its whole subagent list, with no error, and the router chooses between agents by their descriptions. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+Note: Snowflake private preview. A subagent entry without all of name, display_name, description, and source makes the CoWork profile drop its whole subagent list, with no error, and the router chooses between agents by their descriptions. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 
 ### SST-VAL875
 
@@ -5842,9 +5842,9 @@ Fix: route to the agent that replaces it, or stop deprecating the agent
 
 Raised when a `spec.tools` entry of a CoWork profile has a type other than web_search or code_execution.
 
-Fix: keep only web_search or code_execution on the profile, and give the tool to an agent it routes to
+Fix: keep only web_search or code_execution on the CoWork profile, and give the tool to an agent it routes to
 
-Note: Snowflake private preview. A profile routes data questions to its agents; analyst, search, and chart tools belong on an agent. SST renders the profile's agent_router tool itself, so `spec.tools` cannot declare one either. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+Note: Snowflake private preview. A CoWork profile routes data questions to its agents; analyst, search, and chart tools belong on an agent. SST renders the profile's agent_router tool itself, so `spec.tools` cannot declare one either. https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
 
 ### SST-VAL878
 
@@ -5856,7 +5856,7 @@ Raised when a compiled CoWork profile's database and schema, compared as Snowfla
 
 Fix: publish to SNOWFLAKE_INTELLIGENCE.PROFILES on the target CoWork users reach
 
-Note: Snowflake private preview. The profile routes when it is run directly, but CoWork lists only the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, such as one published by a dev target, and is never attached to CoWork.
+Note: Snowflake private preview. The CoWork profile routes when it is run directly, but CoWork lists only the agents in SNOWFLAKE_INTELLIGENCE.PROFILES as profiles, so elsewhere it is a rehearsal, such as one published by a dev target, and is never attached to CoWork.
 
 ### SST-VAL879
 
@@ -5872,9 +5872,9 @@ Note: Both kinds publish an AGENT object, and SST tells which kind owns an obser
 
 ### SST-VAL880
 
-**Agent publishes where CoWork lists profiles** (warning)
+**Agent publishes where CoWork lists CoWork profiles** (warning)
 
-`agent '<artifact>' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a profile`
+`agent '<artifact>' publishes to SNOWFLAKE_INTELLIGENCE.PROFILES, where CoWork lists every agent as a CoWork profile`
 
 Raised when a project agent's database and schema, compared as Snowflake resolves them, are SNOWFLAKE_INTELLIGENCE.PROFILES.
 
@@ -5884,15 +5884,15 @@ Note: Snowflake private preview. CoWork treats every agent in that schema as a p
 
 ### SST-VAL881
 
-**Expected subagent is not one of the profile's** (error)
+**Expected subagent is not one of the CoWork profile's** (error)
 
 `dataset '<artifact>': row <index> expects <function>('<name>'), not a subagent of cowork profile '<value>'`
 
 Raised when a `ground_truth_subagents` entry of a CoWork profile eval's row calls `agent()` or `tool()` with a name, ignoring case, that no entry of the profile's `spec.subagents` calls that function with.
 
-Fix: name one of the profile's subagents: {detail}
+Fix: name one of the CoWork profile's subagents: {detail}
 
-Note: Snowflake private preview. The router can only choose one of the profile's subagents, so an expectation naming any other agent can never be met.
+Note: Snowflake private preview. The router can only choose one of the CoWork profile's subagents, so an expectation naming any other agent can never be met.
 
 ### SST-VAL882
 
@@ -5904,7 +5904,7 @@ Raised when the config of a CoWork profile's eval enables `tool_selection_accura
 
 Fix: remove it, and score the router with routing_accuracy under metrics.routing
 
-Note: Snowflake private preview, measured on a preview account: neither metric sees a router call, so every record reports that no tool was invoked, and a row that expects the profile to decline scores 1.0 whatever the router did.
+Note: Snowflake private preview, measured on a preview account: neither metric sees a router call, so every record reports that no tool was invoked, and a row that expects the CoWork profile to decline scores 1.0 whatever the router did.
 
 ### SST-VAL883
 
@@ -5928,7 +5928,7 @@ Raised when no row of a CoWork profile eval's dataset sets `ground_truth.ground_
 
 Fix: give each row the subagents it should route to in ground_truth_subagents, [] for one to decline
 
-Note: Snowflake private preview. A profile's own failures are routing failures.
+Note: Snowflake private preview. A CoWork profile's own failures are routing failures.
 
 ### SST-VAL885
 
@@ -5940,7 +5940,7 @@ Raised when some rows of a CoWork profile eval's dataset set `ground_truth_subag
 
 Fix: add a row whose ground_truth_subagents is [], for a question none of its subagents covers
 
-Note: Snowflake private preview. A profile that routes a question it should decline is a failure only a decline row catches.
+Note: Snowflake private preview. A CoWork profile that routes a question it should decline is a failure only a decline row catches.
 
 ### SST-VAL886
 
@@ -5950,7 +5950,7 @@ Note: Snowflake private preview. A profile that routes a question it should decl
 
 Raised when a CoWork profile's eval, on a target that publishes the profile to SNOWFLAKE_INTELLIGENCE.PROFILES; the eval does not compile, so no eval object is planned there.
 
-Fix: evaluate the profile's rehearsal on a target that publishes it elsewhere; it routes the same way
+Fix: evaluate the CoWork profile's rehearsal on a target that publishes it elsewhere; it routes the same way
 
 Note: Snowflake private preview. An eval's source table, dataset and config stage publish in its subject's schema, and eval tables, datasets and stages in CoWork's schema are unmeasured. An info, as SST-VAL878 is: leaving the eval out is what a target that publishes to CoWork should do, so strict mode never blocks a plan on it.
 
@@ -5962,9 +5962,9 @@ Note: Snowflake private preview. An eval's source table, dataset and config stag
 
 Raised when the config of a CoWork profile's eval has no `metrics.system`, and the `metrics` setting it inherits from a folder route or the `evals:` block root lists `tool_selection_accuracy` or `tool_execution_accuracy`; the metric is left out of the config Snowflake runs.
 
-Fix: nothing to do; write metrics.system in the profile's eval config to choose its system metrics
+Fix: nothing to do; write metrics.system in the CoWork profile's eval config to choose its system metrics
 
-Note: Snowflake private preview, measured on a preview account: neither metric sees a router call. A profile's config that names either one itself, in `metrics.system` or its own `config.metrics`, is SST-VAL882 instead. Score the router with `routing_accuracy` under `metrics.routing`.
+Note: Snowflake private preview, measured on a preview account: neither metric sees a router call. A CoWork profile's config that names either one itself, in `metrics.system` or its own `config.metrics`, is SST-VAL882 instead. Score the router with `routing_accuracy` under `metrics.routing`.
 
 ### SST-VAL888
 
@@ -6150,7 +6150,7 @@ Fix: check the dbt version; pass --allow-unsupported-manifest-schema only if you
 
 `<path>: <detail>`
 
-Raised when `profiles.yml` is not valid YAML, or its root is not a mapping of profiles.
+Raised when `profiles.yml` is not valid YAML, or its root is not a mapping of dbt profiles.
 
 Fix: fix profiles.yml
 
@@ -6460,7 +6460,7 @@ Raised when once its settings resolve, a defined search service has no `warehous
 
 Fix: set config.{field} on the member, or +{field} in a tools: folder route or the block root
 
-Note: A warehouse falls back to the profile target's when neither the member's `config:`, a folder route nor `tools.+warehouse` names one; a target lag has no fallback.
+Note: A warehouse falls back to the dbt profile target's when neither the member's `config:`, a folder route nor `tools.+warehouse` names one; a target lag has no fallback.
 
 ### SST-RND900
 
@@ -6812,7 +6812,7 @@ Fix: create the database, or correct the target
 
 `warehouse <value> does not exist or is not authorized`
 
-Raised when the warehouse the profile names does not exist, or the role cannot see it; reported once per plan.
+Raised when the warehouse the dbt profile names does not exist, or the role cannot see it; reported once per plan.
 
 Fix: grant USAGE, or name an existing warehouse
 
@@ -6958,7 +6958,7 @@ Fix: move the object explicitly, then reconcile state and re-run plan
 
 `<artifact>: stage <value> is <found>, expected INTERNAL NO CSE`
 
-Raised when the skill bundle stage, the profile stage, or the `apply.agent_spec_stage` stage exists but is not INTERNAL with SNOWFLAKE_SSE encryption.
+Raised when the skill bundle stage, the CoCo Desktop profile stage, or the `apply.agent_spec_stage` stage exists but is not INTERNAL with SNOWFLAKE_SSE encryption.
 
 Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage
 
@@ -6988,7 +6988,7 @@ Fix: another writer changed the row; reconcile it, then plan again
 
 `<artifact>: <value> <detail>`
 
-Raised when the profile registry table lacks a column SST writes, or types it differently.
+Raised when the CoCo Desktop profile registry table lacks a column SST writes, or types it differently.
 
 Fix: SST never alters the registry; fix the table or point coco_desktop_profiles.+registry_table at a compatible one
 
@@ -7180,23 +7180,23 @@ Raised when state records a CoWork profile published to SNOWFLAKE_INTELLIGENCE.P
 
 Fix: apply to attach it again, or set `cowork_profiles.+attach: false` to leave it detached
 
-Note: Snowflake private preview. The update rewrites the profile's comment with SST's ownership marker, which apply reads back, then runs ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT, committing no version. Attaching is not part of the profile's definition, so a profile detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). Strict mode leaves this a warning, since the apply it plans is the repair.
+Note: Snowflake private preview. The update rewrites the CoWork profile's comment with SST's ownership marker, which apply reads back, then runs ALTER SNOWFLAKE INTELLIGENCE ... ADD AGENT, committing no version. Attaching is not part of the profile's definition, so a profile detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). Strict mode leaves this a warning, since the apply it plans is the repair.
 
 ### SST-PLN105
 
-**The account has no CoWork object to attach a profile to** (warning)
+**The account has no CoWork object to attach a CoWork profile to** (warning)
 
-`<artifact>: the account has no CoWork object, so the profile publishes unattached`
+`<artifact>: the account has no CoWork object, so the CoWork profile publishes unattached`
 
 Raised when a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `+attach` on is planned, and SHOW SNOWFLAKE INTELLIGENCES lists nothing.
 
 Fix: create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`
 
-Note: Snowflake private preview. The profile is still published, and a later plan attaches it once the account has a CoWork object (SST-PLN104).
+Note: Snowflake private preview. The CoWork profile is still published, and a later plan attaches it once the account has a CoWork object (SST-PLN104).
 
 ### SST-PLN106
 
-**No role in the session may attach a profile to CoWork** (error)
+**No role in the session may attach a CoWork profile to CoWork** (error)
 
 `<artifact>: no role in the session holds MODIFY or OWNERSHIP on the CoWork object <value>`
 
@@ -7204,7 +7204,7 @@ Raised when a planned change attaches a CoWork profile, and SHOW GRANTS ON SNOWF
 
 Fix: grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`
 
-Note: Snowflake private preview. A secondary role in the session counts. The change is blocked, so apply never publishes a profile it cannot attach; USAGE on the profile is granted outside SST.
+Note: Snowflake private preview. A secondary role in the session counts. The change is blocked, so apply never publishes a CoWork profile it cannot attach; USAGE on the profile is granted outside SST.
 
 ### SST-PLN107
 
@@ -7400,7 +7400,7 @@ Fix: no action; the same committed file is reusable for a permanent apply
 
 `<artifact>: <detail>`
 
-Raised when a composite publish (an eval, a skill or plugin, or a Desktop profile) wrote part of what it publishes, then a statement failed or what it wrote did not read back as rendered.
+Raised when a composite publish (an eval, a skill or plugin, or a CoCo Desktop profile) wrote part of what it publishes, then a statement failed or what it wrote did not read back as rendered.
 
 Fix: read the detail: when a statement failed, fix its cause and apply again; when what was written does not read back as rendered, restore it or drop the object by hand, then apply
 
@@ -7412,7 +7412,7 @@ Note: State keeps the partial write, so the next plan publishes the artifact aga
 
 `<artifact>: <detail>`
 
-Raised when a Desktop profile's registry row was written, but a stage pointer it carries does not resolve to a tree the stage holds.
+Raised when a CoCo Desktop profile's registry row was written, but a stage pointer it carries does not resolve to a tree the stage holds.
 
 Fix: report per-channel status separately
 
@@ -7422,7 +7422,7 @@ Fix: report per-channel status separately
 
 `<artifact>: uploaded <path>, pointer write failed: <detail>`
 
-Raised when a Desktop profile's trees were uploaded to its stage, then writing its registry row failed.
+Raised when a CoCo Desktop profile's trees were uploaded to its stage, then writing its registry row failed.
 
 Fix: re-run apply; the publish is half complete
 
@@ -7496,7 +7496,7 @@ Note: SST already counts the attempt as not passing: although this is a warning,
 
 `<value>: <detail>`
 
-Raised when the Desktop profile registry table SST created is absent afterwards, or lacks the columns Desktop's query reads.
+Raised when the CoCo Desktop profile registry table SST created is absent afterwards, or lacks the columns Desktop's query reads.
 
 Fix: re-run sst extract, then apply
 
@@ -7552,7 +7552,7 @@ Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_
 
 `state entries recovered from ownership markers and content digests: <count>; unrecorded artifacts left: <value>`
 
-Raised when `sst state recover` ran: each artifact state did not record whose live objects prove they hold the compiled definition under the compiled name -- by the ownership marker on a semantic view, tool or agent, and by the content of a skill's or plugin's version and bundle prefix, a profile's registry row, or an eval's dataset version and staged config -- was recorded, without writing the object.
+Raised when `sst state recover` ran: each artifact state did not record whose live objects prove they hold the compiled definition under the compiled name -- by the ownership marker on a semantic view, tool or agent, and by the content of a skill's or plugin's version and bundle prefix, a CoCo Desktop profile's registry row, or an eval's dataset version and staged config -- was recorded, without writing the object.
 
 Fix: run sst plan: what was recovered now plans as unchanged
 
@@ -7562,7 +7562,7 @@ Fix: run sst plan: what was recovered now plans as unchanged
 
 `<artifact>: not recovered (<found>); the next apply <value>`
 
-Raised when `sst state recover` found an artifact state does not record whose live content is not the compiled definition: the object is absent, carries no marker, or carries one for another definition; a skill's or plugin's version or bundle prefix is missing or holds other files; a profile's registry row shows Desktop other columns; an eval's dataset version records other provenance, or its staged config other bytes; or Snowflake would not report the objects.
+Raised when `sst state recover` found an artifact state does not record whose live content is not the compiled definition: the object is absent, carries no marker, or carries one for another definition; a skill's or plugin's version or bundle prefix is missing or holds other files; a CoCo Desktop profile's registry row shows Desktop other columns; an eval's dataset version records other provenance, or its staged config other bytes; or Snowflake would not report the objects.
 
 Fix: review the plan for it: an object SST cannot prove is its own stays unmanaged (SST-PLN024) until dropped or renamed
 
@@ -7710,9 +7710,9 @@ Note: Only agents are temporary: the views, tools and skills the same run publis
 
 Raised when `apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a temporary profile has not been measured on Snowflake, and a permanent one would route to agents that end with the run's session, so the profile is neither published nor recorded.
 
-Fix: apply without --temporary to publish the profile
+Fix: apply without --temporary to publish the CoWork profile
 
-Note: The agents the profile routes to still publish, as temporary agents.
+Note: The agents the CoWork profile routes to still publish, as temporary agents.
 
 ### SST-APL107
 
@@ -7916,7 +7916,7 @@ Raised when `sst eval --unpublished` selects the eval of a CoWork profile; nothi
 
 Fix: run it published with `sst eval`, or leave it out with `--exclude {selector}`
 
-Note: Snowflake private preview: CoWork profiles. An unpublished run would need a temporary profile, which has not been measured on Snowflake (see SST-APL106).
+Note: Snowflake private preview: CoWork profiles. An unpublished run would need a temporary CoWork profile, which has not been measured on Snowflake (see SST-APL106).
 
 ## Snowflake (SNO)
 
@@ -8346,7 +8346,7 @@ Fix: remove it by hand
 
 Raised when a credential field written for the selected `profiles.yml` target renders empty.
 
-Fix: set the environment variable, or the profile field
+Fix: set the environment variable, or the dbt profile field
 
 ### SST-PRT012
 

@@ -31,7 +31,7 @@ def test_sst_val845_fires() -> None:
     )
     assert diagnostic.severity is Severity.WARNING
     assert diagnostic.message == (
-        "profile 'analyst': skill 'month-close' already reaches every profile through shared/"
+        "CoCo Desktop profile 'analyst': skill 'month-close' already reaches every profile through shared/"
     )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 

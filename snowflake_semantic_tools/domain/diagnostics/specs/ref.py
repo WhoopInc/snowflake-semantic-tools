@@ -335,7 +335,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a field that names a file or a member, and so is read only as a template call, holds a bare "
             "value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an "
             "agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a "
-            "plugin's or profile's member, a hook's `script:` or a command's `skill:`"
+            "plugin's or CoCo Desktop profile's member, a hook's `script:` or a command's `skill:`"
         ),
         note="The References guide lists every reference field, the function it takes, and the fields left literal.",
     ),

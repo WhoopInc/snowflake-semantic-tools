@@ -14,7 +14,7 @@ def test_sst_cfg014_fires(tmp_path: Path) -> None:
     target = load_profile_target(project_paths(target_project(tmp_path, "warehouse: WH")))
     [diagnostic] = target.connection_warnings
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG014", Severity.WARNING)
-    assert diagnostic.message == "profile 'test' leaves role empty"
+    assert diagnostic.message == "dbt profile 'test' leaves role empty"
     assert diagnostic.subject == "config:profiles.yml"
 
 

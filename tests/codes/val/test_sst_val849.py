@@ -32,7 +32,9 @@ def test_sst_val849_fires() -> None:
         "SST-VAL849",
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "profile 'analyst': MCP server 'dbt' is defined by both 'dbt' and 'dbt-copy'"
+    assert (
+        diagnostic.message == "CoCo Desktop profile 'analyst': MCP server 'dbt' is defined by both 'dbt' and 'dbt-copy'"
+    )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 
 

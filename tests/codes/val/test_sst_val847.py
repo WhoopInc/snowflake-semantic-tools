@@ -32,7 +32,7 @@ def test_sst_val847_fires() -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "profile 'analyst': MCP config 'missing' is not defined under the MCP servers directory"
+        "CoCo Desktop profile 'analyst': MCP config 'missing' is not defined under the MCP servers directory"
     )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 

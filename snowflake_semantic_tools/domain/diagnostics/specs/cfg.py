@@ -93,27 +93,27 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG010",
         Severity.ERROR,
-        "Profile or target not found",
-        "target '{target}' is absent from profile '{profile}'",
+        "dbt profile or target not found",
+        "target '{target}' is absent from dbt profile '{profile}'",
         "add the target, or pass --target with a declared name",
         condition=(
-            "`profiles.yml` does not declare the project's profile, or the profile's outputs do not "
+            "`profiles.yml` does not declare the project's dbt profile, or the profile's outputs do not "
             "declare the selected target or the `defer.target`"
         ),
     ),
     spec(
         "SST-CFG011",
         Severity.ERROR,
-        "Profile type is not snowflake",
-        "profile '{profile}' declares type '{found}'",
-        "point SST at a Snowflake profile",
+        "dbt profile type is not snowflake",
+        "dbt profile '{profile}' declares type '{found}'",
+        "point SST at a Snowflake dbt profile",
         condition="the selected `profiles.yml` target declares a `type` other than `snowflake`",
     ),
     spec(
         "SST-CFG012",
         Severity.ERROR,
-        "Required field missing from the resolved profile",
-        "profile '{profile}' has no {field}",
+        "Required field missing from the resolved dbt profile",
+        "dbt profile '{profile}' has no {field}",
         "set {field} in profiles.yml or its env var",
         condition=(
             "account or user is absent or empty in the resolved target when a connection opens, or "
@@ -132,8 +132,8 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-CFG014",
         Severity.WARNING,
-        "Profile field silently empty",
-        "profile '{profile}' leaves {field} empty",
+        "dbt profile field silently empty",
+        "dbt profile '{profile}' leaves {field} empty",
         "set {field} explicitly rather than relying on account defaults",
         condition="the selected `profiles.yml` target sets no `role`, or no `warehouse`",
     ),
@@ -362,7 +362,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Configuration requires a dbt project",
         "{key} requires a dbt project, and the project has no dbt_project.yml",
         "add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, "
-        "and profiles only",
+        "and CoCo Desktop profiles only",
         condition=(
             "configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is "
             "absent, or `sst init` runs in a directory with no dbt_project.yml"
@@ -405,7 +405,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "target '{target}': {detail}",
         "authenticate with a key pair, a password, SSO (authenticator), or an OAuth access token (token)",
         condition=(
-            "the profile asks for an unsupported auth mode (refresh-token exchange, OAuth client "
+            "the dbt profile asks for an unsupported auth mode (refresh-token exchange, OAuth client "
             "credentials, two private keys) or an unreadable private_key"
         ),
     ),
@@ -474,7 +474,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "without dbt; when both are set they must agree",
         condition=(
             "dbt_project.yml declares no `profile:`, the project has no dbt_project.yml and sets no "
-            "`project.target_profile`, or the two name different profiles"
+            "`project.target_profile`, or the two name different dbt profiles"
         ),
     ),
     spec(

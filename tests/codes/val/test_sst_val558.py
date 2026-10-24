@@ -21,7 +21,7 @@ def test_sst_val558_fires() -> None:
     [diagnostic] = coded(result.diagnostics, "SST-VAL558")
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "agent 'sales_agent': profile renders 1001 bytes of JSON, over Snowflake's 1,000-byte limit"
+        "agent 'sales_agent': agent profile renders 1001 bytes of JSON, over Snowflake's 1,000-byte limit"
     )
     assert diagnostic.subject == "agent:sales_agent"
     # The publish would stop part way, so the agent does not compile.

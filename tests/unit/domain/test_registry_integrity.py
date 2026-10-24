@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -239,3 +240,44 @@ def test_a_subsystem_other_than_the_area_and_an_unreferenced_type_are_refused() 
         build_registry((replace(spec("SST-ABC001", Severity.ERROR, "T", "{value}", None), subsystem="XYZ"),))
     with pytest.raises(RegistryIntegrityError, match="the type has no ref_function"):
         freeze((VIEW, artifact("tool", 200, ref_function=None)))
+
+
+# Three kinds of profile reach a diagnostic: a CoCo Desktop profile, a CoWork profile, and the dbt
+# profile SST signs in with (an agent's `profile:` is a fourth). A bare "profile" leaves the reader
+# to guess which, so the first mention in each field names its kind; a later one may refer back.
+_PROFILE_WORD = re.compile(r"(?<![\w.$-])profiles?(?![\w-])", re.IGNORECASE)
+_PROFILE_KIND = re.compile(r"(?:CoCo Desktop|CoWork|dbt|agent(?:'s)?|profiles\.yml)\s+$", re.IGNORECASE)
+
+
+def _unqualified_profile(text: str) -> str | None:
+    for match in _PROFILE_WORD.finditer(text):
+        before, after = text[: match.start()], text[match.end() : match.end() + 1]
+        if before.endswith("`") or after in (":", "`", "."):
+            continue  # a key, path or name written as code
+        if re.search(r"(?<!CoCo )Desktop\s+$", before):
+            return "says 'Desktop profile', not 'CoCo Desktop profile'"
+        return None if _PROFILE_KIND.search(before) else "names a profile without saying which kind"
+    return None
+
+
+def test_every_diagnostic_names_which_kind_of_profile_it_means() -> None:
+    found = [
+        f"{code} {field}: {problem}"
+        for code, entry in sorted(ERROR_REGISTRY.items())
+        for field in ("title", "template", "suggestion", "condition", "note")
+        if (problem := _unqualified_profile(getattr(entry, field) or "")) is not None
+    ]
+    assert found == []
+
+
+def test_the_profile_wording_check_reads_each_form() -> None:
+    assert _unqualified_profile("profile '{artifact}' names a hook") is not None
+    assert _unqualified_profile("a Desktop profile's tree") is not None
+    for allowed in (
+        "CoCo Desktop profile '{artifact}': the profile cannot publish",
+        "dbt profile '{profile}' has no role",
+        "set `profile:` in dbt_project.yml",
+        "`profiles.yml` does not declare it",
+        "a CoWork profile routes to its agents",
+    ):
+        assert _unqualified_profile(allowed) is None, allowed

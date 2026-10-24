@@ -473,7 +473,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL548",
         Severity.WARNING,
-        "Profile value outside its declared allowlist or form",
+        "Agent profile value outside its declared allowlist or form",
         "agent '{artifact}': {field} '{found}' {detail}",
         "use an allowlisted avatar, or a plain color name or var(--token)",
         condition=(
@@ -615,11 +615,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL558",
         Severity.ERROR,
         "Agent profile exceeds the size limit",
-        "agent '{artifact}': profile renders {size} bytes of JSON, over Snowflake's 1,000-byte limit",
-        "shorten the profile's display_name, avatar or color",
+        "agent '{artifact}': agent profile renders {size} bytes of JSON, over Snowflake's 1,000-byte limit",
+        "shorten the agent profile's display_name, avatar or color",
         condition="the agent's `profile:` renders more than 1,000 bytes of JSON, encoded as UTF-8",
         note=(
-            "`ALTER AGENT ... SET PROFILE` refuses a larger profile, after the agent's other "
+            "`ALTER AGENT ... SET PROFILE` refuses a larger agent profile, after the agent's other "
             "statements ran, so the publish would stop part way."
         ),
     ),

@@ -230,7 +230,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "read the detail: when a statement failed, fix its cause and apply again; when what was "
         "written does not read back as rendered, restore it or drop the object by hand, then apply",
         condition=(
-            "a composite publish (an eval, a skill or plugin, or a Desktop profile) wrote part of "
+            "a composite publish (an eval, a skill or plugin, or a CoCo Desktop profile) wrote part of "
             "what it publishes, then a statement failed or what it wrote did not read back as "
             "rendered"
         ),
@@ -244,7 +244,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {detail}",
         "report per-channel status separately",
         condition=(
-            "a Desktop profile's registry row was written, but a stage pointer it carries does not "
+            "a CoCo Desktop profile's registry row was written, but a stage pointer it carries does not "
             "resolve to a tree the stage holds"
         ),
         precheck=Precheck.RUNTIME,
@@ -255,7 +255,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Registry pointer write failed after an upload",
         "{artifact}: uploaded {path}, pointer write failed: {detail}",
         "re-run apply; the publish is half complete",
-        condition="a Desktop profile's trees were uploaded to its stage, then writing its registry row failed",
+        condition="a CoCo Desktop profile's trees were uploaded to its stage, then writing its registry row failed",
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -351,7 +351,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{value}: {detail}",
         "re-run sst extract, then apply",
         condition=(
-            "the Desktop profile registry table SST created is absent afterwards, or lacks the "
+            "the CoCo Desktop profile registry table SST created is absent afterwards, or lacks the "
             "columns Desktop's query reads"
         ),
         note=(
@@ -426,7 +426,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst state recover` ran: each artifact state did not record whose live objects prove "
             "they hold the compiled definition under the compiled name -- by the ownership marker "
             "on a semantic view, tool or agent, and by the content of a skill's or plugin's "
-            "version and bundle prefix, a profile's registry row, or an eval's dataset version and "
+            "version and bundle prefix, a CoCo Desktop profile's registry row, or an eval's dataset version and "
             "staged config -- was recorded, without writing the object"
         ),
         precheck=Precheck.RUNTIME,
@@ -442,7 +442,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst state recover` found an artifact state does not record whose live content is not "
             "the compiled definition: the object is absent, carries no marker, or carries one for "
             "another definition; a skill's or plugin's version or bundle prefix is missing or holds "
-            "other files; a profile's registry row shows Desktop other columns; an eval's dataset "
+            "other files; a CoCo Desktop profile's registry row shows Desktop other columns; an eval's dataset "
             "version records other provenance, or its staged config other bytes; or Snowflake "
             "would not report the objects"
         ),
@@ -613,13 +613,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.INFO,
         "CoWork profile left out of a temporary run",
         "{artifact}: skipped, because --temporary publishes no CoWork profile",
-        "apply without --temporary to publish the profile",
+        "apply without --temporary to publish the CoWork profile",
         condition=(
             "`apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a "
             "temporary profile has not been measured on Snowflake, and a permanent one would route to agents "
             "that end with the run's session, so the profile is neither published nor recorded"
         ),
-        note="The agents the profile routes to still publish, as temporary agents.",
+        note="The agents the CoWork profile routes to still publish, as temporary agents.",
     ),
     spec(
         "SST-APL107",

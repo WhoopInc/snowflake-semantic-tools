@@ -169,7 +169,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=("`sst eval --unpublished` selects the eval of a CoWork profile; nothing runs"),
         note=(
             "Snowflake private preview: CoWork profiles. An unpublished run would need a temporary "
-            "profile, which has not been measured on Snowflake (see SST-APL106)."
+            "CoWork profile, which has not been measured on Snowflake (see SST-APL106)."
         ),
     ),
 )

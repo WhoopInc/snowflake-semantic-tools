@@ -18,7 +18,7 @@ def test_sst_cfg011_fires(tmp_path: Path) -> None:
         load_profile_target(project_paths(target_project(tmp_path, adapter="postgres")))
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG011", Severity.ERROR)
-    assert diagnostic.message == "profile 'test' declares type 'postgres'"
+    assert diagnostic.message == "dbt profile 'test' declares type 'postgres'"
     assert diagnostic.subject == "config:profiles.yml"
 
 

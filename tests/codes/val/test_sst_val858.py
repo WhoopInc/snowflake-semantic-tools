@@ -32,7 +32,7 @@ def test_sst_val858_fires() -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "profile 'analyst': command 'sql/missing' is not a .md file under the commands directory"
+        "CoCo Desktop profile 'analyst': command 'sql/missing' is not a .md file under the commands directory"
     )
     assert diagnostic.subject == "coco_desktop_profile:analyst"
 

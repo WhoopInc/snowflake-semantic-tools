@@ -18,7 +18,7 @@ def test_sst_cfg010_fires(tmp_path: Path) -> None:
         load_profile_target(project_paths(target_project(tmp_path)), "prod")
     [diagnostic] = raised.value.diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG010", Severity.ERROR)
-    assert diagnostic.message == "target 'prod' is absent from profile 'test'"
+    assert diagnostic.message == "target 'prod' is absent from dbt profile 'test'"
 
 
 def test_sst_cfg010_fires_for_an_undeclared_profile(tmp_path: Path) -> None:
@@ -26,7 +26,7 @@ def test_sst_cfg010_fires_for_an_undeclared_profile(tmp_path: Path) -> None:
     (tmp_path / "dbt_project.yml").write_text("profile: other\n", encoding="utf-8")
     with pytest.raises(ProjectError) as raised:
         load_profile_target(project_paths(tmp_path))
-    assert raised.value.diagnostics[0].message == "target '(default)' is absent from profile 'other'"
+    assert raised.value.diagnostics[0].message == "target '(default)' is absent from dbt profile 'other'"
 
 
 def test_sst_cfg010_silent(tmp_path: Path) -> None:

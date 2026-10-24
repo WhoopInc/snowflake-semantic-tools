@@ -157,7 +157,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "dbt profile could not be parsed",
         "{path}: {detail}",
         "fix profiles.yml",
-        condition="`profiles.yml` is not valid YAML, or its root is not a mapping of profiles",
+        condition="`profiles.yml` is not valid YAML, or its root is not a mapping of dbt profiles",
     ),
     spec(
         "SST-DBT020",
