@@ -5648,7 +5648,7 @@ Fix: rename one server, or reference only one of the configs
 
 `MCP config '<artifact>': server '<name>' sets '<key>' to a literal value`
 
-Raised when an MCP config sets a credential-like key to a literal value.
+Raised when an MCP config sets a credential-like key to a literal value, or sends an `Authorization`, `Proxy-Authorization` or `Cookie` header whose value holds no `${VARIABLE}` placeholder.
 
 Fix: use a ${VARIABLE} placeholder; published configs are readable by every CoCo Desktop profile user
 

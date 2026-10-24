@@ -429,7 +429,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "MCP config carries a literal credential",
         "MCP config '{artifact}': server '{name}' sets '{key}' to a literal value",
         "use a ${VARIABLE} placeholder; published configs are readable by every CoCo Desktop profile user",
-        condition="an MCP config sets a credential-like key to a literal value",
+        condition=(
+            "an MCP config sets a credential-like key to a literal value, or sends an `Authorization`, "
+            "`Proxy-Authorization` or `Cookie` header whose value holds no `${VARIABLE}` placeholder"
+        ),
     ),
     spec(
         "SST-VAL851",

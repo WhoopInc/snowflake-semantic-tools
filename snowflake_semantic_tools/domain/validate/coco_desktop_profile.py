@@ -30,6 +30,10 @@ from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPT
 
 _PLACEHOLDER = re.compile(r"^\$\{[A-Za-z_][A-Za-z0-9_]*\}$")
 _CREDENTIAL_KEY = re.compile(r"(?i)(token|secret|password|passwd|api[_-]?key|private[_-]?key)")
+# HTTP headers that carry a credential whatever their value looks like. Their value names a
+# scheme too (`Bearer ${TOKEN}`), so it passes when a placeholder supplies the secret part.
+_CREDENTIAL_HEADERS = frozenset(("authorization", "proxy-authorization", "cookie"))
+_EMBEDDED_PLACEHOLDER = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +220,9 @@ def _literal_credentials(servers: Mapping[str, object]) -> tuple[tuple[str, str]
     """Find (server, key) for each string set literally under a credential-like key, at any depth.
 
     A list's items are judged by the key that holds the list. An empty string or a `${VAR}`
-    placeholder is not a literal credential.
+    placeholder is not a literal credential. An `Authorization`, `Proxy-Authorization` or
+    `Cookie` header always carries one, so its value is literal unless a placeholder supplies
+    the secret within it, as in `Bearer ${TOKEN}`; header names compare casefolded.
     """
     found: list[tuple[str, str]] = []
 
@@ -227,12 +233,19 @@ def _literal_credentials(servers: Mapping[str, object]) -> tuple[tuple[str, str]
         elif isinstance(value, list):
             for item in value:
                 walk(server, item, key)
-        elif isinstance(value, str) and _CREDENTIAL_KEY.search(key) and value and not _PLACEHOLDER.fullmatch(value):
+        elif isinstance(value, str) and value and _literal(key, value):
             found.append((server, key))
 
     for server, value in servers.items():
         walk(server, value, "")
     return tuple(found)
+
+
+def _literal(key: str, value: str) -> bool:
+    """Whether a non-empty string under `key` is a credential written literally."""
+    if key.casefold() in _CREDENTIAL_HEADERS:
+        return _EMBEDDED_PLACEHOLDER.search(value) is None
+    return _CREDENTIAL_KEY.search(key) is not None and not _PLACEHOLDER.fullmatch(value)
 
 
 def _staged_path_rules(catalog: CocoDesktopProfileCatalog) -> list[Diagnostic]:

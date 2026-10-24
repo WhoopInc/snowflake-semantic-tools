@@ -40,3 +40,22 @@ def test_sst_val850_silent() -> None:
             profile_catalog(mcp_configs=(mcp(servers={"dbt": {"env": {"API_KEY": "${DBT_KEY}"}}}),)), SKILLS
         )
     )
+
+
+def test_sst_val850_fires_for_a_literal_authorization_or_cookie_header() -> None:
+    headers = {"Authorization": "Bearer abc123", "proxy-authorization": "Basic placeholder-value", "Cookie": "s=1"}
+    servers: dict[str, object] = {"gateway": {"type": "http", "url": "https://x", "headers": headers}}
+    found = validate_coco_desktop_profile_catalog(profile_catalog(mcp_configs=(mcp(servers=servers),)), SKILLS)
+    assert sorted(item.context["key"] for item in found if item.code == "SST-VAL850") == [
+        "Authorization",
+        "Cookie",
+        "proxy-authorization",
+    ]
+
+
+def test_sst_val850_silent_for_a_header_whose_secret_is_a_placeholder() -> None:
+    headers = {"Authorization": "Bearer ${GATEWAY_TOKEN}", "Accept": "application/json"}
+    servers: dict[str, object] = {"gateway": {"type": "http", "url": "https://x", "headers": headers}}
+    assert "SST-VAL850" not in codes(
+        validate_coco_desktop_profile_catalog(profile_catalog(mcp_configs=(mcp(servers=servers),)), SKILLS)
+    )

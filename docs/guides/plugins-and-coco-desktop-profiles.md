@@ -238,7 +238,10 @@ object (`SST-VAL848`), and two configs in one profile cannot define the same
 server (`SST-VAL849`). Use `${VAR}` placeholders for secrets: the merged file is
 readable by everyone who uses the profile, so a literal value under a key whose
 name contains `token`, `secret`, `password`, `passwd`, `api_key`, or
-`private_key` is an error (`SST-VAL850`).
+`private_key` is an error (`SST-VAL850`). So is an `Authorization`,
+`Proxy-Authorization` or `Cookie` header, which carries a credential whatever it
+is called, unless a placeholder supplies the secret:
+`"Authorization": "Bearer ${GATEWAY_TOKEN}"`.
 
 ## How a profile publishes
 
