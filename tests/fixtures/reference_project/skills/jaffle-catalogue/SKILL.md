@@ -20,8 +20,7 @@ The smallest skill: no bundle, no `reference/` directory, no scripts -- only
 
 Do not add a bundle to this skill. It plays the role `jaffle_minimal` plays among the
 views and `total_revenue_all_time` among the verified queries: a publisher that walks
-a bundle unconditionally, or emits a flattened payload for a skill with nothing to
-flatten, fails its golden (`tests/golden/expected/skill/jaffle-catalogue.bundle.json`)
+a bundle unconditionally, or emits files a skill does not hold, fails its golden (`tests/golden/expected/skill/jaffle-catalogue.bundle.json`)
 and no other.
 -->
 

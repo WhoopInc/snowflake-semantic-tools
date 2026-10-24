@@ -60,7 +60,7 @@ def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     assert compiled.exit_code == 0
     listed = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "--output", "json"])
     assert listed.exit_code == 0
-    assert json.loads(listed.output)["data"]["count"] == 16
+    assert json.loads(listed.output)["data"]["count"] == 17
     cleaned = CliRunner().invoke(cli, ["clean", "--project-dir", str(project), "--output", "json"])
     assert cleaned.exit_code == 0
     assert not (project / "sst_target").exists()

@@ -461,7 +461,7 @@ ARTIFACT_REGISTRY = build_registry(
             grant_preservation=GrantPreservation.NONE,
             lifecycle=ArtifactLifecycle.COMPOSITE,
             summary=(
-                "One `SKILL.md` folder, flattened and published as a version of a skill-type Cortex "
+                "One `SKILL.md` folder, published as authored as a version of a skill-type Cortex "
                 "Extension wherever its `+bundle_stage` resolves. The version alias is its "
                 "`+version_prefix` and 12 hex characters of the bundle digest, so a version is never "
                 "rewritten: a change adds a new one, every apply makes the declared one the default "

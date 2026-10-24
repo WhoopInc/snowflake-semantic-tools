@@ -9,7 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
+from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
@@ -22,14 +22,14 @@ TARGET = QualifiedName.parse("DB.S.KIT")
 
 def test_sst_val815_fires() -> None:
     diagnostic = only(
-        flatten_skill(
+        check_skill_files(
             skill(
                 files={
                     "run.py": 'open("/Users/.../data.csv")\n',
                     "SKILL.md": REF.format(ref="reference/steps.md, then run run.py"),
                 }
             )
-        )[2],
+        ),
         "SST-VAL815",
     )
     assert diagnostic.severity is Severity.WARNING
@@ -39,20 +39,20 @@ def test_sst_val815_fires() -> None:
 
 def test_sst_val815_silent() -> None:
     assert "SST-VAL815" not in codes(
-        flatten_skill(
+        check_skill_files(
             skill(
                 files={
                     "run.py": 'open("data.csv")\n',
                     "SKILL.md": REF.format(ref="reference/steps.md, then run run.py"),
                 }
             )
-        )[2]
+        )
     )
 
 
 def _hazards(files: dict[str, str]) -> list[str]:
     links = REF.format(ref="reference/steps.md, then run run.sh")
-    found = flatten_skill(skill(files={**files, "SKILL.md": links}))[2]
+    found = check_skill_files(skill(files={**files, "SKILL.md": links}))
     return [item.context["detail"] for item in found if item.code == "SST-VAL815"]
 
 

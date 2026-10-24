@@ -3,7 +3,7 @@
 A golden pins the exact bytes SST renders for one artifact of the reference project. Each
 artifact type has one route: a semantic view's DDL sits in the DDL directory itself
 (`tests/golden/expected/ddl`), and every other type's payload in a directory beside it named
-for the type. Some goldens are optional -- a flattened skill, a plugin manifest, a profile's
+for the type. Some goldens are optional -- a skill's SKILL.md, a plugin manifest, a profile's
 prompt and MCP files -- and are compared only when committed.
 
 `CompareGoldens` reads goldens through a `GoldenStore`, so it touches no file;
@@ -45,7 +45,7 @@ DBT_MANIFEST = REPO_ROOT / "tests" / "fixtures" / "reference_project_manifest.js
 # Optional goldens the reference project may commit for an extension: where each lives, and
 # the bundle member it pins.
 _OPTIONAL_EXTENSION_GOLDENS = {
-    "skill": ("{name}-flattened.md", "skills/{name}/SKILL.md"),
+    "skill": ("{name}-SKILL.md", "skills/{name}/SKILL.md"),
     "plugin": ("{name}.plugin.json", ".cortex-plugin/plugin.json"),
 }
 

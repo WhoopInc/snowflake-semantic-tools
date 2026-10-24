@@ -3,10 +3,9 @@
 -- ============================================================================
 -- A SCRIPT, AND IT SITS AT THE FOLDER ROOT BESIDE SKILL.md ON PURPOSE. A skill's
 -- scripts live in the same folder as `SKILL.md`; prose reference material goes under
--- `reference/`, executable material does not. This
--- file is what makes that asymmetry observable in the flattened catalog payload,
--- where a script and a bundled reference file collapse from different origins into
--- the same flat namespace.
+-- `reference/`, executable material does not. Every channel publishes the folder as
+-- authored, so `reference/month-close.md` reaches this script as `../check-supply-month.sql`
+-- and the goldens pin both paths.
 --
 -- The one literal is the enum member `completed`.
 -- ============================================================================

@@ -123,7 +123,7 @@ def test_catalog_channel_absent_or_invalid_prefix_compiles_nothing() -> None:
     assert CompileSkills(catalog, None).run_result().compiled == ()
     invalid = CompileSkills(catalog, replace(CHANNEL, version_prefix="1X")).run_result()
     assert [item.code for item in invalid.diagnostics] == ["SST-CFG008"]
-    broken = replace(skill(), files=(SkillFile("SKILL.md", b"---\n---\nRun scripts/missing.sh\n"),))
+    broken = replace(skill(), files=(SkillFile("SKILL.md", b"---\n---\nRun [it](scripts/missing.sh)\n"),))
     blocked = CompileSkills(
         SkillCatalog((broken,), (Plugin("kit", "plugins/kit", "p", "d", None, ("month-close",), Origin("p")),)), CHANNEL
     ).run_result()

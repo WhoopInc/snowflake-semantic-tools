@@ -121,15 +121,15 @@ def test_a_ddl_golden_without_a_statement_is_refused() -> None:
 def test_optional_goldens_are_compared_only_when_committed() -> None:
     result = project()
     store = committed(result)
-    flattened = GoldenPath("skill", ("solo-flattened.md",))
+    skill_md = GoldenPath("skill", ("solo-SKILL.md",))
     manifest = GoldenPath("plugin", ("kit.plugin.json",))
     prompt = GoldenPath("coco_desktop_profile", ("analyst", "AGENTS.md"))
-    store.goldens.update({flattened: "stale\n", manifest: "stale\n", prompt: "stale\n"})
+    store.goldens.update({skill_md: "stale\n", manifest: "stale\n", prompt: "stale\n"})
 
     failures = compare(store, result)
 
     assert [failure.splitlines()[0] for failure in failures] == [
-        "--- golden/skill/solo-flattened.md",
+        "--- golden/skill/solo-SKILL.md",
         "--- golden/plugin/kit.plugin.json",
         "--- golden/coco_desktop_profile/analyst/AGENTS.md",
     ]

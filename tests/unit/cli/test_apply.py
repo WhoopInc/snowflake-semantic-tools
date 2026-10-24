@@ -86,7 +86,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     planned_payload = json.loads(planned.output)
     plan_path = planned_payload["data"]["plan_path"]
     saved_plan = json.loads(Path(plan_path).read_text(encoding="utf-8"))
-    assert len(saved_plan["changes"]) == 16
+    assert len(saved_plan["changes"]) == 17
     assert {item["artifact_type"] for item in saved_plan["changes"]} == {
         "semantic_view",
         "tool",
@@ -137,13 +137,13 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     plan_phases = planned_payload["invocation"]["timings"]["phases"]
     assert {"load", "validate", "state_read", "observe", "classify"} <= set(plan_phases)
     assert {"lock", "publish", "state_write"} <= set(payload["invocation"]["timings"]["phases"])
-    # Seven more than M4: the bundle stage, one CREATE carrying the first version for each
-    # of three skills and the plugin, and the profile stage; the eval dataset's own version;
+    # Eight more than M4: the bundle stage, one CREATE carrying the first version for each
+    # of four skills (one nested in another) and the plugin, and the profile stage; the eval dataset's own version;
     # and the agent spec stage, created once for every agent and CoWork profile that stages
     # there. One more certifies the version of jaffle-catalogue, the skill whose own config:
     # sets certified, one more creates the order_status procedure, and one more the CoWork
     # profile, whose CREATE AGENT carries its marker as each agent's does.
-    assert len(apply_port.scripts) == 22
+    assert len(apply_port.scripts) == 23
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
     assert sum("CERTIFICATION_STATUS" in line and "JAFFLE_CATALOGUE" in line for line in first_lines) == 1
     assert sum("CERTIFICATION_STATUS" in line for line in first_lines) == 1

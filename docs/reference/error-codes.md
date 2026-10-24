@@ -18,13 +18,13 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 47 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
-- [Parsing (PRS)](#parsing-prs) -- 59 codes
+- [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 340 codes
+- [Validation (VAL)](#validation-val) -- 338 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
-- [Rendering (RND)](#rendering-rnd) -- 17 codes
+- [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 50 codes
 - [Apply (APL)](#apply-apl) -- 49 codes
@@ -32,7 +32,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 72 numbers
+- [Retired numbers](#retired-numbers) -- 76 numbers
 
 ## Registry (REG)
 
@@ -1425,16 +1425,6 @@ Fix: give every row a question and at least one expectation
 Raised when an agent's sample question is not a mapping with a string `question`.
 
 Fix: write each entry as a mapping with a `question:` key
-
-### SST-PRS119
-
-**Skill folder contains another skill folder** (error)
-
-`<artifact>: nested skill folder at <path>`
-
-Raised when a skill folder contains another skill folder; once per nested folder.
-
-Fix: flatten the layout; one skill per folder
 
 ### SST-PRS120
 
@@ -5282,43 +5272,33 @@ Note: A schema move changes the extension's name, which breaks every pinned refe
 
 ### SST-VAL808
 
-**Referenced bundle path does not resolve** (error)
+**Markdown link names no file of the skill** (error)
 
-`skill '<artifact>': '<path>' is referenced and absent from the bundle`
+`skill '<artifact>': the link to '<path>' names no file or folder of the skill`
 
-Raised when a Markdown reference in the skill names a file that is not in the bundle.
+Raised when a Markdown link, image, or reference definition in the skill names no file or folder of the skill.
 
-Fix: add the file, or correct the reference
+Fix: add the file, or correct the link; it resolves from the linking file's folder or the skill folder
 
-### SST-VAL809
-
-**Flattened file names collide** (error)
-
-`skill '<artifact>': '<a>' and '<b>' flatten to one name`
-
-Raised when two bundle files collide after flattening.
-
-Fix: rename one of the authored files
+Note: A path in prose or a code block is not a link: it is an instruction or an example, and is never reported.
 
 ### SST-VAL810
 
-**Flattening did not rewrite a subdirectory reference** (error)
+**Path names a skill file from the repository root** (warning)
 
-`skill '<artifact>': '<path>' does not resolve inside the published bundle`
+`skill '<artifact>': '<path>' names '<target>' by its path from the repository root`
 
-Raised when a Markdown reference names a directory, or walks down from the repository root, or a reference rewritten for the flattened catalog bundle no longer resolves.
+Raised when a path in the skill's Markdown walks down a `skills/` tree to one of the skill's own files.
 
-Fix: rewrite every subdirectory reference, then re-check the paths
-
-Note: A reference anchored at the authoring repository's root is rejected rather than rewritten.
+Fix: write '{target}', the path from the skill folder, which is how the published skill holds it
 
 ### SST-VAL811
 
-**Flattened bundle exceeds the size budget** (warning)
+**Bundle exceeds the size budget** (warning)
 
 `'<artifact>': bundle is <size> bytes, over <expected>`
 
-Raised when a flattened bundle is over the 1 MiB size budget and within the 10 MiB scan limit (SST-VAL834 reports a bundle over it).
+Raised when a bundle is over the 1 MiB size budget and within the 10 MiB scan limit (SST-VAL834 reports a bundle over it).
 
 Fix: move bulk content out of the bundle
 
@@ -5342,7 +5322,7 @@ Note: The skill's main file is read on every orchestration turn, so its cost is 
 
 `skill '<artifact>': '<path>' is never referenced from the skill's Markdown`
 
-Raised when a bundled file is named by no Markdown reference in the skill.
+Raised when a file of the skill, outside any nested skill's folder, is named by no path in the skill's Markdown, by its path or by a file name no other file shares.
 
 Fix: reference it, or remove it
 
@@ -5462,11 +5442,11 @@ Fix: report per-channel status separately
 
 ### SST-VAL829
 
-**Channel content hashes diverge beyond flattening** (warning)
+**Channel content hashes diverge** (warning)
 
 `skill '<artifact>': catalog and stage hashes diverge by <value>`
 
-Raised when a skill's catalog and stage file sets differ by more than flattening's renames.
+Raised when a skill's catalog and stage file sets differ.
 
 Fix: compare the two bundles
 
@@ -5499,16 +5479,6 @@ Raised when a skill or plugin would publish under an extension name an earlier s
 Fix: rename one of them
 
 Note: Global uniqueness is what makes one flat extension schema viable.
-
-### SST-VAL833
-
-**Script names a path that flattening renames** (warning)
-
-`skill '<artifact>': '<path>' names '<target>', which the catalog bundle renames`
-
-Raised when a script names a nested path that catalog flattening renames.
-
-Fix: keep files a script reads beside SKILL.md, or pass the path in as an argument
 
 ### SST-VAL834
 
@@ -6449,18 +6419,6 @@ Fix: add the file, or correct the reference
 Raised when the rendered SKILL.md has no body.
 
 Fix: add content
-
-### SST-RND032
-
-**Skill body exceeds the soft size limit** (warning)
-
-`skill '<artifact>': rendered body is <size> bytes, over <expected>`
-
-Raised when a skill's rendered SKILL.md is over 25 KiB while the authored one is not.
-
-Fix: move bulk content into a referenced file
-
-Note: A skill file authored over 25 KiB reports SST-VAL812 instead.
 
 ### SST-RND040
 
@@ -8849,6 +8807,12 @@ Retired because a view no longer writes `table_config`; a table's metadata is it
 
 Superseded by [`SST-PRS126`](#sst-prs126).
 
+### SST-PRS119
+
+**Skill folder contains another skill folder** (retired in 1.0.0)
+
+Retired because a skill is its folder, a nested skill's folder included, and a nested skill is a skill of its own.
+
 ### SST-PRT007
 
 **dbt manifest schema version unsupported** (retired in 1.0.0)
@@ -8948,6 +8912,14 @@ Superseded by [`SST-REF034`](#sst-ref034).
 Retired because `column()` is refused, not deprecated; a warning would say it still works.
 
 Superseded by [`SST-REF035`](#sst-ref035).
+
+### SST-RND032
+
+**Skill body exceeds the soft size limit** (retired in 1.0.0)
+
+Retired because skills publish as authored, so the rendered SKILL.md is the authored one, which SST-VAL812 sizes.
+
+Superseded by [`SST-VAL812`](#sst-val812).
 
 ### SST-SNO021
 
@@ -9145,6 +9117,12 @@ Retired because a prune reports an extension it keeps with SST-PLN034, which nam
 
 Superseded by [`SST-PLN034`](#sst-pln034).
 
+### SST-VAL809
+
+**Flattened file names collide** (retired in 1.0.0)
+
+Retired because skills publish as authored, so no two paths can become one.
+
 ### SST-VAL817
 
 **No publication channel configured** (retired in 1.0.0)
@@ -9155,7 +9133,7 @@ Retired because there are no channel blocks: a skill, plugin, or profile publish
 
 **Flatten settings are wrong for a channel** (retired in 1.0.0)
 
-Retired because `+flatten` was removed: extension bundles are always flattened and profile trees never are.
+Retired because `+flatten` was removed: every channel publishes a skill folder as authored.
 
 ### SST-VAL819
 
@@ -9168,3 +9146,9 @@ Retired because `+auto_compress` was removed: profile trees always upload uncomp
 **Stage layout is not by_type** (retired in 1.0.0)
 
 Retired because `+layout` was removed: profile trees are always laid out by type.
+
+### SST-VAL833
+
+**Script names a path that flattening renames** (retired in 1.0.0)
+
+Retired because skills publish as authored, so no path a script names is renamed.

@@ -1,9 +1,9 @@
 """Compare what the two publication channels serve live for each skill a Desktop profile ships.
 
-A skill reaches agents through its catalog extension, flattened, and Desktop through a
-profile's stage tree, nested. Each channel publishes and fails on its own, so a deploy that
-wrote one and not the other leaves them serving different files until the next good run.
-Flattening alone explains a renamed path; any other difference is reported.
+A skill reaches agents through its catalog extension and Desktop through a profile's stage
+tree, both with its folder as authored. Each channel publishes and fails on its own, so a
+deploy that wrote one and not the other leaves them serving different files until the next
+good run; any difference is reported.
 """
 
 from __future__ import annotations
@@ -20,14 +20,14 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 
 
 def channel_divergence(port: CocoDesktopProfilePublicationPort, result: CompileResult) -> tuple[Diagnostic, ...]:
-    """Warn, profile by profile, of each skill whose live catalog and stage files differ beyond flattening.
+    """Warn, profile by profile, of each skill whose live catalog and stage files differ.
 
     The catalog side is the extension's default version; the stage side is the skill's folder
     in the trees the profile's live registry row points at. A read that fails reports nothing
     here: the handlers' own observation reports it.
 
     Diagnostics:
-        SST-VAL829: the two file sets differ by more than flattening's renames, by `value` files.
+        SST-VAL829: the two file sets differ, by `value` files.
     """
     releases = {
         item.release.bundle.name: item.release
@@ -43,8 +43,7 @@ def channel_divergence(port: CocoDesktopProfilePublicationPort, result: CompileR
                 catalog_files = _catalog_files(port, release, name) if release is not None else None
                 if release is None or catalog_files is None:
                     continue
-                renames = dict(release.bundle.renames)
-                differ = {renames.get(path, path) for path in stage_files} ^ catalog_files
+                differ = stage_files ^ catalog_files
                 if differ:
                     # Profiles that ship the skill from one tree report it once.
                     found.setdefault(
@@ -59,7 +58,7 @@ def channel_divergence(port: CocoDesktopProfilePublicationPort, result: CompileR
 def _stage_skills(
     port: CocoDesktopProfilePublicationPort, profile: CompiledCocoDesktopProfile
 ) -> Mapping[str, frozenset[str]]:
-    """Each skill folder in the trees the profile's live row points at, as its files' authored paths."""
+    """Each skill folder in the trees the profile's live row points at, as its files' paths."""
     registry = profile.channel.registry
     row = port.read_profile_row(registry, profile.name) if port.table_columns(registry) is not None else None
     if row is None:
@@ -86,7 +85,7 @@ def _catalog_files(
     """The skill's files in the extension's default version, below `skills/<name>/`.
 
     Returns:
-        Their published paths in the skill's folder; None when there is no extension, or no default version.
+        Their paths in the skill's folder; None when there is no extension, or no default version.
     """
     if port.observe_extension(release.target) is None:
         return None

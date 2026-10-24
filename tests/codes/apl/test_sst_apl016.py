@@ -13,7 +13,7 @@ class ShortVersion(FakeSnowflake):
     def list_location(self, location: str) -> tuple[str, ...]:
         listed = super().list_location(location)
         return (
-            tuple(path for path in listed if not path.endswith("reference__steps.md"))
+            tuple(path for path in listed if not path.endswith("reference/steps.md"))
             if location.startswith("snow://")
             else listed
         )

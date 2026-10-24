@@ -17,7 +17,7 @@ def test_sst_val816_fires() -> None:
     diagnostic = only(diagnostics, "SST-VAL816")
     assert bundle is not None
     assert diagnostic.severity is Severity.INFO
-    size = len(SKILL_MD.format(name="month-close").replace("reference/steps.md", "reference__steps.md"))
+    size = len(SKILL_MD.format(name="month-close"))
     assert diagnostic.message == (
         f"skill 'month-close': SKILL.md is {size} of the bundle's {size + 7} bytes; 7 are read only on demand"
     )
@@ -25,7 +25,13 @@ def test_sst_val816_fires() -> None:
 
 
 def test_sst_val816_silent() -> None:
-    broken = skill(files={"SKILL.md": SKILL_MD.format(name="month-close").replace("steps.md", "missing.md")})
+    broken = skill(
+        files={
+            "SKILL.md": SKILL_MD.format(name="month-close").replace(
+                "reference/steps.md", "[steps](reference/missing.md)"
+            )
+        }
+    )
     bundle, diagnostics = build_skill_bundle(broken)
     assert bundle is None
     assert "SST-VAL816" not in codes(diagnostics)

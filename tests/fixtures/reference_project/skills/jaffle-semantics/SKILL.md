@@ -18,12 +18,10 @@ description: |-
 A skill is Markdown rather than YAML: the Agent Skills format, read by Cortex
 Agents, by CoCo Desktop, and by tools outside Snowflake.
 
-This skill carries a bundle: two files under `reference/`, which is what makes the
-catalog channel's flattening observable. `SKILL.md` sits at the folder root and Cortex
-Agents do not search subdirectories, so the catalog channel publishes each bundled
-file beside it as `reference__<name>.md`, with every link rewritten to match
-(SST-VAL810); the stage channel keeps the tree. The catalog payload is pinned by
-`tests/golden/expected/skill/jaffle-semantics.bundle.json`.
+This skill carries a bundle: two files under `reference/`. Both channels publish the
+folder as authored, so each file keeps its path, `reference/<name>.md`, and every link
+here resolves unchanged; a link to a file the folder lacks is SST-VAL808. The catalog
+payload is pinned by `tests/golden/expected/skill/jaffle-semantics.bundle.json`.
 -->
 
 ## Which view answers which question

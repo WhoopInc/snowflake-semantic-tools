@@ -167,8 +167,8 @@ def test_a_profile_whose_plugin_cannot_be_bundled_does_not_publish() -> None:
         "skills/dangling",
         "dangling",
         "d",
-        "Read reference/missing.md.\n",
-        (SkillFile("SKILL.md", b"---\nname: dangling\n---\nRead reference/missing.md.\n"),),
+        "Read [it](reference/missing.md).\n",
+        (SkillFile("SKILL.md", b"---\nname: dangling\n---\nRead [it](reference/missing.md).\n"),),
         Origin("skills/dangling/SKILL.md"),
     )
     kit = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("dangling",), Origin("p"))

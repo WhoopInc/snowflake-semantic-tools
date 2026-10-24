@@ -33,10 +33,10 @@
     "SETTINGS_OVERRIDES": {},
     "SKILL_REPOS": [
       {
-        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/5a3efafcb4b8/"
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/bdd2a6e3d491/"
       },
       {
-        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-analyst/c210c6a9fd06/"
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-analyst/cf08990aa67e/"
       }
     ],
     "SYSTEM_PROMPT_REPO": {
@@ -45,38 +45,48 @@
   },
   "trees": [
     {
-      "digest": "5a3efafcb4b8920bd79763d4d4239bbed47777d44ec22657fc29ba4bb337ec04",
+      "digest": "bdd2a6e3d49137c570ba6650687bb1cfbe235304cc7397ec8a82405869bb7607",
       "files": [
         {
           "path": "jaffle-catalogue/SKILL.md",
-          "sha256": "c53a8c66db0b54b2d2c4af80436362713b347d754abdd6cd0587da9c6c265116",
-          "size": 1685
+          "sha256": "86ad84696e70fd55d118691d12b5d64d6ab334a6f6d5124cf993672ab41362d7",
+          "size": 1657
         }
       ],
-      "prefix": "skills/shared/5a3efafcb4b8/"
+      "prefix": "skills/shared/bdd2a6e3d491/"
     },
     {
-      "digest": "c210c6a9fd06754e18ad889e61d40744e14146e57aa9e8f54d963d586fd43493",
+      "digest": "cf08990aa67e15998d4f41b023db0ead175b248d9d442c1659fe2fab6913ee71",
       "files": [
         {
           "path": "jaffle-operations/SKILL.md",
-          "sha256": "0736c7aa76f64edae2f64fe2b47fa3422c181a57159d88ba89ec2ea5b2a8db6f",
-          "size": 2968
+          "sha256": "481be433eff375d76cdbc8264cd116c660b8746d27e19c1d02a374dcbdfcf6f5",
+          "size": 2967
         },
         {
           "path": "jaffle-operations/check-supply-month.sql",
-          "sha256": "c7ce5e3c5db3ab1ef75f05517da5bd5a5608a7f175a1a19a93030f9be964c720",
-          "size": 2015
+          "sha256": "aa41cf1ffb3f63e1fc0faf92970168d8eac03751d23ab1830f71eacd8c53cf55",
+          "size": 1983
         },
         {
           "path": "jaffle-operations/reference/month-close.md",
-          "sha256": "934594df76cd50ae4303839218d8edc66e7a5c9bafdbd9bcf78ea5edc038bd40",
-          "size": 1711
+          "sha256": "1e53842737369b5b291c53db4b20c522dde82ca397095b1bb778b204610e5b74",
+          "size": 1657
+        },
+        {
+          "path": "jaffle-operations/supply-backfill/SKILL.md",
+          "sha256": "880957ea6ddba707ec24d492b71b590b5322c85d0d1ba204fa3f57f740115435",
+          "size": 801
+        },
+        {
+          "path": "jaffle-operations/supply-backfill/reference/checklist.md",
+          "sha256": "a94e6d5d97087d3702de5082d10acbafffd1f4a257dc54d0673990fed000644d",
+          "size": 166
         },
         {
           "path": "jaffle-semantics/SKILL.md",
-          "sha256": "1e19210df37b0d4e5b4a2593834855e2f8ccc98542697bdd0fe085207f7ffe51",
-          "size": 3882
+          "sha256": "5dace22a3910addea823d87de2fec40136706d0b468bc07f039a489801a7731f",
+          "size": 3750
         },
         {
           "path": "jaffle-semantics/reference/join-paths.md",
@@ -85,11 +95,11 @@
         },
         {
           "path": "jaffle-semantics/reference/metric-shapes.md",
-          "sha256": "c77e2980ed454a500ded787f543254c8333f9fb327fbf531e6391f82c5a79da4",
-          "size": 1942
+          "sha256": "fe2db95802f3b0ac4694eb15abf3e12ddd4854c7f64171f9a37348b54c8186d4",
+          "size": 1871
         }
       ],
-      "prefix": "skills/jaffle-analyst/c210c6a9fd06/"
+      "prefix": "skills/jaffle-analyst/cf08990aa67e/"
     },
     {
       "digest": "de73ec596abf6247f0762e684c8f6141b38ea13130dac07a7c8fd66a68f521c9",

@@ -2,9 +2,8 @@
 
 <!--
 Bundled file two of two. A second bundled file makes the catalog golden
-(`tests/golden/expected/skill/jaffle-semantics.bundle.json`) assert a collision-free
-flatten of more than one file: with a single bundled file, flattening is
-indistinguishable from moving it. See `../SKILL.md`.
+(`tests/golden/expected/skill/jaffle-semantics.bundle.json`) pin more than one file
+in a subfolder at its authored path. See `../SKILL.md`.
 -->
 
 ## Table-scoped versus derived

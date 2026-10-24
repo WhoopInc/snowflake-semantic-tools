@@ -1,4 +1,4 @@
-"""Skill folders flatten deterministically, and every path assertion is checked."""
+"""Skill folders publish as authored, deterministically, and every Markdown link is checked."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.render.skill_bundle import (
     build_skill_bundle,
     plugin_manifest_json,
 )
-from snowflake_semantic_tools.domain.render.skill_flatten import _recheck, flatten_skill, flattened_name
+from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.skill import (
     extension_name_diagnostics,
     unrunnable_scripts,
@@ -88,7 +88,7 @@ def test_records_expose_identity_digests_and_text() -> None:
 
 def test_bundle_digest_alias_and_manifest_are_deterministic() -> None:
     entries = (BundleEntry("skills/a/b.md", b"b"), BundleEntry("skills/a/SKILL.md", b"a"))
-    bundle = SkillBundle("SKILL", "a", entries, (("reference/b.md", "reference__b.md"),))
+    bundle = SkillBundle("SKILL", "a", entries)
     assert bundle.digest == bundle_digest(tuple(reversed(entries)))
     assert bundle.alias("SST_") == "SST_" + bundle.digest[:12].upper()
     manifest = json.loads(bundle.manifest(alias=bundle.alias("SST_"), target="DB.S.A", comment="c"))
@@ -96,9 +96,7 @@ def test_bundle_digest_alias_and_manifest_are_deterministic() -> None:
     assert manifest["alias"] == bundle.alias("SST_") and "certified" not in manifest
     certified = json.loads(bundle.manifest(alias="A", target="DB.S.A", comment="c", certified=True))
     assert certified["certified"] is True
-    assert manifest["flattened"] == [{"authored": "reference/b.md", "published": "reference__b.md"}]
-    assert flattened_name("reference/deep/x.md") == "reference__deep__x.md"
-    assert flattened_name("SKILL.md") == "SKILL.md"
+    assert "flattened" not in manifest
 
 
 def test_scan_finds_every_d179_form_and_skips_the_rest() -> None:
@@ -126,88 +124,93 @@ def test_scan_finds_every_d179_form_and_skips_the_rest() -> None:
     assert "example.com/x.md" not in by_text
 
 
-def test_flatten_rewrites_markdown_references_and_leaves_scripts_untouched() -> None:
-    authored = skill(
-        files={
-            "SKILL.md": SKILL_MD.format(
-                name="month-close",
-                body="Read [steps](reference/steps.md#s) then run scripts/run.py and ./helper.sql.\n",
-            ),
-            "reference/steps.md": "Back to [root](../SKILL.md) and sibling notes.md.\n",
-            "reference/notes.md": "notes\n",
-            "scripts/run.py": "print('run')\n",
-            "helper.sql": "select 1\n",
-            "assets/logo.png": b"\x89PNG\xff",
-        }
-    )
-    files, renames, diagnostics = flatten_skill(authored)
-    published = {item.path: item for item in files}
-    assert sorted(published) == [
-        "SKILL.md",
-        "assets__logo.png",
-        "helper.sql",
-        "reference__notes.md",
-        "reference__steps.md",
-        "scripts__run.py",
-    ]
-    assert "[steps](reference__steps.md#s)" in (published["SKILL.md"].text or "")
-    assert "scripts__run.py" in (published["SKILL.md"].text or "")
-    assert "./helper.sql" in (published["SKILL.md"].text or "")
-    assert "[root](SKILL.md)" in (published["reference__steps.md"].text or "")
-    assert "reference__notes.md" in (published["reference__steps.md"].text or "")
-    assert published["scripts__run.py"].content == b"print('run')\n"
-    assert ("reference/steps.md", "reference__steps.md") in renames
-    assert codes(diagnostics) == ["SST-VAL813"]
+def test_a_skill_publishes_every_file_at_its_authored_path_unchanged() -> None:
+    files: dict[str, bytes | str] = {
+        "SKILL.md": SKILL_MD.format(
+            name="month-close",
+            body="Read [steps](reference/steps.md#s) then run scripts/run.py and ./helper.sql.\n",
+        ),
+        "reference/steps.md": "Back to [root](../SKILL.md) and sibling notes.md.\n",
+        "reference/notes.md": "notes\n",
+        "scripts/run.py": "print('run')\n",
+        "helper.sql": "select 1\n",
+        "assets/logo.png": b"\x89PNG\xff",
+    }
+    authored = skill(files=files)
+    bundle, diagnostics = build_skill_bundle(authored)
+    assert bundle is not None
+    published = {entry.path.removeprefix("skills/month-close/"): entry.content for entry in bundle.entries}
+    assert published == {item.path: item.content for item in authored.files}
+    assert codes(diagnostics) == ["SST-VAL813", "SST-VAL816"]
     assert diagnostics[0].context["path"] == "assets/logo.png"
 
 
-def test_flatten_reports_collisions_in_authored_terms_before_anything_else() -> None:
-    authored = skill(files={"a/b__c.md": "x", "a__b/c.md": "y"})
-    files, renames, diagnostics = flatten_skill(authored)
-    assert (files, renames) == ((), ())
-    assert codes(diagnostics) == ["SST-VAL809"]
-    assert {diagnostics[0].context["a"], diagnostics[0].context["b"]} == {"a/b__c.md", "a__b/c.md"}
-
-
-def test_unresolved_anchored_directory_and_suppressed_references() -> None:
+def test_only_a_markdown_link_that_names_nothing_is_reported() -> None:
     body = (
         "Run scripts/check-supply-month.sql.\n"
         "Run bash .cortex/skills/month-close/scripts/x.sh.\n"
         "Open [the folder](reference/).\n"
         "Mention models/marts/orders.sql from the user's repo.\n"
-        "Example scripts/example.py  sst: ignore SST-VAL808\n"
+        "Example [it](scripts/example.py)  sst: ignore SST-VAL808\n"
         "Read reference/steps.md.\n"
         "See [outside](../outside.md), ./missing.sh, [anchor](#x) and [site](https://example.com).\n"
+        "Then [the script](scripts/missing.py).\n"
     )
     authored = skill(files={"SKILL.md": SKILL_MD.format(name="month-close", body=body), "reference/steps.md": "s"})
-    _, _, diagnostics = flatten_skill(authored)
-    assert codes(diagnostics) == ["SST-VAL808", "SST-VAL810", "SST-VAL810", "SST-VAL808", "SST-VAL808"]
-    assert [item.context["path"] for item in diagnostics] == [
-        "scripts/check-supply-month.sql",
-        ".cortex/skills/month-close/scripts/x.sh",
-        "reference/",
-        "../outside.md",
-        "./missing.sh",
-    ]
-    assert diagnostics[0].origin == Origin("skills/finance/month-close/SKILL.md", 5, 5)
+    diagnostics = check_skill_files(authored)
+    assert codes(diagnostics) == ["SST-VAL808", "SST-VAL808"]
+    assert [item.context["path"] for item in diagnostics] == ["../outside.md", "scripts/missing.py"]
+    assert diagnostics[1].origin == Origin("skills/finance/month-close/SKILL.md", 12, 19)
+
+
+def test_a_path_in_prose_names_a_file_in_a_subfolder_by_its_unique_file_name() -> None:
+    body = "Read lineage-context.md, then run eppo_stats.py; notes.md is ambiguous.\n"
+    files: dict[str, bytes | str] = {
+        "SKILL.md": SKILL_MD.format(name="month-close", body=body),
+        "reference/lineage-context.md": "l",
+        "scripts/eppo_stats.py": "x = 1\n",
+        "reference/notes.md": "a",
+        "assets/notes.md": "b",
+    }
+    found = check_skill_files(skill(files=files))
+    unreferenced = sorted(item.context["path"] for item in found if item.code == "SST-VAL813")
+    assert unreferenced == ["assets/notes.md", "reference/notes.md"]
+    assert "SST-VAL808" not in codes(found)
 
 
 def test_repo_anchored_reference_still_counts_its_target_as_referenced() -> None:
     body = "Read skills/month-close/reference/steps.md, then skills/month-close/reference/gone.md.\n"
     authored = skill(files={"SKILL.md": SKILL_MD.format(name="month-close", body=body), "reference/steps.md": "s"})
-    _, _, diagnostics = flatten_skill(authored)
-    assert codes(diagnostics) == ["SST-VAL810", "SST-VAL810"]
-
-
-def test_recheck_catches_a_reference_the_rewrite_missed() -> None:
-    authored = skill(files={"reference/steps.md": "s"})
-    unrewritten = tuple(SkillFile(flattened_name(item.path), item.content) for item in authored.files)
-    diagnostics = _recheck(authored, unrewritten)
+    diagnostics = check_skill_files(authored)
     assert codes(diagnostics) == ["SST-VAL810"]
-    assert diagnostics[0].context["path"] == "reference/steps.md"
+    assert diagnostics[0].context["target"] == "reference/steps.md"
 
 
-def test_scripts_are_checked_for_absolute_paths_credentials_and_moved_siblings() -> None:
+def test_a_nested_skill_ships_inside_its_parent_and_is_left_to_its_own_checks() -> None:
+    nested = SKILL_MD.format(name="eda-agent", body="EDA steps.\n")
+    authored = skill(
+        files={
+            "SKILL.md": SKILL_MD.format(
+                name="month-close", body="Read reference/steps.md, then [EDA](eda-agent/SKILL.md).\n"
+            ),
+            "reference/steps.md": "s",
+            "eda-agent/SKILL.md": nested,
+            "eda-agent/notes.md": "n",
+        },
+        nested=("eda-agent",),
+    )
+    bundle, diagnostics = build_skill_bundle(authored)
+    assert bundle is not None
+    assert [entry.path for entry in bundle.entries] == [
+        "skills/month-close/SKILL.md",
+        "skills/month-close/eda-agent/SKILL.md",
+        "skills/month-close/eda-agent/notes.md",
+        "skills/month-close/reference/steps.md",
+    ]
+    assert codes(diagnostics) == ["SST-VAL816"]
+
+
+def test_scripts_are_checked_for_absolute_paths_and_credentials() -> None:
     authored = skill(
         files={
             "reference/steps.md": "Save the export to ~/notes.txt.\napi_key = 'sk-live-0123456789'\n",
@@ -217,18 +220,12 @@ def test_scripts_are_checked_for_absolute_paths_credentials_and_moved_siblings()
             "blob.bin": b"\xff\xfe",
         }
     )
-    _, _, diagnostics = flatten_skill(authored)
-    found = [
-        (item.code, item.context.get("path"), item.context.get("detail"), item.context.get("target"))
-        for item in diagnostics
-    ]
+    found = [(item.code, item.context.get("path"), item.context.get("detail")) for item in check_skill_files(authored)]
     # A path in Markdown is an instruction to the agent; a credential is wrong anywhere.
-    assert ("SST-VAL815", "reference/steps.md", "the absolute path '~/notes.txt'", None) not in found
-    assert ("SST-VAL815", "reference/steps.md", "a credential literal", None) in found
-    assert ("SST-VAL815", "scripts/run.py", "the absolute path '/Users/.../x'", None) in found
-    assert ("SST-VAL815", "scripts/run.py", "a credential literal", None) in found
-    assert ("SST-VAL833", "scripts/run.py", None, "reference/data.csv") in found
-    assert ("SST-VAL833", "load.py", None, "reference/data.csv") in found
+    assert ("SST-VAL815", "reference/steps.md", "the absolute path '~/notes.txt'") not in found
+    assert ("SST-VAL815", "reference/steps.md", "a credential literal") in found
+    assert ("SST-VAL815", "scripts/run.py", "the absolute path '/Users/.../x'") in found
+    assert ("SST-VAL815", "scripts/run.py", "a credential literal") in found
 
 
 def test_catalog_validation_names_layout_uniqueness_and_plugin_membership() -> None:
@@ -355,7 +352,7 @@ def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     assert bundle is not None and [item.code for item in diagnostics] == ["SST-VAL816"]
     assert [entry.path for entry in bundle.entries] == [
         "skills/month-close/SKILL.md",
-        "skills/month-close/reference__steps.md",
+        "skills/month-close/reference/steps.md",
     ]
     big = "Read reference/steps.md.\n" + "x" * SKILL_MD_BUDGET_BYTES
     over_budget, diagnostics = build_skill_bundle(
@@ -384,7 +381,7 @@ def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
 def test_plugin_manifest_and_bundle() -> None:
     members = {
         "month-close": skill(files={"reference/steps.md": "s"}),
-        "broken": skill("broken", files={"a/b__c.md": "x", "a__b/c.md": "y"}),
+        "broken": skill("broken", files={"SKILL.md": SKILL_MD.format(name="broken", body="[gone](gone.md)\n")}),
     }
     plugin = Plugin(
         "finance-kit",
@@ -409,9 +406,8 @@ def test_plugin_manifest_and_bundle() -> None:
     assert [entry.path for entry in bundle.entries] == [
         ".cortex-plugin/plugin.json",
         "skills/month-close/SKILL.md",
-        "skills/month-close/reference__steps.md",
+        "skills/month-close/reference/steps.md",
     ]
-    assert bundle.renames == (("month-close/reference/steps.md", "month-close/reference__steps.md"),)
     blocked, diagnostics = build_plugin_bundle(
         Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", None, None, ("broken",), Origin("p")), members
     )

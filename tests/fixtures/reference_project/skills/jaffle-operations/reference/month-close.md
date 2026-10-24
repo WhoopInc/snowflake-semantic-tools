@@ -1,10 +1,9 @@
 # Month close checks
 
 <!--
-THE SECOND BUNDLED FILE IN THE DUAL-CHANNEL SKILL. Its existence is what gives the
-flattened catalog payload two files from two different origins to collapse -- this
-one from `reference/`, and `check-supply-month.sql` from the folder root. With only
-one, flattening cannot be distinguished from a rename.
+THE SECOND BUNDLED FILE IN THE DUAL-CHANNEL SKILL. It sits in a subfolder and names
+the root-level script by a relative path, `../check-supply-month.sql`; both channels
+publish the folder as authored, so that path resolves wherever the skill is read.
 -->
 
 A supply month is treated as final when all of the following hold. Until they do,

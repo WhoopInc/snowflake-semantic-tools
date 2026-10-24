@@ -1,4 +1,4 @@
-"""SST-VAL811: flattened bundle exceeds the size budget.
+"""SST-VAL811: bundle exceeds the size budget.
 
 Fires when the bundle is over its size budget; the nearest legitimate input stays quiet.
 """
@@ -34,7 +34,7 @@ def test_sst_val811_fires() -> None:
         "SST-VAL811",
     )
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == "'month-close': bundle is 1048691 bytes, over 1048576"
+    assert diagnostic.message == "'month-close': bundle is 1048689 bytes, over 1048576"
     assert diagnostic.subject == "skill:month-close"
 
 

@@ -18,7 +18,6 @@ from snowflake_semantic_tools.domain.render.eval import eval_render_checks
 from snowflake_semantic_tools.domain.render.invariants import dollar_quote_offset, statement_size, unquotable
 from snowflake_semantic_tools.domain.render.semantic_view import render, render_checked
 from snowflake_semantic_tools.domain.render.skill_bundle import (
-    SKILL_MD_BUDGET_BYTES,
     build_plugin_bundle,
     build_skill_bundle,
 )
@@ -68,19 +67,14 @@ def test_the_eval_checks_read_every_question_and_skip_one_without_ground_truth()
     assert [(item.code, item.context.get("index")) for item in found] == [("SST-RND022", 2)]
 
 
-def test_the_skill_checks_hold_the_flattened_skill_md_to_its_budget_only_once() -> None:
+def test_a_plugin_holding_a_skill_with_a_broken_link_does_not_bundle() -> None:
     def skill(*files: SkillFile) -> Skill:
         return Skill("close", "skills/close", "close", "Close.", "Body.\n", files, Origin("SKILL.md"))
 
     empty, found = build_skill_bundle(skill())
     assert empty is None and "SST-RND030" not in [item.code for item in found]
-    head = b"---\nname: close\n---\n"
-    within = skill(SkillFile("SKILL.md", head + b"x" * (SKILL_MD_BUDGET_BYTES - len(head))))
-    assert "SST-RND032" not in [item.code for item in build_skill_bundle(within)[1]]
     plugin = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("close",), Origin("plugin.yml"))
-    broken = Skill(
-        "close", "skills/close", "close", None, "", (SkillFile("a/b.md", b""), SkillFile("a__b.md", b"")), Origin("x")
-    )
+    broken = skill(SkillFile("SKILL.md", b"---\nname: close\n---\nRead [it](gone.md).\n"))
     bundle, plugin_found = build_plugin_bundle(plugin, {"close": broken})
     assert bundle is None and [item.code for item in plugin_found] == ["SST-VAL836"]
 
@@ -136,13 +130,6 @@ def test_a_bundle_names_no_path_it_does_not_hold() -> None:
 
     _, missing = build_skill_bundle(skill(SkillFile("notes.md", b"x")))
     assert "SST-RND030" in [item.code for item in missing]
-    head = b"---\nname: close\n---\n"
-    refs = b"[a](scripts/a.md)\n" * 10
-    grown = skill(
-        SkillFile("SKILL.md", head + b"x" * (SKILL_MD_BUDGET_BYTES - len(head) - len(refs)) + refs),
-        SkillFile("scripts/a.md", b"A.\n"),
-    )
-    assert "SST-RND032" in [item.code for item in build_skill_bundle(grown)[1]]
     plugin = Plugin("kit", "plugins/kit", "plugins/kit/plugin.yml", "Kit.", "Data", ("ghost",), Origin("plugin.yml"))
     assert [item.code for item in build_plugin_bundle(plugin, {})[1]] == ["SST-RND030"]
 

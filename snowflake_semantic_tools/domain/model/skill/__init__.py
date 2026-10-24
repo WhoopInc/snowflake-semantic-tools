@@ -1,12 +1,12 @@
 """Skills and plugins: authored folders, plugin manifests, and the bundles they publish as.
 
-A skill is authored nested, the way CoCo Desktop reads it, and flattened only for
-the catalog channel, because a Cortex Agent reads supporting files beside
-`SKILL.md` and never descends into a subdirectory.
+A skill is its folder: `SKILL.md` and every file and folder beside it, nested skills
+included. Every channel publishes the folder as authored, so a relative path that resolves
+in the repository resolves where an agent reads the skill.
 
 `model` holds the records and the identities derived from them. Finding the paths a file
-names is `domain.parse.skill_references`, flattening and bundling are
-`domain.render.skill_flatten` and `domain.render.skill_bundle`, and checking the catalog is
+names is `domain.parse.skill_references`, checking a skill's files and bundling are
+`domain.render.skill_files` and `domain.render.skill_bundle`, and checking the catalog is
 `domain.validate.skill`. This module only re-exports `model`'s public names.
 """
 

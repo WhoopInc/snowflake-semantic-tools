@@ -193,6 +193,7 @@ def test_plan_live_observation_saved_plan_and_detailed_exitcode(
         ("skill:jaffle-catalogue", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE"),
         ("skill:jaffle-operations", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS"),
         ("skill:jaffle-semantics", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS"),
+        ("skill:supply-backfill", "create", "not_present", "SST_REF_DEV.JAFFLE.SUPPLY_BACKFILL"),
         ("plugin:jaffle-toolkit", "create", "not_present", "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT"),
         ("coco_desktop_profile:jaffle-analyst", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
         ("coco_desktop_profile:jaffle-operator", "create", "not_present", "SST_REF_DEV.JAFFLE.PROFILE_REGISTRY"),
@@ -376,7 +377,7 @@ def test_one_edit_plans_only_what_its_render_reaches(
     actions = {item["artifact_key"]: (item["action"], item["reason"]) for item in payload["data"]["changes"]}
     assert {key for key, (action, _) in actions.items() if action != "noop"} == updated
     assert {actions[key] for key in updated} == {("update", "fingerprint_differs")}
-    assert len(actions) == 16
+    assert len(actions) == 17
 
 
 def test_capture_prior_reads_every_published_kind_without_failing_the_plan(
@@ -788,7 +789,7 @@ def test_every_artifact_in_a_schema_apply_creates_plans_as_a_create(
     assert "SST-PLN001" not in [item["code"] for item in payload["diagnostics"]]
     actions = {change["artifact_key"]: change["action"] for change in payload["data"]["changes"]}
     composites = [key for key in actions if key.split(":")[0] in ("skill", "plugin", "coco_desktop_profile", "eval")]
-    assert len(composites) == 7 and all(actions[key] == "create" for key in composites), actions
+    assert len(composites) == 8 and all(actions[key] == "create" for key in composites), actions
     assert "SST_REF_DEV.JAFFLE" in payload["data"]["schemas"]
     assert result.exit_code == 2
 

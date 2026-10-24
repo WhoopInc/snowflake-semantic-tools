@@ -11,7 +11,7 @@ from tests.helpers.file_trees import write_tree
 GOOD = "---\nname: {name}\ndescription: Close the month.\n---\n# Steps\nRead reference/a.md.\n"
 
 
-def test_discovers_grouped_skills_and_skips_hidden_caches_and_nested_folders(tmp_path: Path) -> None:
+def test_discovers_grouped_and_nested_skills_and_skips_hidden_caches(tmp_path: Path) -> None:
     write_tree(
         tmp_path,
         {
@@ -27,9 +27,17 @@ def test_discovers_grouped_skills_and_skips_hidden_caches_and_nested_folders(tmp
         },
     )
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
-    assert [skill.name for skill in catalog.skills] == ["month-close", "top"]
-    month = catalog.skills[0]
-    assert [item.path for item in month.files] == ["SKILL.md", "reference/a.md"]
+    assert [skill.name for skill in catalog.skills] == ["month-close", "inner", "top"]
+    month, inner, _ = catalog.skills
+    # A nested skill is a skill of its own, and still part of the folder that holds it.
+    assert [item.path for item in month.files] == ["SKILL.md", "inner/SKILL.md", "inner/notes.md", "reference/a.md"]
+    assert month.nested == ("inner",)
+    assert [item.path for item in inner.files] == ["SKILL.md", "notes.md"]
+    assert (inner.directory, inner.folder, inner.nested) == (
+        "skills/finance/month-close/inner",
+        ("finance", "month-close", "inner"),
+        (),
+    )
     assert (month.directory, month.declared_name, month.description) == (
         "skills/finance/month-close",
         "month-close",
@@ -37,9 +45,7 @@ def test_discovers_grouped_skills_and_skips_hidden_caches_and_nested_folders(tmp
     )
     assert month.body == "# Steps\nRead reference/a.md.\n"
     assert month.origin == Origin("skills/finance/month-close/SKILL.md", 1)
-    assert [(item.code, item.context["path"]) for item in catalog.diagnostics] == [
-        ("SST-PRS119", "skills/finance/month-close/inner/SKILL.md")
-    ]
+    assert catalog.diagnostics == ()
 
 
 def test_frontmatter_defects_are_located(tmp_path: Path) -> None:

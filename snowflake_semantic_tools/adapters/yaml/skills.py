@@ -45,8 +45,10 @@ def _published(path: Path, root: Path) -> bool:
 def load_skill_catalog(
     project_dir: Path, *, skills_dir: str, plugins_dir: str, config: Mapping[str, Any] | None = None
 ) -> SkillCatalog:
-    """Every `SKILL.md` folder under `skills_dir`, at any grouping depth, plus plugin manifests.
+    """Every `SKILL.md` folder under `skills_dir`, at any depth, plus plugin manifests.
 
+    A skill is its folder and everything in it. A `SKILL.md` folder inside another skill's
+    folder is a skill of its own, and also part of the folder that holds it, as it is on disk.
     A plugin is a folder under `plugins_dir` that holds a manifest; a folder with neither a
     manifest nor a published subfolder is a plugin missing one, and any other folder only groups
     plugins. Nothing reached through a symbolic link is read: a linked file or folder under
@@ -71,16 +73,10 @@ def load_skill_catalog(
         walked = [path for path in sorted(root.rglob("*")) if _published(path, root)]
         readable = [path for path in walked if not refused(project_dir, path, diagnostics)]
         folders = sorted(path.parent for path in readable if path.name == SKILL_FILE and path.is_file())
-        nested = {
-            folder: tuple(other for other in folders if other != folder and other.is_relative_to(folder))
-            for folder in folders
-        }
-        inner = {child for children in nested.values() for child in children}
         diagnostics.extend(_misplaced_skill_files(project_dir, root, folders, readable))
         for folder in folders:
-            if folder in inner:
-                continue
-            skill = _load_skill(project_dir, folder, nested[folder], diagnostics)
+            nested = tuple(other for other in folders if other != folder and other.is_relative_to(folder))
+            skill = _load_skill(project_dir, folder, nested, diagnostics)
             skills.append(replace(skill, folder=folder.relative_to(root).parts))
     plugins: list[Plugin] = []
     plugin_root = project_dir / plugins_dir
@@ -122,7 +118,8 @@ def _misplaced_skill_files(
     """Report a folder whose own files sit beside no `SKILL.md`, while its subfolder holds one.
 
     A grouping folder holds only folders; one that also holds files is a skill whose `SKILL.md`
-    was put one level too deep, where Snowflake will not find it as that skill's.
+    was put one level too deep, where Snowflake will not find it as that skill's. A folder
+    inside a skill is part of that skill, so it groups nothing and is not reported.
 
     Diagnostics:
         SST-PRS120: once per such folder, naming the nested `SKILL.md`.
@@ -131,7 +128,7 @@ def _misplaced_skill_files(
     found: list[Diagnostic] = []
     for folder in folders:
         parent = folder.parent
-        if parent == root or parent in skill_folders:
+        if parent == root or any(parent.is_relative_to(other) for other in skill_folders):
             continue
         if any(path.parent == parent and path.is_file() for path in readable):
             subject = artifact_key("skill", parent.name)
@@ -143,9 +140,9 @@ def _misplaced_skill_files(
 def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagnostics: list[Diagnostic]) -> Skill:
     """Read one skill folder: every published file in it, and the frontmatter of its `SKILL.md`.
 
-    The skill is named after its folder. Each skill folder in `nested` is reported, and its files
-    are left out of this skill; the caller does not load it as a skill either. The files are in
-    path order, relative to the folder, `SKILL.md` among them.
+    The skill is named after its folder. The files are in path order, relative to the folder,
+    `SKILL.md` among them, and include the files of each skill folder in `nested`, which the
+    skill records; the caller loads each of those as a skill of its own as well.
 
     The frontmatter's `config:` is kept as the skill's own settings when it is a mapping.
 
@@ -153,7 +150,6 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
         OSError: A file in the folder cannot be read.
 
     Diagnostics:
-        SST-PRS119: once per skill folder nested inside this one.
         Every code `read_authored_text` lists, for a `SKILL.md` it refuses.
         SST-LOD001: when the frontmatter of `SKILL.md` is not valid YAML.
         SST-LOD002: when the frontmatter is not a mapping.
@@ -165,24 +161,11 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
     directory = project_relative(project_dir, folder)
     skill_md = posixpath.join(directory, SKILL_FILE)
     subject = artifact_key("skill", name)
-    for child in nested:
-        diagnostics.append(
-            D(
-                "SST-PRS119",
-                origin=Origin(skill_md),
-                subject=subject,
-                artifact=subject,
-                path=project_relative(project_dir, child / SKILL_FILE),
-            )
-        )
     # A linked file was reported by the catalog's walk of the skills root; here it is only left out.
     files = tuple(
         SkillFile(path.relative_to(folder).as_posix(), path.read_bytes())
         for path in sorted(folder.rglob("*"))
-        if path.is_file()
-        and _published(path, folder)
-        and not any(path.is_relative_to(child) for child in nested)
-        and walk_refusal(project_dir, path) is None
+        if path.is_file() and _published(path, folder) and walk_refusal(project_dir, path) is None
     )
     raw = next(item.content for item in files if item.path == SKILL_FILE)
     frontmatter, body = _frontmatter(raw, skill_md, subject, diagnostics)
@@ -197,6 +180,7 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
         files=files,
         origin=Origin(skill_md, 1),
         config=_own_settings(item_config),
+        nested=tuple(child.relative_to(folder).as_posix() for child in nested),
     )
 
 

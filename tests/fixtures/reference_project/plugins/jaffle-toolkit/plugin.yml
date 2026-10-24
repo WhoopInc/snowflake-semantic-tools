@@ -1,6 +1,6 @@
 # A PLUGIN IS ONE CORTEX EXTENSION OF TYPE 'PLUGIN' THAT CARRIES SEVERAL SKILLS.
-# SST publishes it as `.cortex-plugin/plugin.json` plus each member flattened
-# under `skills/<member>/`, and the version alias -- `plugins.+version_prefix`
+# SST publishes it as `.cortex-plugin/plugin.json` plus each member's folder, as
+# authored, under `skills/<member>/`, and the version alias -- `plugins.+version_prefix`
 # plus 12 hex characters of the bundle digest -- changes when any member does.
 # Every member is also published as its own SKILL-type extension; the plugin is
 # the one-install bundle of them.

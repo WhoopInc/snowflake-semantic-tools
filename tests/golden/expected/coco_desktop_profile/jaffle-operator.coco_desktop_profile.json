@@ -15,12 +15,15 @@
     "MCP_SERVERS": {},
     "OWNER_TEAM": "Jaffle Analytics",
     "PLUGINS": [
-      "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/plugins/jaffle-operator/b4ca513eca9a/jaffle-toolkit/"
+      "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/plugins/jaffle-operator/a191c636fdf1/jaffle-toolkit/"
     ],
     "SETTINGS_OVERRIDES": {},
     "SKILL_REPOS": [
       {
-        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/5a3efafcb4b8/"
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/shared/bdd2a6e3d491/"
+      },
+      {
+        "snowflake_stage": "@SST_REF_DEV.JAFFLE.SKILL_BUNDLES/skills/jaffle-operator/8fd19d3c786b/"
       }
     ],
     "SYSTEM_PROMPT_REPO": {
@@ -29,15 +32,31 @@
   },
   "trees": [
     {
-      "digest": "5a3efafcb4b8920bd79763d4d4239bbed47777d44ec22657fc29ba4bb337ec04",
+      "digest": "bdd2a6e3d49137c570ba6650687bb1cfbe235304cc7397ec8a82405869bb7607",
       "files": [
         {
           "path": "jaffle-catalogue/SKILL.md",
-          "sha256": "c53a8c66db0b54b2d2c4af80436362713b347d754abdd6cd0587da9c6c265116",
-          "size": 1685
+          "sha256": "86ad84696e70fd55d118691d12b5d64d6ab334a6f6d5124cf993672ab41362d7",
+          "size": 1657
         }
       ],
-      "prefix": "skills/shared/5a3efafcb4b8/"
+      "prefix": "skills/shared/bdd2a6e3d491/"
+    },
+    {
+      "digest": "8fd19d3c786b614544f86eff77f9b91cbdb9d934e37448fcdca9c9efee273cc3",
+      "files": [
+        {
+          "path": "supply-backfill/SKILL.md",
+          "sha256": "880957ea6ddba707ec24d492b71b590b5322c85d0d1ba204fa3f57f740115435",
+          "size": 801
+        },
+        {
+          "path": "supply-backfill/reference/checklist.md",
+          "sha256": "a94e6d5d97087d3702de5082d10acbafffd1f4a257dc54d0673990fed000644d",
+          "size": 166
+        }
+      ],
+      "prefix": "skills/jaffle-operator/8fd19d3c786b/"
     },
     {
       "digest": "78bcd7d0d30fa31d711faa9021f729fa9d4149bce617c109bd9289311b7b91f6",
@@ -73,7 +92,7 @@
       "prefix": "commands/jaffle-operator/e0208897ecb5/"
     },
     {
-      "digest": "b4ca513eca9a50c8162e8807461602b8f8c2cd97d44d53231039d82f4c37ba42",
+      "digest": "a191c636fdf1347c1848fbc03ed055d5fda76aa59e70d5bfb88f825f5d673e49",
       "files": [
         {
           "path": "jaffle-toolkit/.cortex-plugin/plugin.json",
@@ -82,36 +101,46 @@
         },
         {
           "path": "jaffle-toolkit/skills/jaffle-operations/SKILL.md",
-          "sha256": "b52ceb6d41c6312a8a324fa6feb31ddf95c40be663f54c32bf0be685d4d39509",
-          "size": 2969
+          "sha256": "481be433eff375d76cdbc8264cd116c660b8746d27e19c1d02a374dcbdfcf6f5",
+          "size": 2967
         },
         {
           "path": "jaffle-toolkit/skills/jaffle-operations/check-supply-month.sql",
-          "sha256": "c7ce5e3c5db3ab1ef75f05517da5bd5a5608a7f175a1a19a93030f9be964c720",
-          "size": 2015
+          "sha256": "aa41cf1ffb3f63e1fc0faf92970168d8eac03751d23ab1830f71eacd8c53cf55",
+          "size": 1983
         },
         {
-          "path": "jaffle-toolkit/skills/jaffle-operations/reference__month-close.md",
-          "sha256": "326ad5f55cb9b09f984786ce47a83150f12f6c6888a33d9b682d4180e9a4c556",
-          "size": 1708
+          "path": "jaffle-toolkit/skills/jaffle-operations/reference/month-close.md",
+          "sha256": "1e53842737369b5b291c53db4b20c522dde82ca397095b1bb778b204610e5b74",
+          "size": 1657
+        },
+        {
+          "path": "jaffle-toolkit/skills/jaffle-operations/supply-backfill/SKILL.md",
+          "sha256": "880957ea6ddba707ec24d492b71b590b5322c85d0d1ba204fa3f57f740115435",
+          "size": 801
+        },
+        {
+          "path": "jaffle-toolkit/skills/jaffle-operations/supply-backfill/reference/checklist.md",
+          "sha256": "a94e6d5d97087d3702de5082d10acbafffd1f4a257dc54d0673990fed000644d",
+          "size": 166
         },
         {
           "path": "jaffle-toolkit/skills/jaffle-semantics/SKILL.md",
-          "sha256": "036f054f5bff272e2eebf1ce561ea7b07021b4e8705fc7b745671bbb97b46c84",
-          "size": 3884
+          "sha256": "5dace22a3910addea823d87de2fec40136706d0b468bc07f039a489801a7731f",
+          "size": 3750
         },
         {
-          "path": "jaffle-toolkit/skills/jaffle-semantics/reference__join-paths.md",
-          "sha256": "ca9d9c0fa379367bf145f234a6c835020064888806c485b379253a84bb93a8a6",
-          "size": 1995
+          "path": "jaffle-toolkit/skills/jaffle-semantics/reference/join-paths.md",
+          "sha256": "183f3a6b83108a6c1812c5cdcb673e7c975aa5cef4760412572d4c6358ce3a36",
+          "size": 1998
         },
         {
-          "path": "jaffle-toolkit/skills/jaffle-semantics/reference__metric-shapes.md",
-          "sha256": "540fa9f0f6a0e45f485f177b3b92541f3b52035a8cb598fceb6e82bd552d5b08",
-          "size": 1939
+          "path": "jaffle-toolkit/skills/jaffle-semantics/reference/metric-shapes.md",
+          "sha256": "fe2db95802f3b0ac4694eb15abf3e12ddd4854c7f64171f9a37348b54c8186d4",
+          "size": 1871
         }
       ],
-      "prefix": "plugins/jaffle-operator/b4ca513eca9a/"
+      "prefix": "plugins/jaffle-operator/a191c636fdf1/"
     }
   ]
 }

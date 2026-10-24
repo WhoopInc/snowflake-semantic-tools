@@ -106,6 +106,7 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "skill:jaffle-catalogue",
         "skill:jaffle-operations",
         "skill:jaffle-semantics",
+        "skill:supply-backfill",
         "tool:menu_docs_search",
         "tool:order_status",
     ]
@@ -128,7 +129,7 @@ def test_compile_json_emits_artifact_fingerprints(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.output
     envelope = json.loads(result.output)
-    assert len(envelope["data"]["artifacts"]) == 16
+    assert len(envelope["data"]["artifacts"]) == 17
     assert all(len(artifact["fingerprint"]) == 64 for artifact in envelope["data"]["artifacts"])
 
 
@@ -198,7 +199,7 @@ def test_compile_selection_keeps_the_canonical_manifest_full(tmp_path: Path) -> 
     )
     assert result.exit_code == 0, result.output
     canonical = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
-    assert len(canonical["artifacts"]) == 16
+    assert len(canonical["artifacts"]) == 17
 
 
 @pytest.mark.parametrize(
@@ -307,13 +308,14 @@ def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) 
 def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> None:
     project = profile_with_commands_and_plugin(tmp_path / "skills")
     (project / "skills" / "month-close" / "SKILL.md").write_text(
-        "---\nname: month-close\ndescription: Close the month.\n---\nRead reference/missing.md.\n", encoding="utf-8"
+        "---\nname: month-close\ndescription: Close the month.\n---\nRead [it](reference/missing.md).\n",
+        encoding="utf-8",
     )
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
-    # Without a catalog channel the skill ships nested in the profile, but the plugin copy
-    # is the flattened extension bundle, so its dangling reference blocks the plugin.
+    # Without a catalog channel the skill ships in the profile, and the plugin copy is
+    # checked as its extension bundle, so its broken link blocks the plugin.
     assert {"SST-VAL808", "SST-VAL836"} <= {item["code"] for item in diagnostics}
     blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL855"]
     assert blocked == ["profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"]

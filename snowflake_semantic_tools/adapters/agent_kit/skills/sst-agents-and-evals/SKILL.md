@@ -18,7 +18,8 @@ for where each publishes, @SST_DOCS@/guides/configuration.md.
 - The project's **`skills/` folder** (`project.skills_dir`) holds skills SST **publishes** to
   Snowflake as Cortex Extensions, for Cortex Agents and CoCo Desktop profiles to load. Each is
   a folder whose `SKILL.md` has `name` and `description` frontmatter (`SST-PRS034`), and the
-  folder name must match `name` (`SST-VAL801`). Every path it links must exist in the folder
+  folder name must match `name` (`SST-VAL801`). The folder publishes as authored, subfolders
+  and nested skill folders included; every Markdown link must name a file or folder in it
   (`SST-VAL808`), and file names may use only letters, digits, `.`, `_`, `-`, and `$`
   (`SST-VAL857`).
 - **This kit** (in `.cortex/skills` or `.claude/skills`) is for the coding agent working on

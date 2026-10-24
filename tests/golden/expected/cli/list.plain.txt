@@ -2,21 +2,22 @@ $ sst --project-dir <project> --manifest <manifest> list
 --- exit 0
 --- stdout
 ARTIFACT                              STATUS   TARGET                                   FINGERPRINT
-agent:jaffle_analytics_agent          pending  SST_REF_DEV...JAFFLE_ANALYTICS_AGENT     f8105d1926e8
+agent:jaffle_analytics_agent          pending  SST_REF_DEV...JAFFLE_ANALYTICS_AGENT     50cb54a5d312
 agent:jaffle_delivery_agent           pending  SST_REF_DEV...JAFFLE_DELIVERY_AGENT      587ccbb3cf86
 agent:jaffle_minimal_agent            pending  SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT     506d43050765
-coco_desktop_profile:jaffle-analyst   pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY      f0282d8b940e
-coco_desktop_profile:jaffle-operator  pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY      3bc7efb1d2b8
+coco_desktop_profile:jaffle-analyst   pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY      e99facf42651
+coco_desktop_profile:jaffle-operator  pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY      924ea028353f
 cowork_profile:jaffle_concierge       pending  SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE    d7a39e579d5b
 eval:jaffle_analytics_agent           pending  ...EVAL_JAFFLE_ANALYTICS_AGENT_DCE1F8A   cf5727aa5bca
-plugin:jaffle-toolkit                 pending  SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT        2d87d777ba51
+plugin:jaffle-toolkit                 pending  SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT        ffff80db110d
 semantic_view:jaffle_menu             pending  SST_REF_DEV.CORE.JAFFLE_MENU             9ad856b7531a
 semantic_view:jaffle_minimal          pending  SST_REF_DEV.JAFFLE.JAFFLE_MINIMAL        5f2a18d90a31
 semantic_view:jaffle_sales            pending  SST_REF_DEV.JAFFLE.JAFFLE_SALES          d8507645d121
-skill:jaffle-catalogue                pending  SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE      9c68ceaf219f
-skill:jaffle-operations               pending  SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS     5c9c04dce568
-skill:jaffle-semantics                pending  SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS      6f3926606207
+skill:jaffle-catalogue                pending  SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE      db490c206642
+skill:jaffle-operations               pending  SST_REF_DEV.JAFFLE.JAFFLE_OPERATIONS     bfed48337b30
+skill:jaffle-semantics                pending  SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS      82b2573b34fc
+skill:supply-backfill                 pending  SST_REF_DEV.JAFFLE.SUPPLY_BACKFILL       6b124da1304d
 tool:menu_docs_search                 pending  SST_REF_DEV.JAFFLE.MENU_DOCS_SEARCH      151cfa8cf07b
 tool:order_status                     pending  SST_REF_DEV.JAFFLE.ORDER_STATUS          388f79da674d
 --- stderr
-✓ listed 16 artifacts · <n>s
+✓ listed 17 artifacts · <n>s

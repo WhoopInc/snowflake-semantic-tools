@@ -28,7 +28,7 @@ from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.render.coco_desktop_profile import build_coco_desktop_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
-from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
+from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
     desktop_registry_diagnostics,
     unreached_skills,
@@ -176,9 +176,9 @@ class CompileCocoDesktopProfiles:
         diagnostics: list[Diagnostic] = list(validate_coco_desktop_profile_catalog(self._catalog, skills, plugins))
         diagnostics.extend(unreached_skills(skills, self._catalog, published=self._published, plugins=plugins))
         blocked_plugins = set(self._blocked_plugins)
-        flattened_blocked, flatten_diagnostics = self._flatten_plugins(skills, plugins)
-        diagnostics.extend(flatten_diagnostics)
-        blocked_plugins.update(flattened_blocked)
+        checked_blocked, checked_diagnostics = self._check_plugins(skills, plugins)
+        diagnostics.extend(checked_diagnostics)
+        blocked_plugins.update(checked_blocked)
         channels = {
             profile.key: channel for profile in self._catalog.profiles if (channel := self._channel(profile.key))
         }
@@ -202,29 +202,29 @@ class CompileCocoDesktopProfiles:
                 compiled.append(item)
         return CompileResult(tuple(compiled), DiagnosticBag(diagnostics))
 
-    def _flatten_plugins(
+    def _check_plugins(
         self, skills: Mapping[str, Skill], plugins: Mapping[str, Plugin]
     ) -> tuple[set[str], list[Diagnostic]]:
         """Check each plugin a profile names, returning the plugins blocked and the problems found.
 
         A plugin that does not publish as an extension has had no bundle built yet, so the errors
-        a profile's flattened copy would carry are reported here, once each: for each such plugin
-        in first-reference order, its member skills' flattening problems (a skill only the first
+        a profile's copy would carry are reported here, once each: for each such plugin
+        in first-reference order, its member skills' file problems (a skill only the first
         time, and none that publishes as an extension), then its bundle problems. A plugin is
         blocked when it cannot bundle or holds a blocked skill.
         """
         blocked: set[str] = set()
         diagnostics: list[Diagnostic] = []
-        flattened: set[str] = set()
+        checked: set[str] = set()
         referenced = dict.fromkeys(name for profile in self._catalog.profiles for name in profile.plugins)
         for name in referenced:
             plugin = plugins.get(name)
             if plugin is None or plugin.key in self._published:
                 continue
             for member in dict.fromkeys(plugin.members):
-                if member in skills and member not in flattened and skills[member].key not in self._published:
-                    flattened.add(member)
-                    diagnostics.extend(flatten_skill(skills[member])[2])
+                if member in skills and member not in checked and skills[member].key not in self._published:
+                    checked.add(member)
+                    diagnostics.extend(check_skill_files(skills[member]))
             bundle, bundle_diagnostics = build_plugin_bundle(plugin, skills)
             diagnostics.extend(bundle_diagnostics)
             if bundle is None or any(member in self._blocked for member in plugin.members):

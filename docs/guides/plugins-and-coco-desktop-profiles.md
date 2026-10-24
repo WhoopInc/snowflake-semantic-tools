@@ -42,8 +42,8 @@ config:
   stops the plugin from bundling (`SST-VAL836`); a plugin never publishes with a
   member missing.
 - The bundle holds `.cortex-plugin/plugin.json` -- name, description,
-  `owner_team` as the author, and `"skills": "./skills/"` -- and each member
-  flattened under `skills/<member>/`.
+  `owner_team` as the author, and `"skills": "./skills/"` -- and each member's
+  folder, as authored, under `skills/<member>/`.
 - A plugin version is named by its content, like a skill's, and publishes as a
   `TYPE = 'PLUGIN'` extension wherever its `+bundle_stage` resolves. Its
   settings are the `plugins:` block's -- `+database`, `+schema`,

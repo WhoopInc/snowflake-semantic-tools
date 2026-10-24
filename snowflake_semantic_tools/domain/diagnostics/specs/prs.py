@@ -459,14 +459,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="an agent's sample question is not a mapping with a string `question`",
     ),
     spec(
-        "SST-PRS119",
-        Severity.ERROR,
-        "Skill folder contains another skill folder",
-        "{artifact}: nested skill folder at {path}",
-        "flatten the layout; one skill per folder",
-        condition="a skill folder contains another skill folder; once per nested folder",
-    ),
-    spec(
         "SST-PRS120",
         Severity.ERROR,
         "SKILL.md is not at the folder root",

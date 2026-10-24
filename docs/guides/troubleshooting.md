@@ -199,13 +199,15 @@ Drawn from: [plan preflight](../../snowflake_semantic_tools/domain/plan/prefligh
 
 ## A skill loads but cannot find its own files
 
-Agents read supporting files only beside `SKILL.md`, which is why SST flattens
-the bundle. Check the validation output for the file:
+Every channel publishes the skill folder as authored, so a path that resolves from
+the file that names it, or from the skill folder, resolves where the agent reads
+the skill. Check the validation output for the file:
 
-- `SST-VAL808`: a referenced file does not exist;
-- `SST-VAL810`: a path written from the repository root, or a link to a
-  directory, which cannot survive flattening;
-- `SST-VAL833`: a script names a path flattening renamed.
+- `SST-VAL808`: a Markdown link names a file or folder the skill does not hold;
+- `SST-VAL810`: a path written from the repository root, which the published
+  skill has no repository around; write it from the skill folder;
+- a path that walks out of the skill folder (`../../other-skill/x.md`) names a
+  file the published skill does not carry; move the file into the skill.
 
 ## A profile does not appear in CoCo Desktop
 

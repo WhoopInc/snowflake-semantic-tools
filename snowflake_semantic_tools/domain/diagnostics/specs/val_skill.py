@@ -96,39 +96,30 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL808",
         Severity.ERROR,
-        "Referenced bundle path does not resolve",
-        "skill '{artifact}': '{path}' is referenced and absent from the bundle",
-        "add the file, or correct the reference",
-        condition="a Markdown reference in the skill names a file that is not in the bundle",
-    ),
-    spec(
-        "SST-VAL809",
-        Severity.ERROR,
-        "Flattened file names collide",
-        "skill '{artifact}': '{a}' and '{b}' flatten to one name",
-        "rename one of the authored files",
-        condition="two bundle files collide after flattening",
+        "Markdown link names no file of the skill",
+        "skill '{artifact}': the link to '{path}' names no file or folder of the skill",
+        "add the file, or correct the link; it resolves from the linking file's folder or the skill folder",
+        condition="a Markdown link, image, or reference definition in the skill names no file or folder of the skill",
+        note=(
+            "A path in prose or a code block is not a link: it is an instruction or an example, and is never reported."
+        ),
     ),
     spec(
         "SST-VAL810",
-        Severity.ERROR,
-        "Flattening did not rewrite a subdirectory reference",
-        "skill '{artifact}': '{path}' does not resolve inside the published bundle",
-        "rewrite every subdirectory reference, then re-check the paths",
-        condition=(
-            "a Markdown reference names a directory, or walks down from the repository root, or a "
-            "reference rewritten for the flattened catalog bundle no longer resolves"
-        ),
-        note="A reference anchored at the authoring repository's root is rejected rather than rewritten.",
+        Severity.WARNING,
+        "Path names a skill file from the repository root",
+        "skill '{artifact}': '{path}' names '{target}' by its path from the repository root",
+        "write '{target}', the path from the skill folder, which is how the published skill holds it",
+        condition="a path in the skill's Markdown walks down a `skills/` tree to one of the skill's own files",
     ),
     spec(
         "SST-VAL811",
         Severity.WARNING,
-        "Flattened bundle exceeds the size budget",
+        "Bundle exceeds the size budget",
         "'{artifact}': bundle is {size} bytes, over {expected}",
         "move bulk content out of the bundle",
         condition=(
-            "a flattened bundle is over the 1 MiB size budget and within the 10 MiB scan limit "
+            "a bundle is over the 1 MiB size budget and within the 10 MiB scan limit "
             "(SST-VAL834 reports a bundle over it)"
         ),
         note="Skills are read on demand, so the cost is invocation latency and tokens.",
@@ -148,7 +139,10 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Bundled file is never referenced",
         "skill '{artifact}': '{path}' is never referenced from the skill's Markdown",
         "reference it, or remove it",
-        condition="a bundled file is named by no Markdown reference in the skill",
+        condition=(
+            "a file of the skill, outside any nested skill's folder, is named by no path in the "
+            "skill's Markdown, by its path or by a file name no other file shares"
+        ),
         note="Dead payload still ships, still counts against the size budget, and still has to be reviewed.",
     ),
     spec(
@@ -262,10 +256,10 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL829",
         Severity.WARNING,
-        "Channel content hashes diverge beyond flattening",
+        "Channel content hashes diverge",
         "skill '{artifact}': catalog and stage hashes diverge by {value}",
         "compare the two bundles",
-        condition="a skill's catalog and stage file sets differ by more than flattening's renames",
+        condition="a skill's catalog and stage file sets differ",
         precheck=Precheck.OBSERVE,
     ),
     spec(
@@ -298,14 +292,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "rename one of them",
         condition="a skill or plugin would publish under an extension name an earlier skill or plugin already takes",
         note="Global uniqueness is what makes one flat extension schema viable.",
-    ),
-    spec(
-        "SST-VAL833",
-        Severity.WARNING,
-        "Script names a path that flattening renames",
-        "skill '{artifact}': '{path}' names '{target}', which the catalog bundle renames",
-        "keep files a script reads beside SKILL.md, or pass the path in as an argument",
-        condition="a script names a nested path that catalog flattening renames",
     ),
     spec(
         "SST-VAL834",

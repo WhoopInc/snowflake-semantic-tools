@@ -7,6 +7,10 @@
 # directory. The plugin's two skills therefore reach this profile through the
 # plugin alone; listing them under `skills:` as well would ship them twice.
 #
+# `skills:` adds `supply-backfill`, the skill nested inside `jaffle-operations/`. The
+# plugin's copy of `jaffle-operations` already carries its folder, but a nested skill
+# is a skill of its own, so the profile also ships it alone, as Desktop lists it.
+#
 # `commands:` names Markdown files under `commands/` by path, without `.md`.
 # Desktop joins nested folders with `:`, so `ops/month-check` is `/ops:month-check`.
 # `/daily-summary` reaches this profile, like every other, through `shared/`.
@@ -15,6 +19,8 @@ description: |-
   Jaffle operators: the month-close toolkit as one plugin, and the month-check
   command.
 owner_team: Jaffle Analytics
+skills:
+  - "{{ skill('supply-backfill') }}"
 plugins:
   - "{{ plugin('jaffle-toolkit') }}"
 commands:

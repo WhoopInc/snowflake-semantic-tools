@@ -505,7 +505,7 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "SST-VAL818",
         "Flatten settings are wrong for a channel",
         None,
-        "`+flatten` was removed: extension bundles are always flattened and profile trees never are",
+        "`+flatten` was removed: every channel publishes a skill folder as authored",
     ),
     (
         "SST-VAL819",
@@ -569,5 +569,29 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         "Fingerprint is not stable across identical runs",
         None,
         "only the golden suite compiled a project twice, and goldens are the engine's own tests now, not `sst test`",
+    ),
+    (
+        "SST-PRS119",
+        "Skill folder contains another skill folder",
+        None,
+        "a skill is its folder, a nested skill's folder included, and a nested skill is a skill of its own",
+    ),
+    (
+        "SST-RND032",
+        "Skill body exceeds the soft size limit",
+        "SST-VAL812",
+        "skills publish as authored, so the rendered SKILL.md is the authored one, which SST-VAL812 sizes",
+    ),
+    (
+        "SST-VAL809",
+        "Flattened file names collide",
+        None,
+        "skills publish as authored, so no two paths can become one",
+    ),
+    (
+        "SST-VAL833",
+        "Script names a path that flattening renames",
+        None,
+        "skills publish as authored, so no path a script names is renamed",
     ),
 )

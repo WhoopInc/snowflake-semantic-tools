@@ -266,7 +266,8 @@ skills:
   # The internal stage ADD VERSION reads from, created when absent. Each
   # version uploads under its own prefix, <stage>/<name>/<ALIAS>/, holding
   # skills/<name>/SKILL.md, so a published version's files never change.
-  # Bundles are always flattened: reference/x.md publishes as reference__x.md.
+  # A bundle is the skill folder as authored: reference/x.md publishes as
+  # skills/<name>/reference/x.md, and a nested skill's folder rides along.
   +bundle_stage: SKILL_BUNDLE_SRC
   # `true` would tag each new version SNOWFLAKE.CORE.CERTIFICATION_STATUS =
   # 'CERTIFIED'. SST never un-certifies, so the fixture leaves it off; a skill

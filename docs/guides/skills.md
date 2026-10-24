@@ -21,6 +21,8 @@ skills/
     reference/
       join-paths.md
       metric-shapes.md
+    eda-agent/               # a nested skill: a skill of its own, and part of sales-semantics
+      SKILL.md
   finance/                   # a grouping folder: not a skill, just a directory
     month-close/
       SKILL.md
@@ -34,8 +36,12 @@ skills/
 - A grouping folder holds only folders. One that also holds files of its own is
   a skill whose `SKILL.md` sits one level too deep, which is an error
   (`SST-PRS120`).
-- A skill inside another skill is an error (`SST-PRS119`): the inner files would
-  belong to both.
+- A skill is its folder: `SKILL.md` and every file and folder beside it. A
+  folder inside a skill that holds its own `SKILL.md` is a nested skill. It is a
+  skill of its own, published under its own folder name, and it is also part of
+  the folder that holds it, so the outer skill's bundle carries it as it sits on
+  disk. Nested skill names are unique across the project like any other
+  (`SST-VAL832`).
 - Hidden files, `__pycache__`, and `.pyc` files are skipped.
 - SST never follows a symbolic link. A linked file or folder under the skills or
   plugins directory is an error (`SST-PRT009`) and is left out of every bundle,
@@ -72,23 +78,28 @@ Read [the join paths](reference/join-paths.md) before combining views.
 
 ## References to bundled files
 
-Every path a skill's Markdown names is checked: links, images, reference-style
-definitions, bare paths in prose, and paths inside fenced code blocks.
+A skill publishes as authored, so a relative path that resolves in the
+repository resolves where an agent reads the skill. SST checks the paths a
+skill's Markdown names against the skill's own files.
 
-- A path resolves relative to the file that contains it, or else relative to
-  the skill folder. URLs and absolute or `~/` paths are not checked.
-- A target that does not exist is an error (`SST-VAL808`). Links, images, and
-  reference-style definitions are always checked; a bare path in prose or in a
-  code block is checked when it looks like a bundle path: it starts with `./`
-  or `../`, its first folder is one the skill has or one of `scripts`,
-  `reference`, `references`, `examples`, `assets`, and `templates`, or its file
-  name matches one in the skill.
+- A Markdown link, image, or reference-style definition must name a file or
+  folder of the skill (`SST-VAL808`). It resolves relative to the file that
+  contains it, or else relative to the skill folder. URLs, `#anchor` links, and
+  absolute or `~/` paths are not checked.
+- A path in prose or inside a code block is never an error. It is an
+  instruction or an example -- often a file the skill tells the agent to create
+  -- and the agent resolves it by reading the folder. It still counts the file
+  it names as referenced: by its path, or by its file name alone when exactly
+  one file of the skill has that name, so `run eppo_stats.py` names
+  `scripts/eppo_stats.py`.
 - A path written from the repository root, such as
-  `skills/sales-semantics/reference/join-paths.md`, is an error (`SST-VAL810`):
-  the published bundle has no repository around it. Write it relative instead.
-- A link to a directory is an error (`SST-VAL810`); link the file.
-- A file no Markdown references is a warning (`SST-VAL813`).
-- A line that shows an example path on purpose can opt out of `SST-VAL808` by
+  `skills/sales-semantics/reference/join-paths.md`, is a warning
+  (`SST-VAL810`): the published bundle has no repository around it, so write the
+  path from the skill folder instead.
+- A file no Markdown names is a warning (`SST-VAL813`). A nested skill's files
+  are its own to name, so they are not reported against the skill that holds
+  them.
+- A line that shows an example link on purpose can opt out of `SST-VAL808` by
   carrying the text `sst: ignore SST-VAL808`, for example in a trailing
   comment.
 
@@ -104,46 +115,29 @@ characters, quoted or not. A value that starts with `$`, `{` or `<`, such as
 `$SNOWFLAKE_PASSWORD` or `<yours>`, is a variable or a placeholder, not a
 credential.
 
-## Flattening
+## Layout as published
 
-Cortex Agents read a skill's supporting files only when they sit beside
-`SKILL.md`. SST flattens each bundle in three steps:
-
-1. **Detect collisions.** `reference/notes.md` and a root-level
-   `reference__notes.md` would land on one path, so that is an error
-   (`SST-VAL809`) before anything is renamed.
-2. **Join path components with `__`.** `reference/join-paths.md` becomes
-   `reference__join-paths.md`.
-3. **Rewrite references.** Every Markdown file is rewritten so its references
-   point at the flattened names, including `../` links from one bundled file to
-   another. The rewritten text is checked again, and a reference that no longer
-   resolves is an error (`SST-VAL810`).
-
-A script that names a sibling path flattening moves is a warning
-(`SST-VAL833`): SST rewrites Markdown, not code.
-
-In the published bundle each skill's files sit under `skills/<name>/`, so
-`reference/join-paths.md` publishes as
-`skills/sales-semantics/reference__join-paths.md`.
-
-CoCo Desktop reads the authored, nested layout, so profiles publish skills
-unflattened. Neither is configurable: an extension bundle is always flattened,
-and a profile tree never is.
+Every channel publishes a skill's folder as authored, under `skills/<name>/`,
+so `reference/join-paths.md` publishes as
+`skills/sales-semantics/reference/join-paths.md`: the catalog extension, a
+plugin's bundle, and a CoCo Desktop profile's stage tree all hold the same
+paths. A nested skill's folder rides along in the skill that holds it, and also
+publishes alone as its own extension.
 
 ## Limits
 
 The extension scanner accepts at most 50 files, 2 MiB per file, and 10 MiB per
 version, and one file over a limit fails the whole version. SST checks the
 limits offline (`SST-VAL834`), before anything is uploaded. It also warns when
-`SKILL.md` exceeds 25 KiB as authored (`SST-VAL812`) or once flattening has
-rewritten it (`SST-RND032`), and when the flattened bundle exceeds 1 MiB
-(`SST-VAL811`).
+`SKILL.md` exceeds 25 KiB (`SST-VAL812`), and when the bundle exceeds 1 MiB
+(`SST-VAL811`). A nested skill counts toward the limits of the skill that holds
+it.
 
 ## Versions
 
 A version is named by its content: the skill's `version_prefix` setting
 (`skills.+version_prefix`, default `SST_`)
-followed by the first 12 hex characters, in upper case, of the flattened
+followed by the first 12 hex characters, in upper case, of the
 bundle's digest, for example `SST_16D8F6686433`. The digest is a SHA-256 over
 every file's path, size, and content hash, so it changes exactly when the
 bundle does. The prefix must start with a letter or underscore and hold only
@@ -198,7 +192,7 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
 - `+database` and `+schema` default to the target's. A route or a skill's own
   `config:` that places it outside the root's database and schema is a warning
   (`SST-VAL806`): agents then need USAGE on that schema too.
-- Every version is built from the complete, flattened bundle, so a deleted
+- Every version is built from the complete bundle, so a deleted
   file is gone from the next version; neither is configurable.
 - `+certified: true` tags each new version with
   `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'` and reads the tag back.
@@ -230,7 +224,7 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
 For each skill, `sst apply`:
 
 1. creates the bundle stage if it is absent;
-2. uploads the flattened bundle to `@<bundle_stage>/<name>/<ALIAS>/`, where
+2. uploads the bundle to `@<bundle_stage>/<name>/<ALIAS>/`, where
    `<name>` is the skill's folder name, so `SKILL.md` lands at
    `<name>/<ALIAS>/skills/<name>/SKILL.md`; then checks that the prefix holds
    exactly the bundle's files, byte for byte;

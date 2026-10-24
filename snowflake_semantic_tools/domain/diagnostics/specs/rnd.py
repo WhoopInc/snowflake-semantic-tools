@@ -118,15 +118,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the rendered SKILL.md has no body",
     ),
     spec(
-        "SST-RND032",
-        Severity.WARNING,
-        "Skill body exceeds the soft size limit",
-        "skill '{artifact}': rendered body is {size} bytes, over {expected}",
-        "move bulk content into a referenced file",
-        condition="a skill's rendered SKILL.md is over 25 KiB while the authored one is not",
-        note="A skill file authored over 25 KiB reports SST-VAL812 instead.",
-    ),
-    spec(
         "SST-RND040",
         Severity.ERROR,
         "Unsupported tool kind at render",

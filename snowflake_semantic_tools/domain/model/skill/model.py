@@ -69,6 +69,8 @@ class Skill:
             last; the `skills:` folder routes along it apply to the skill.
         config: The frontmatter's `config:` block: the `skills:` settings the skill sets for
             itself, without their `+`; compile resolves them over the folder routes and the root.
+        nested: The folder of each skill nested inside this one, relative to this folder. Its
+            files are among `files`, as the folder holds them, and it is also a skill of its own.
     """
 
     name: str
@@ -80,6 +82,7 @@ class Skill:
     origin: Origin
     folder: tuple[str, ...] = ()
     config: Mapping[str, object] = field(default_factory=lambda: MappingProxyType({}))
+    nested: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
@@ -180,13 +183,11 @@ class SkillBundle:
 
     Attributes:
         kind: The extension type, `SKILL` or `PLUGIN`.
-        renames: (authored, published) for each nested path flattening renamed.
     """
 
     kind: str
     name: str
     entries: tuple[BundleEntry, ...]
-    renames: tuple[tuple[str, str], ...] = ()
 
     @property
     def digest(self) -> str:
@@ -205,7 +206,6 @@ class SkillBundle:
             "digest": self.digest,
             "extension": target,
             "files": [{"path": entry.path, "sha256": entry.sha256, "size": entry.size} for entry in self.entries],
-            "flattened": [{"authored": authored, "published": published} for authored, published in self.renames],
             "type": self.kind,
         }
         if certified:

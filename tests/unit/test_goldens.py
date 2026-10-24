@@ -52,7 +52,7 @@ def compiled(tmp_path_factory: pytest.TempPathFactory) -> Compiled:
 def test_the_reference_project_compiles_every_artifact_type(compiled: Compiled) -> None:
     assert compiled.result.success, [item.message for item in compiled.result.diagnostics]
     assert {item.artifact_type for item in compiled.result.compiled} == _TYPES
-    assert len(compiled.result.compiled) == 16
+    assert len(compiled.result.compiled) == 17
 
 
 def test_every_compiled_payload_equals_its_golden(compiled: Compiled) -> None:

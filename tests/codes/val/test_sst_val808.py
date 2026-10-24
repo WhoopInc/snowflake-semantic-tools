@@ -1,34 +1,45 @@
-"""SST-VAL808: referenced bundle path does not resolve.
+"""SST-VAL808: a Markdown link names no file of the skill.
 
-Fires when SKILL.md references a file the bundle lacks; the nearest legitimate input stays quiet.
+Fires when SKILL.md links to a file the skill lacks; a path mentioned in prose or a code block,
+or a link to a file in a subfolder, stays quiet.
 """
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
+from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
 )
 
 REF = "---\nname: month-close\ndescription: Does things.\n---\n# Close\nRead {ref}.\n"
-SKILLS = {"month-close": skill()}
-TARGET = QualifiedName.parse("DB.S.KIT")
 
 
 def test_sst_val808_fires() -> None:
     diagnostic = only(
-        flatten_skill(skill(files={"SKILL.md": REF.format(ref="reference/steps.md and reference/missing.md")}))[2],
+        check_skill_files(
+            skill(files={"SKILL.md": REF.format(ref="[steps](reference/steps.md) and [gone](reference/missing.md)")})
+        ),
         "SST-VAL808",
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "skill 'month-close': 'reference/missing.md' is referenced and absent from the bundle"
+        "skill 'month-close': the link to 'reference/missing.md' names no file or folder of the skill"
     )
     assert diagnostic.subject == "skill:month-close"
 
 
 def test_sst_val808_silent() -> None:
-    assert "SST-VAL808" not in codes(flatten_skill(skill())[2])
+    text = REF.format(ref="[steps](reference/steps.md), steps.md, [notes](reference/), and scripts/my_script.py")
+    assert "SST-VAL808" not in codes(check_skill_files(skill(files={"SKILL.md": text})))
+
+
+def test_sst_val808_resolves_from_the_linking_file() -> None:
+    files: dict[str, bytes | str] = {
+        "SKILL.md": REF.format(ref="[steps](reference/steps.md)"),
+        "reference/steps.md": "See [the template](../assets/template.md) and [it again](template.md).\n",
+        "assets/template.md": "Template.\n",
+    }
+    found = check_skill_files(skill(files=files))
+    assert [item.context["path"] for item in found if item.code == "SST-VAL808"] == ["template.md"]

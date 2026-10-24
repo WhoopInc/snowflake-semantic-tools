@@ -1,7 +1,7 @@
 """Build the exact file set an extension version publishes, and hold it to Snowflake's scan limits.
 
-A SKILL-type version is one skill flattened under `skills/<name>/`; a PLUGIN-type version is
-`.cortex-plugin/plugin.json` plus each member flattened the same way. Entries are listed in
+A SKILL-type version is one skill folder, as authored, under `skills/<name>/`; a PLUGIN-type
+version is `.cortex-plugin/plugin.json` plus each member's folder the same way. Entries are listed in
 path order, so a bundle's digest, and with it the version alias, depends on content alone.
 """
 
@@ -19,7 +19,7 @@ from snowflake_semantic_tools.domain.model.skill.model import (
     SkillBundle,
     SkillFile,
 )
-from snowflake_semantic_tools.domain.render.skill_flatten import flatten_skill
+from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
 PLUGIN_MANIFEST = ".cortex-plugin/plugin.json"
@@ -33,27 +33,25 @@ BUNDLE_BUDGET_BYTES = 1024 * 1024
 
 
 def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]:
-    """Build the flattened `skills/<name>/...` bundle a SKILL-type version is built from.
+    """Build the `skills/<name>/...` bundle a SKILL-type version is built from, every path as authored.
 
     Returns:
         The bundle, or None when the skill has an error or no files; and every diagnostic,
-        flattening's first.
+        the file checks' first.
 
     Diagnostics:
+        Every code `check_skill_files` lists.
         SST-VAL812: SKILL.md is over its size budget.
-        SST-RND032: SKILL.md is within its size budget as authored and over it once flattened.
-        SST-RND030: the flattened files hold no SKILL.md for the version to open with.
+        SST-RND030: the files hold no SKILL.md for the version to open with.
         SST-RND031: the rendered SKILL.md has no instructions after its frontmatter.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
         SST-VAL811: the bundle is over its size budget, and within the scan limit on total size.
         SST-VAL816: how the bundle's bytes split between SKILL.md and the rest, once it builds (info).
     """
-    files, renames, diagnostics = flatten_skill(skill)
-    found: list[Diagnostic] = list(diagnostics)
-    skill_md = next((item for item in skill.files if item.path == SKILL_FILE), None)
-    found.extend(
-        _rendered_skill_md(skill, files, authored_over=skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES)
-    )
+    files = skill.files
+    found: list[Diagnostic] = list(check_skill_files(skill))
+    skill_md = next((item for item in files if item.path == SKILL_FILE), None)
+    found.extend(_skill_md_present(skill, files))
     if skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES:
         found.append(
             D(
@@ -76,7 +74,7 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
     if bag.has_errors or not entries:
         return None, bag
     split = _byte_split(skill, entries)
-    return SkillBundle("SKILL", skill.name, entries, renames), DiagnosticBag((*bag, split))
+    return SkillBundle("SKILL", skill.name, entries), DiagnosticBag((*bag, split))
 
 
 def _byte_split(skill: Skill, entries: tuple[BundleEntry, ...]) -> Diagnostic:
@@ -87,33 +85,15 @@ def _byte_split(skill: Skill, entries: tuple[BundleEntry, ...]) -> Diagnostic:
     return D("SST-VAL816", origin=skill.origin, subject=skill.key, artifact=skill.name, value=value)
 
 
-def _rendered_skill_md(skill: Skill, files: tuple[SkillFile, ...], *, authored_over: bool) -> tuple[Diagnostic, ...]:
-    """Check the flattened SKILL.md: present whenever anything is, with a body, and within budget.
-
-    Flattening rewrites only references, so the rendered body is empty exactly when the
-    authored one is. A SKILL.md authored over budget is SST-VAL812's to report, not this check's.
-    """
-    rendered = next((item for item in files if item.path == SKILL_FILE), None)
-    if rendered is None:
-        if not files:
-            return ()
+def _skill_md_present(skill: Skill, files: tuple[SkillFile, ...]) -> tuple[Diagnostic, ...]:
+    """Check that a skill with files holds a SKILL.md, and that it gives instructions."""
+    if not files:
+        return ()
+    if not any(item.path == SKILL_FILE for item in files):
         return (D("SST-RND030", origin=skill.origin, subject=skill.key, artifact=skill.name, path=SKILL_FILE),)
-    empty = (
-        () if skill.body.strip() else (D("SST-RND031", origin=skill.origin, subject=skill.key, artifact=skill.name),)
-    )
-    if authored_over or rendered.size <= SKILL_MD_BUDGET_BYTES:
-        return empty
-    return (
-        *empty,
-        D(
-            "SST-RND032",
-            origin=skill.origin,
-            subject=skill.key,
-            artifact=skill.name,
-            size=rendered.size,
-            expected=SKILL_MD_BUDGET_BYTES,
-        ),
-    )
+    if skill.body.strip():
+        return ()
+    return (D("SST-RND031", origin=skill.origin, subject=skill.key, artifact=skill.name),)
 
 
 def plugin_manifest_json(plugin: Plugin) -> str:
@@ -130,7 +110,7 @@ def build_plugin_bundle(
     plugin: Plugin,
     members: Mapping[str, Skill],
 ) -> tuple[SkillBundle | None, DiagnosticBag]:
-    """Build `.cortex-plugin/plugin.json` plus each member flattened under `skills/<member>/`.
+    """Build `.cortex-plugin/plugin.json` plus each member's folder, as authored, under `skills/<member>/`.
 
     A member missing from `members` is skipped here; validation reports it. A member listed
     twice is bundled once.
@@ -146,19 +126,16 @@ def build_plugin_bundle(
     """
     diagnostics: list[Diagnostic] = []
     entries: list[BundleEntry] = [BundleEntry(PLUGIN_MANIFEST, plugin_manifest_json(plugin).encode("utf-8"))]
-    renames: list[tuple[str, str]] = []
     for name in dict.fromkeys(plugin.members):
         skill = members.get(name)
         if skill is None:
             continue
-        files, member_renames, member_diagnostics = flatten_skill(skill)
-        if member_diagnostics.has_errors:
+        if check_skill_files(skill).has_errors:
             diagnostics.append(
                 D("SST-VAL836", origin=plugin.origin, subject=plugin.key, artifact=plugin.name, name=name)
             )
             continue
-        entries.extend(BundleEntry(f"skills/{name}/{item.path}", item.content) for item in files)
-        renames.extend((f"{name}/{authored}", f"{name}/{published}") for authored, published in member_renames)
+        entries.extend(BundleEntry(f"skills/{name}/{item.path}", item.content) for item in skill.files)
     ordered = tuple(sorted(entries, key=lambda entry: entry.path))
     if not any(entry.path.startswith("skills/") for entry in ordered) and not diagnostics:
         diagnostics.append(
@@ -168,7 +145,7 @@ def build_plugin_bundle(
     bag = DiagnosticBag(diagnostics)
     if bag.has_errors:
         return None, bag
-    return SkillBundle("PLUGIN", plugin.name, ordered, tuple(renames)), bag
+    return SkillBundle("PLUGIN", plugin.name, ordered), bag
 
 
 def _limit_diagnostics(

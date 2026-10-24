@@ -15,17 +15,14 @@ description: |-
 Publishing on both channels. A project configures at least one of `catalog` and
 `stage` (SST-VAL817); this skill reaches both, with a bundle and a script.
 
-The two channels do not carry the same payload (SST-VAL818):
+Both channels carry the folder as authored: the catalog extension and the stage tree
+hold the same paths, `reference/` and the nested `supply-backfill/` skill included.
+This skill carries a bundle, a script, and a nested skill, so the goldens pin all
+three shapes at their authored paths.
 
-  catalog   Flattened. Cortex Agents do not search subdirectories, so the bundle
-            sits beside `SKILL.md`, and two bundled files whose flattened names
-            collide fail here (SST-VAL809) though the stage channel would hold both.
-  stage     The tree as authored, which CoCo Desktop reads.
-
-A skill on one channel cannot assert the divergence. This one carries a bundle AND a
-script, so the flatten has two distinct file types to collapse, and the goldens
-assert that the catalog payload and the stage payload differ in path while agreeing
-in content.
+`supply-backfill/` is a skill of its own, nested here because it is one step of the
+month close. It publishes as its own extension, and this folder's bundle carries it
+too, as it sits on disk.
 
 The script sits at the folder root. A skill keeps its scripts in the same folder as
 `SKILL.md`, not under a subdirectory, so `check-supply-month.sql` is a sibling of this
@@ -62,3 +59,5 @@ figure looks wrong, check in this order:
 
 - [Month close checks](reference/month-close.md) -- what has to be true before a
   supply month is treated as final.
+- [Backfilling a supply month](supply-backfill/SKILL.md) -- when a check finds a
+  month incomplete. See month-close.md for the checks it reruns.
