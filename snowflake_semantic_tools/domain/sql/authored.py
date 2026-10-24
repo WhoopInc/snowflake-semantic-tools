@@ -7,13 +7,15 @@ the wrapper cannot be handed unguarded text.
 
 `guard_expression` admits one expression: no `;`, comment, or `$$` outside strings and quoted
 identifiers, balanced brackets, and no statement keyword as a bare word. `guard_query` admits
-one SELECT or WITH statement with an optional trailing `;`, leading comments allowed, and no
+one SELECT or WITH statement with an optional trailing `;`, comments allowed anywhere, and no
 write or DDL keyword as a bare word. Neither admits a `SYSTEM$` function, which can act.
 
 Both first make the text unambiguous: `\r\n` becomes `\n`, every other control character but
 tab and every Unicode line or paragraph separator is refused, and each line loses its trailing
 whitespace, as `canonical` strips a rendered statement. The guard checks that text, and it is
-the text SST sends, byte for byte; a query's leading comments are never sent.
+the text SST sends, byte for byte. A query runs from its first word to its last word or symbol:
+the comments inside it are sent as written, and those before or after it are not, so a trailing
+`--` comment never swallows what a wrapper appends.
 """
 
 from __future__ import annotations
@@ -109,8 +111,9 @@ class AuthoredQuery:
     Attributes:
         text: The query as checked, leading comments included, as a verified query's SQL
             literal holds it.
-        statement: The query from its first word up to its trailing `;`, when it has one,
-            without trailing whitespace: what runs.
+        statement: The query from its first word to its last word or symbol, its trailing
+            `;` and the comments before and after it left out: what runs. Comments inside it
+            are kept.
 
     Raises:
         TypeError: constructed anywhere but `guard_query`.
@@ -179,11 +182,13 @@ def _refused_word(tokens: tuple[Token, ...], index: int, refused: frozenset[str]
     return f"'{tokens[index].text}' is a statement keyword"
 
 
-def _refused_token(tokens: tuple[Token, ...], index: int, refused: frozenset[str]) -> str | None:
+def _refused_token(
+    tokens: tuple[Token, ...], index: int, refused: frozenset[str], *, comments: bool = False
+) -> str | None:
     """Return the reason a token is refused wherever it stands, or None when it may stand."""
     token = tokens[index]
     if token.kind is TokenKind.COMMENT:
-        return "a comment is not allowed here"
+        return None if comments else "a comment is not allowed in an expression"
     if token.kind is TokenKind.DOLLAR_STRING:
         return "'$$' starts a dollar-quoted string"
     if token.kind is TokenKind.WORD:
@@ -195,11 +200,18 @@ def _refused_token(tokens: tuple[Token, ...], index: int, refused: frozenset[str
 
 
 def _check(
-    text: str, tokens: tuple[Token, ...], refused: frozenset[str], *, start: int, terminator: int | None
+    text: str,
+    tokens: tuple[Token, ...],
+    refused: frozenset[str],
+    *,
+    start: int,
+    terminator: int | None,
+    comments: bool = False,
 ) -> None:
-    """Refuse a comment, `$$`, `;`, refused word, or unbalanced bracket in `tokens[start:]`.
+    """Refuse a comment (unless `comments`), `$$`, `;`, refused word, or unclosed bracket in a span.
 
-    The token at `terminator` is the one `;` allowed, ending the statement.
+    The span is `tokens[start:]`; the token at `terminator` is the one `;` allowed, ending the
+    statement.
 
     Raises:
         UnsafeSqlError: the first problem found, in text order.
@@ -207,7 +219,7 @@ def _check(
     stack: list[tuple[str, int]] = []
     for index in range(start, len(tokens)):
         token = tokens[index]
-        reason = _refused_token(tokens, index, refused)
+        reason = _refused_token(tokens, index, refused, comments=comments)
         if reason is not None:
             raise UnsafeSqlError(token.offset, reason, text)
         if token.kind is not TokenKind.PUNCTUATION or index == terminator:
@@ -245,16 +257,16 @@ def guard_expression(text: str) -> AuthoredExpression:
 def guard_query(text: str) -> AuthoredQuery:
     """Accept one authored SELECT or WITH query, or raise with the offset and reason it is refused.
 
-    Leading whitespace and comments are allowed; after them the query must begin with SELECT or
-    WITH, and may end with one `;`. The statement kept starts at that first word, so a leading
-    comment is never sent.
+    Whitespace and comments are allowed anywhere; the query must begin with SELECT or WITH, and
+    may end with one `;`. The statement kept runs from that first word to the last word or
+    symbol before the `;`, so the comments inside it are sent and those around it are not.
 
     Raises:
         TypeError: `text` is not a `str`.
         UnsafeSqlError: the text is empty, holds an ambiguous character (see `checked_text`),
             or does not lex; it does not begin with SELECT or WITH; or, after its first word,
-            it holds a comment, `$$`, a `;` before its end, an unbalanced bracket, a `SYSTEM$`
-            function, or a statement keyword outside strings and quoted identifiers.
+            it holds `$$`, a `;` before its end, an unbalanced bracket, a `SYSTEM$` function,
+            or a statement keyword outside strings, quoted identifiers and comments.
     """
     checked = checked_text(text)
     tokens = _tokens(checked)
@@ -263,11 +275,11 @@ def guard_query(text: str) -> AuthoredQuery:
     if first is None or tokens[first].text.upper() not in ("SELECT", "WITH"):
         offset = 0 if first is None else tokens[first].offset
         raise UnsafeSqlError(offset, "a query must begin with SELECT or WITH", checked)
-    last = significant[-1]
-    terminator = last if tokens[last].text == ";" else None
-    _check(checked, tokens, STATEMENT_KEYWORDS, start=first, terminator=terminator)
-    end = len(checked) if terminator is None else tokens[terminator].offset
-    statement = checked[tokens[first].offset : end].rstrip()
+    code = [index for index in significant if tokens[index].kind is not TokenKind.COMMENT]
+    terminator = code[-1] if tokens[code[-1]].text == ";" and len(code) > 1 else None
+    _check(checked, tokens, STATEMENT_KEYWORDS, start=first, terminator=terminator, comments=True)
+    last = tokens[code[-2] if terminator is not None else code[-1]]
+    statement = checked[tokens[first].offset : last.offset + len(last.text)]
     return AuthoredQuery(checked, statement, _SEAL)
 
 

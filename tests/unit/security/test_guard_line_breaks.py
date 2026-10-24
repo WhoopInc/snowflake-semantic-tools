@@ -2,8 +2,9 @@
 
 Readers disagree on which characters end a `--` or `//` comment: Snowflake's lexer may end one
 at `\\r` or a Unicode separator where SST's ends it only at `\\n`, which would let text SST read
-as comment run as SQL. So the guards refuse every such character, a query's leading comments
-are never sent, and canonicalising a statement never changes a guarded fragment in it.
+as comment run as SQL. So the guards refuse every such character, a query's comments end where
+every reader ends them, none is sent before or after the statement, and canonicalising a
+statement never changes a guarded fragment in it.
 """
 
 from __future__ import annotations
@@ -50,11 +51,16 @@ def _conservative(text: str) -> list[tuple[TokenKind, int]]:
     return [(token.kind, token.offset) for token in tokenize(text.translate({ord(c): "\n" for c in BREAKS}))]
 
 
-def _single_statement(text: str) -> None:
-    """Assert text has no comment, `$$` body, or `;` outside strings, as SST and the conservative reader see it."""
+def _single_statement(text: str, *, comments: bool = False) -> None:
+    """Assert text has no `$$` body or `;` outside strings, and no comment unless `comments`, to every reader.
+
+    A query's comments are allowed, but its text must not end in one, so nothing appended is swallowed.
+    """
     tokens = tokenize(text)
     assert [(token.kind, token.offset) for token in tokens] == _conservative(text)
-    assert not [token for token in tokens if token.kind in (TokenKind.COMMENT, TokenKind.DOLLAR_STRING)]
+    refused = (TokenKind.DOLLAR_STRING,) if comments else (TokenKind.COMMENT, TokenKind.DOLLAR_STRING)
+    assert not [token for token in tokens if token.kind in refused]
+    assert tokens[-1].kind is not TokenKind.COMMENT
     assert not [token for token in tokens if token.kind is TokenKind.PUNCTUATION and token.text == ";"]
 
 
@@ -169,8 +175,22 @@ def test_a_query_the_guard_accepts_is_one_statement_however_line_breaks_are_read
     except UnsafeSqlError:
         return
     assert not set(guarded.text) & set(AMBIGUOUS)
-    _single_statement(guarded.statement)
-    _single_statement(_wrapped(text))
+    _single_statement(guarded.statement, comments=True)
+    _single_statement(_wrapped(text), comments=True)
+
+
+@settings(max_examples=400, deadline=None)
+@given(_FRAGMENTS, st.sampled_from(["--", "//"]), _FRAGMENTS)
+def test_a_comment_inside_a_query_ends_where_every_reader_ends_it(comment: str, opener: str, tail: str) -> None:
+    """A comment inside the query is sent, so the guard must leave no reader a break it reads otherwise."""
+    text = f"SELECT 1 {opener}{comment}\nFROM T {tail}"
+    try:
+        guarded = guard_query(text)
+    except UnsafeSqlError:
+        return
+    assert not set(guarded.text) & set(AMBIGUOUS)
+    _single_statement(guarded.statement, comments=True)
+    _single_statement(_wrapped(text), comments=True)
 
 
 @settings(max_examples=400, deadline=None)

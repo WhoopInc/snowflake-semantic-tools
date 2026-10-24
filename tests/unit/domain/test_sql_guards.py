@@ -93,8 +93,8 @@ def test_a_single_expression_is_accepted_exactly_as_written(text: str) -> None:
     [
         ("1); DROP TABLE x; --", "')' closes nothing"),
         ("1 ; DROP TABLE x", "';' ends the statement"),
-        ("x -- comment", "a comment is not allowed here"),
-        ("x /* c */", "a comment is not allowed here"),
+        ("x -- comment", "a comment is not allowed in an expression"),
+        ("x /* c */", "a comment is not allowed in an expression"),
         ("a $$ b $$", "'$$' starts a dollar-quoted string"),
         ("(a", "a bracket is never closed"),
         ("(a]", "']' closes nothing"),
@@ -133,6 +133,12 @@ def test_guards_take_only_text_and_report_lex_errors_as_refusals() -> None:
         ),
         ("select 'a;b' from t", "select 'a;b' from t"),
         ("SELECT INSERT(a, 1, 1, 'x') FROM t", "SELECT INSERT(a, 1, 1, 'x') FROM t"),
+        # A comment inside the query is sent as written; one after it is not, nor its `;`.
+        ("SELECT a\n  -- why a\nFROM t", "SELECT a\n  -- why a\nFROM t"),
+        ("SELECT a /* inline; DROP TABLE x */ FROM t", "SELECT a /* inline; DROP TABLE x */ FROM t"),
+        ("SELECT 1 -- trailing", "SELECT 1"),
+        ("SELECT 1; -- after the end\n/* and more */", "SELECT 1"),
+        ("SELECT 1 -- before the end\n;", "SELECT 1"),
     ],
 )
 def test_one_read_query_is_accepted_and_its_terminator_dropped(text: str, statement: str) -> None:
@@ -149,7 +155,7 @@ def test_one_read_query_is_accepted_and_its_terminator_dropped(text: str, statem
         ("SELECT 1;;", "';' ends the statement"),
         ("DELETE FROM x", "a query must begin with SELECT or WITH"),
         ("-- only a comment", "a query must begin with SELECT or WITH"),
-        ("SELECT 1 -- trailing", "a comment is not allowed here"),
+        ("SELECT 1; -- c\nDROP TABLE x", "';' ends the statement"),
         ("SELECT * FROM t WHERE x IN (SELECT 1", "a bracket is never closed"),
         ("WITH d AS (DELETE FROM t) SELECT 1", "'DELETE' is a statement keyword"),
         ("SELECT $$x$$", "'$$' starts a dollar-quoted string"),
@@ -193,3 +199,10 @@ def test_a_wrapper_altered_after_its_guard_is_refused_as_sql() -> None:
     object.__setattr__(query, "statement", "SELECT 1 ")
     with pytest.raises(UnsafeSqlError, match="not the text its guard checked"):
         query_text(query)
+
+
+def test_a_wrapper_around_a_query_with_comments_keeps_its_own_text() -> None:
+    # A trailing line comment would swallow what a wrapper appends; the statement stops before it.
+    statement = str(query_text(guard_query("SELECT a -- the a\nFROM t -- every row")))
+    assert statement == "SELECT a -- the a\nFROM t"
+    assert f"SELECT * FROM ({statement}) AS SST_VQ".endswith("FROM t) AS SST_VQ")

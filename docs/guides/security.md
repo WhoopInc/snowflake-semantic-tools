@@ -93,9 +93,10 @@ control character, or template syntax, and reports each one it refuses for its c
   `SHOW`, `TRUNCATE`, `UNDROP`, `UNSET`, `UPDATE`, `USE`) or query keyword (`SELECT`, `WITH`,
   `UNION`, `INTERSECT`, `MINUS`, `EXCEPT`) as a bare word; `INSERT(` and `TRUNCATE(` are allowed
   as the functions they also are.
-- **A verified query** must begin with `SELECT` or `WITH`, after any leading comments, which are
-  never sent, and may end with one `;`. After its first word the same rules hold, except that
-  query keywords are allowed.
+- **A verified query** must begin with `SELECT` or `WITH`, and may end with one `;`. After its
+  first word the same rules hold, except that query keywords and comments are allowed. A
+  comment inside the query is sent as written; one before or after it is not, so a trailing
+  `--` comment cannot swallow what SST appends when it checks or runs the query.
 - **Neither may call a `SYSTEM$` function**, written bare or as a quoted name, because those
   can act on the account.
 - **The text checked is the text sent.** `\r\n` becomes `\n` and each line loses its trailing
