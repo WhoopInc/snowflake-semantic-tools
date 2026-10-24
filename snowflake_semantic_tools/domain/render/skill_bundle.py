@@ -19,29 +19,29 @@ from snowflake_semantic_tools.domain.model.skill.model import (
     SkillBundle,
     SkillFile,
 )
-from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.shared import Emitter
+from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
 
 PLUGIN_MANIFEST = ".cortex-plugin/plugin.json"
 # Snowflake scans an extension version only within these limits.
 SCAN_MAX_FILES = 50
 SCAN_MAX_FILE_BYTES = 2 * 1024 * 1024
 SCAN_MAX_TOTAL_BYTES = 10 * 1024 * 1024
-# Soft budgets: SKILL.md is read on every orchestration turn, the bundle on demand.
-SKILL_MD_BUDGET_BYTES = 25 * 1024
+# Soft budget: the bundle is read on demand.
 BUNDLE_BUDGET_BYTES = 1024 * 1024
 
 
 def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]:
     """Build the `skills/<name>/...` bundle a SKILL-type version is built from, every path as authored.
 
+    The skill's file checks are not reported here: `validate_skill_catalog` reports them for
+    every skill. A file check's error still blocks the bundle.
+
     Returns:
-        The bundle, or None when the skill has an error or no files; and every diagnostic,
-        the file checks' first.
+        The bundle, or None when the skill has an error or no files; and the bundle's own
+        diagnostics.
 
     Diagnostics:
-        Every code `check_skill_files` lists.
-        SST-VAL812: SKILL.md is over its size budget.
         SST-RND030: the files hold no SKILL.md for the version to open with.
         SST-RND031: the rendered SKILL.md has no instructions after its frontmatter.
         SST-VAL834: the bundle breaks a scan limit on its file count or file or total size.
@@ -49,20 +49,7 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
         SST-VAL816: how the bundle's bytes split between SKILL.md and the rest, once it builds (info).
     """
     files = skill.files
-    found: list[Diagnostic] = list(check_skill_files(skill))
-    skill_md = next((item for item in files if item.path == SKILL_FILE), None)
-    found.extend(_skill_md_present(skill, files))
-    if skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES:
-        found.append(
-            D(
-                "SST-VAL812",
-                origin=skill.origin,
-                subject=skill.key,
-                artifact=skill.name,
-                size=skill_md.size,
-                expected=SKILL_MD_BUDGET_BYTES,
-            )
-        )
+    found: list[Diagnostic] = list(_skill_md_present(skill, files))
     entries = tuple(
         sorted(
             (BundleEntry(f"skills/{skill.name}/{item.path}", item.content) for item in files),
@@ -71,7 +58,7 @@ def build_skill_bundle(skill: Skill) -> tuple[SkillBundle | None, DiagnosticBag]
     )
     found.extend(_limit_diagnostics(skill.key, skill.name, skill.origin, entries))
     bag = DiagnosticBag(found)
-    if bag.has_errors or not entries:
+    if bag.has_errors or not entries or check_skill_files(skill).has_errors:
         return None, bag
     split = _byte_split(skill, entries)
     return SkillBundle("SKILL", skill.name, entries), DiagnosticBag((*bag, split))

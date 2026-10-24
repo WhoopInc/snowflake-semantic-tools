@@ -7,7 +7,9 @@ or a link to a file in a subfolder, stays quiet.
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
+from snowflake_semantic_tools.domain.model.skill.model import SkillCatalog
+from snowflake_semantic_tools.domain.validate.skill import validate_skill_catalog
+from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
@@ -43,3 +45,9 @@ def test_sst_val808_resolves_from_the_linking_file() -> None:
     }
     found = check_skill_files(skill(files=files))
     assert [item.context["path"] for item in found if item.code == "SST-VAL808"] == ["template.md"]
+
+
+def test_sst_val808_fires_for_a_skill_no_channel_ships() -> None:
+    # The catalog checks run for every skill validate reads, not only those a bundle builds.
+    broken = skill(files={"SKILL.md": REF.format(ref="[gone](reference/missing.md)")})
+    assert codes(validate_skill_catalog(SkillCatalog((broken,)))).count("SST-VAL808") == 1

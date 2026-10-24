@@ -6,7 +6,7 @@ in the repository resolves where an agent reads the skill.
 
 `model` holds the records and the identities derived from them. Finding the paths a file
 names is `domain.parse.skill_references`, checking a skill's files and bundling are
-`domain.render.skill_files` and `domain.render.skill_bundle`, and checking the catalog is
+`domain.validate.skill_files` and `domain.render.skill_bundle`, and checking the catalog is
 `domain.validate.skill`. This module only re-exports `model`'s public names.
 """
 

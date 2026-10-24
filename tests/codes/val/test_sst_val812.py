@@ -7,10 +7,7 @@ from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.render.skill_bundle import (
-    SKILL_MD_BUDGET_BYTES,
-    build_skill_bundle,
-)
+from snowflake_semantic_tools.domain.validate.skill_files import SKILL_MD_BUDGET_BYTES, check_skill_files
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,
@@ -23,9 +20,9 @@ TARGET = QualifiedName.parse("DB.S.KIT")
 
 def test_sst_val812_fires() -> None:
     diagnostic = only(
-        build_skill_bundle(
+        check_skill_files(
             skill(files={"SKILL.md": REF.format(ref="reference/steps.md") + "x" * SKILL_MD_BUDGET_BYTES})
-        )[1],
+        ),
         "SST-VAL812",
     )
     assert diagnostic.severity is Severity.WARNING
@@ -34,4 +31,4 @@ def test_sst_val812_fires() -> None:
 
 
 def test_sst_val812_silent() -> None:
-    assert "SST-VAL812" not in codes(build_skill_bundle(skill())[1])
+    assert "SST-VAL812" not in codes(check_skill_files(skill()))

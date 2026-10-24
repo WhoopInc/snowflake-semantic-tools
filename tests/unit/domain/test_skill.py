@@ -23,17 +23,16 @@ from snowflake_semantic_tools.domain.render.skill_bundle import (
     SCAN_MAX_FILE_BYTES,
     SCAN_MAX_FILES,
     SCAN_MAX_TOTAL_BYTES,
-    SKILL_MD_BUDGET_BYTES,
     build_plugin_bundle,
     build_skill_bundle,
     plugin_manifest_json,
 )
-from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.skill import (
     extension_name_diagnostics,
     unrunnable_scripts,
     validate_skill_catalog,
 )
+from snowflake_semantic_tools.domain.validate.skill_files import SKILL_MD_BUDGET_BYTES, check_skill_files
 from tests.helpers.diagnostic_filters import codes
 
 SKILL_MD = "---\nname: {name}\ndescription: Does things.\n---\n{body}"
@@ -141,8 +140,9 @@ def test_a_skill_publishes_every_file_at_its_authored_path_unchanged() -> None:
     assert bundle is not None
     published = {entry.path.removeprefix("skills/month-close/"): entry.content for entry in bundle.entries}
     assert published == {item.path: item.content for item in authored.files}
-    assert codes(diagnostics) == ["SST-VAL813", "SST-VAL816"]
-    assert diagnostics[0].context["path"] == "assets/logo.png"
+    assert codes(diagnostics) == ["SST-VAL816"]
+    checked = check_skill_files(authored)
+    assert codes(checked) == ["SST-VAL813"] and checked[0].context["path"] == "assets/logo.png"
 
 
 def test_only_a_markdown_link_that_names_nothing_is_reported() -> None:
@@ -337,8 +337,8 @@ def test_folder_and_plugin_names_follow_one_kebab_case_rule_of_at_most_64_charac
 
 def test_file_names_a_stage_rejects_fail_validation_at_the_file() -> None:
     unsafe = skill(files={"reference/q1+q2.md": "q", "bad dir/notes.md": "n", "reference/ok.md": "o"})
-    diagnostics = validate_skill_catalog(SkillCatalog((unsafe,)))
-    assert codes(diagnostics) == ["SST-VAL857", "SST-VAL857"]
+    diagnostics = [item for item in validate_skill_catalog(SkillCatalog((unsafe,))) if item.code == "SST-VAL857"]
+    assert len(diagnostics) == 2
     first, second = diagnostics
     assert first.subject == "skill:month-close" and first.origin == Origin(
         "skills/finance/month-close/bad dir/notes.md"
@@ -358,11 +358,12 @@ def test_skill_bundle_budgets_limits_and_empty_folders() -> None:
     over_budget, diagnostics = build_skill_bundle(
         skill(files={"SKILL.md": SKILL_MD.format(name="month-close", body=big), "reference/steps.md": "s"})
     )
-    assert over_budget is not None and codes(diagnostics) == ["SST-VAL812", "SST-VAL816"]
+    # The file checks, SST-VAL812 and SST-VAL813 among them, are validate_skill_catalog's to report.
+    assert over_budget is not None and codes(diagnostics) == ["SST-VAL816"]
     heavy, diagnostics = build_skill_bundle(
         skill(files={"reference/steps.md": "s", "data.bin": b"\0" * (BUNDLE_BUDGET_BYTES + 1)})
     )
-    assert heavy is not None and codes(diagnostics) == ["SST-VAL813", "SST-VAL811", "SST-VAL816"]
+    assert heavy is not None and codes(diagnostics) == ["SST-VAL811", "SST-VAL816"]
     many = {f"part{index}.md": "p" for index in range(SCAN_MAX_FILES)}
     too_many, diagnostics = build_skill_bundle(skill(files={"reference/steps.md": "s", **many}))
     assert too_many is None and "SST-VAL834" in codes(diagnostics)

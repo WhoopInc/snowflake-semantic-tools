@@ -14,15 +14,18 @@ from snowflake_semantic_tools.domain.model.agent import ResolvedAgent
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.skill.model import Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.validate.shared import SKILL_NAMES, Emitter, duplicates
+from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
 
 
 def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
     """Check folder, naming, uniqueness, and plugin-membership rules across the catalog.
 
-    The loader's diagnostics come first, then each skill's, then each plugin's.
+    The loader's diagnostics come first, then each skill's, its file checks after its naming
+    rules, then each plugin's. Every skill is checked, whichever channel ships it or none.
 
     Diagnostics:
+        Every code `check_skill_files` lists, for each skill.
         SST-VAL801: a skill folder or plugin name is not kebab-case, or the frontmatter disagrees.
         SST-VAL857: a skill file has a name a stage rejects.
         SST-VAL832: a skill or plugin takes an extension name an earlier one already took.
@@ -37,6 +40,7 @@ def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
     diagnostics: list[Diagnostic] = list(catalog.diagnostics)
     for index, skill in enumerate(skills):
         diagnostics.extend(_skill_rules(skill, taken.get(index)))
+        diagnostics.extend(check_skill_files(skill))
     for index, plugin in enumerate(plugins, start=len(skills)):
         diagnostics.extend(_plugin_rules(plugin, taken.get(index), names))
     return DiagnosticBag(diagnostics)

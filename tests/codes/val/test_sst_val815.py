@@ -9,7 +9,7 @@ import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Severity
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
+from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
 from tests.helpers.diagnostic_filters import codes, only
 from tests.helpers.skill_inputs import (
     skill,

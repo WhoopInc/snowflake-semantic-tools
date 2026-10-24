@@ -314,11 +314,15 @@ def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> Non
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
-    # Without a catalog channel the skill ships in the profile, and the plugin copy is
-    # checked as its extension bundle, so its broken link blocks the plugin.
-    assert {"SST-VAL808", "SST-VAL836"} <= {item["code"] for item in diagnostics}
+    # The skill's broken link is reported once, by the catalog checks; it blocks the skill the
+    # profile shares and the plugin that carries it.
+    assert [item["code"] for item in diagnostics].count("SST-VAL808") == 1
+    assert "SST-VAL836" in {item["code"] for item in diagnostics}
     blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL855"]
-    assert blocked == ["profile 'analyst': plugin 'kit' has errors, so the profile cannot publish"]
+    assert blocked == [
+        "profile 'analyst': skill 'month-close' has errors, so the profile cannot publish",
+        "profile 'analyst': plugin 'kit' has errors, so the profile cannot publish",
+    ]
 
 
 def test_a_carriage_return_in_a_description_or_a_body_is_emitted_byte_for_byte(tmp_path: Path) -> None:

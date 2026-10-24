@@ -6,6 +6,9 @@ included. The catalog extension and a CoCo Desktop profile's stage tree both pub
 resolves where the agent reads the skill. Only a Markdown link is held to resolve: a path
 mentioned in prose or a code block is an instruction or an example, which the agent resolves by
 reading the folder, and which may name a file the skill tells it to create.
+
+These checks run for every skill `sst validate` reads, whichever channel ships it or none; a
+bundle reads them only to decide whether it builds.
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from snowflake_semantic_tools.domain.model.skill.model import SKILL_FILE, Skill,
 from snowflake_semantic_tools.domain.parse.skill_references import PathReference, scan_references
 from snowflake_semantic_tools.domain.validate.shared import Emitter
 
+# Soft budget: SKILL.md is read on every orchestration turn.
+SKILL_MD_BUDGET_BYTES = 25 * 1024
 # The forms a Markdown renderer follows; a path in any other form is prose.
 _LINK_FORMS = frozenset(("link", "image", "definition"))
 # The top-level folders of a local machine's file system, by platform; a path below one, a
@@ -68,6 +73,7 @@ def check_skill_files(skill: Skill) -> DiagnosticBag:
         SST-VAL810: a path names a file of the skill by its path from the repository root (warning).
         SST-VAL815: a script holds an absolute path, or any text file a credential literal.
         SST-VAL813: a file of the skill, outside any nested skill's folder, that nothing names.
+        SST-VAL812: SKILL.md is over its size budget.
     """
     tree = _Tree.of(skill)
     emit = Emitter(subject=skill.key, artifact=skill.name)
@@ -81,6 +87,9 @@ def check_skill_files(skill: Skill) -> DiagnosticBag:
         if item.path == SKILL_FILE or item.path in referenced or item.path.startswith(nested):
             continue
         emit("SST-VAL813", origin=skill.origin_of(item.path), path=item.path)
+    skill_md = next((item for item in skill.files if item.path == SKILL_FILE), None)
+    if skill_md is not None and skill_md.size > SKILL_MD_BUDGET_BYTES:
+        emit("SST-VAL812", origin=skill.origin, size=skill_md.size, expected=SKILL_MD_BUDGET_BYTES)
     return DiagnosticBag(emit.diagnostics)
 
 

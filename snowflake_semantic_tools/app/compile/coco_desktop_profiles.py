@@ -28,7 +28,6 @@ from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import Plugin, Skill, SkillCatalog
 from snowflake_semantic_tools.domain.render.coco_desktop_profile import build_coco_desktop_profile, version_input
 from snowflake_semantic_tools.domain.render.skill_bundle import build_plugin_bundle
-from snowflake_semantic_tools.domain.render.skill_files import check_skill_files
 from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
     desktop_registry_diagnostics,
     unreached_skills,
@@ -215,16 +214,11 @@ class CompileCocoDesktopProfiles:
         """
         blocked: set[str] = set()
         diagnostics: list[Diagnostic] = []
-        checked: set[str] = set()
         referenced = dict.fromkeys(name for profile in self._catalog.profiles for name in profile.plugins)
         for name in referenced:
             plugin = plugins.get(name)
             if plugin is None or plugin.key in self._published:
                 continue
-            for member in dict.fromkeys(plugin.members):
-                if member in skills and member not in checked and skills[member].key not in self._published:
-                    checked.add(member)
-                    diagnostics.extend(check_skill_files(skills[member]))
             bundle, bundle_diagnostics = build_plugin_bundle(plugin, skills)
             diagnostics.extend(bundle_diagnostics)
             if bundle is None or any(member in self._blocked for member in plugin.members):

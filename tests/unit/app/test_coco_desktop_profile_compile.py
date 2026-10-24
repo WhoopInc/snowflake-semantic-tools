@@ -46,8 +46,9 @@ def test_without_the_catalog_channel_each_member_is_flattened_once_and_healthy_p
     compiled, codes = compile_profiles((profile("analyst", "kit", "other-kit"),), skills)
 
     assert compiled == ["coco_desktop_profile:analyst"]
-    # The unreferenced file is reported once although two plugins carry its skill.
-    assert [code for code, _ in codes if code == "SST-VAL813"] == ["SST-VAL813"]
+    # The skill file checks are validate_skill_catalog's, so a profile reports none of them,
+    # however many plugins carry the skill.
+    assert "SST-VAL813" not in {code for code, _ in codes}
     assert "SST-VAL855" not in {code for code, _ in codes}
 
 
