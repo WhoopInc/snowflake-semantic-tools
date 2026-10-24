@@ -594,4 +594,10 @@ TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
         None,
         "skills publish as authored, so no path a script names is renamed",
     ),
+    (
+        "SST-DIS014",
+        "Semantic views folder missing",
+        None,
+        "a view may sit in any folder of the semantic-model directory, so no folder is required",
+    ),
 )

@@ -114,7 +114,8 @@ def test_semantic_views_enabled_default_follows_folder_routes(tmp_path: Path) ->
         encoding="utf-8",
     )
     (tmp_path / "sst_config.yml").write_text(
-        "project:\n  semantic_models_dir: semantic_models\nsemantic_views:\n  archive:\n    +enabled: false\n",
+        "project:\n  semantic_models_dir: semantic_models\n"
+        "semantic_views:\n  semantic_views:\n    archive:\n      +enabled: false\n",
         encoding="utf-8",
     )
     names = [view.fqn.rsplit(".", 1)[-1] for view in load_views(tmp_path, manifest_path=manifest)]
@@ -290,7 +291,9 @@ def test_a_target_conditional_choosing_empty_publishes_to_the_target(tmp_path: P
         "  +database: \"{{ 'ELSEWHERE' if target.name == 'prod' else '' }}\"\n",
         1,
     ).replace(
-        "  core:\n    +schema: CORE\n", "  core:\n    +schema: \"{{ 'CORE' if target.name == 'prod' else '' }}\"\n", 1
+        "    core:\n      +schema: CORE\n",
+        "    core:\n      +schema: \"{{ 'CORE' if target.name == 'prod' else '' }}\"\n",
+        1,
     )
     assert edited.count("ELSEWHERE") == 1 and "'CORE' if" in edited
     config.write_text(edited, encoding="utf-8")
@@ -744,20 +747,16 @@ def test_filter_labels_must_be_a_list_of_strings(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("relative", ["semantic_models/metrics/stray.yml", "semantic_models/stray.yml"])
-def test_a_view_list_outside_the_views_folder_is_reported_not_dropped_silently(tmp_path: Path, relative: str) -> None:
+def test_a_view_in_any_folder_of_the_semantic_models_directory_is_built(tmp_path: Path, relative: str) -> None:
     manifest = write_project(tmp_path)
     (tmp_path / relative).write_text(
-        "semantic_views:\n  - name: stray\n    description: Use for stray view.\n"
+        "semantic_views:\n  - name: elsewhere\n    description: Use for elsewhere view.\n"
         "    tables: [\"{{ ref('products') }}\"]\n",
         encoding="utf-8",
     )
     project = load_project(tmp_path, manifest_path=manifest)
-    assert [view.fqn for view in project.views] == ["DB.SCH.CATALOG"]
-    assert [(item.code, item.context["artifact"], item.context["field"]) for item in findings(project.diagnostics)] == [
-        ("SST-PRS004", relative, "semantic_views")
-    ]
-    origin = findings(project.diagnostics)[0].origin
-    assert origin is not None and (origin.file, origin.line) == (relative, 2)
+    assert sorted(view.fqn for view in project.views) == ["DB.SCH.CATALOG", "DB.SCH.ELSEWHERE"]
+    assert not findings(project.diagnostics)
 
 
 def test_a_source_table_takes_its_description_and_synonyms_from_the_source(tmp_path: Path) -> None:
@@ -776,3 +775,42 @@ def test_a_source_table_takes_its_description_and_synonyms_from_the_source(tmp_p
     project = SmallProject(tmp_path, files={"semantic_models/semantic_views/views.yml": view}, document=document)
     [table] = project.load().views[0].tables
     assert (table.comment, table.synonyms) == ("Raw orders.", ("purchase",))
+
+
+def _view(name: str, config: str = "") -> str:
+    return (
+        f"semantic_view:\n  name: {name}\n  description: Use for {name}.\n{config}"
+        "  tables: [\"{{ ref('products') }}\"]\n"
+    )
+
+
+def test_a_view_takes_the_route_of_its_folder_like_a_dbt_model(tmp_path: Path) -> None:
+    manifest = write_project(tmp_path)
+    semantic = tmp_path / "semantic_models"
+    (semantic / "memberships").mkdir()
+    (semantic / "memberships" / "members.yml").write_text(_view("members"), encoding="utf-8")
+    (semantic / "top.yml").write_text(_view("top"), encoding="utf-8")
+    (semantic / "memberships" / "pinned.yml").write_text(
+        _view("pinned", "  config:\n    schema: PINNED\n"), encoding="utf-8"
+    )
+    (tmp_path / "sst_config.yml").write_text(
+        "project:\n  semantic_models_dir: semantic_models\n"
+        "semantic_views:\n  +schema: VIEWS\n  memberships:\n    +schema: MEMBERSHIPS\n",
+        encoding="utf-8",
+    )
+    fqns = {view.fqn.rsplit(".", 1)[-1]: view.fqn for view in load_views(tmp_path, manifest_path=manifest)}
+    assert (fqns["MEMBERS"], fqns["TOP"], fqns["PINNED"]) == (
+        "DB.MEMBERSHIPS.MEMBERS",
+        "DB.VIEWS.TOP",
+        "DB.PINNED.PINNED",
+    )
+
+
+def test_two_views_of_one_name_in_two_folders_still_collide(tmp_path: Path) -> None:
+    manifest = write_project(tmp_path)
+    semantic = tmp_path / "semantic_models"
+    for folder in ("sales", "finance"):
+        (semantic / folder).mkdir()
+        (semantic / folder / "revenue.yml").write_text(_view("revenue"), encoding="utf-8")
+    project = load_project(tmp_path, manifest_path=manifest)
+    assert "SST-VAL001" in [item.code for item in findings(project.diagnostics)]

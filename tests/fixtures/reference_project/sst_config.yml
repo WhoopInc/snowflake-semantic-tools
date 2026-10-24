@@ -158,13 +158,14 @@ semantic_views:
   +database: "{{ target.database }}"
   +schema: JAFFLE
 
-  # A folder route. An unprefixed key names a directory under
-  # semantic_models/semantic_views/ (SST-CFG041 if it is missing), and its `+`
-  # keys override per key: views in core/ publish to <db>.CORE and still inherit
-  # +database and +enabled from this block. A view's own `config:` wins over
-  # both.
-  core:
-    +schema: CORE
+  # A folder route. An unprefixed key names a directory under semantic_models/,
+  # as a `models:` key does under models/ (SST-CFG041 if it is missing); routes
+  # nest as folders do, and its `+` keys override per key: views in
+  # semantic_views/core/ publish to <db>.CORE and still inherit +database and
+  # +enabled from this block. A view's own `config:` wins over both.
+  semantic_views:
+    core:
+      +schema: CORE
   +enabled: true
 
   # Views publish as CREATE OR REPLACE SEMANTIC VIEW ... COPY GRANTS, so explicit

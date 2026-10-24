@@ -128,17 +128,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-DIS014",
-        Severity.ERROR,
-        "Semantic views folder missing",
-        "{path} does not exist, and SST reads semantic views only from it",
-        "move each view file under {path}; `sst migrate split --write` moves the views a 0.3 project keeps elsewhere",
-        condition=(
-            "the semantic-model directory exists but holds no `semantic_views/` folder, the one place "
-            "SST reads semantic views from; a 0.3 project kept them anywhere under the directory"
-        ),
-    ),
-    spec(
         "SST-DIS200",
         Severity.INFO,
         "Artifact ownership assigned",

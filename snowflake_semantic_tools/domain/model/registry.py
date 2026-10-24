@@ -414,7 +414,6 @@ ARTIFACT_REGISTRY = build_registry(
             validation_rules=("shared", "semantic_view"),
             dir_key="semantic_models_dir",
             routed_block="semantic_views",
-            route_dir="semantic_views",
         ),
         ArtifactType(
             name="tool",

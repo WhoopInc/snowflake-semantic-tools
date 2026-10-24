@@ -96,13 +96,12 @@ list roots stay valid, and `sst migrate split` writes each listed member to
 - Each member keeps its comments: those above it, back to the member before,
   open its file, and the list file's own header opens the first one.
   Indentation is re-based to two spaces under the root key.
-- A semantic view goes under `<semantic_models_dir>/semantic_views/`, the one
-  folder 1.0 reads views from (0.3 read them anywhere under the directory), in
-  the subfolder its file sat in: `<dir>/sales/semantic_views.yml` gives
-  `<dir>/semantic_views/sales/<name>.yml`, so a folder route can still name
-  it. A `semantic_view:` file outside that folder moves there whole, and a
-  `{{ file() }}` path it writes is re-based. Until views are there, `sst
-  validate` stops with `SST-DIS014`.
+- A semantic view stays in the folder its file sat in, as every member does:
+  `<dir>/sales/semantic_views.yml` gives `<dir>/sales/<name>.yml`. Views may sit
+  in any folder of the semantic models directory, and a `semantic_views:` folder
+  route names a folder of that directory, so `sales:` routes `<dir>/sales/`. A
+  0.3 route written for `<dir>/semantic_views/sales/` is now `semantic_views:
+  sales:`, nested as the folders are.
 - A file holding anything besides member lists is left whole and named.
 - A file it would write that already exists, unless it is the list itself,
   leaves that list whole: nothing is overwritten. So does a member another

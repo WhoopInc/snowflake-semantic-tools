@@ -18,8 +18,6 @@ class SplitFiles:
     """What one split reads, files keyed by project-relative path.
 
     Attributes:
-        semantic_dir: The semantic-model directory, project-relative; views move under its
-            `semantic_views/`. "" leaves every view where its file is.
         tools_dir: The tools directory, project-relative, that tool routes are relative to.
         config: The configuration file's path and text; None when the run reads none.
         has_plugins: The project declares at least one plugin.
@@ -27,7 +25,6 @@ class SplitFiles:
 
     semantic: Mapping[str, str]
     tools: Mapping[str, str] = field(default_factory=dict)
-    semantic_dir: str = ""
     tools_dir: str = "tools"
     config: tuple[str, str] | None = None
     has_plugins: bool = False
@@ -82,9 +79,7 @@ class MigrateSplit:
         for path, text in sorted(files.semantic.items()):
             root = self._outline(text)
             plan = (
-                split_semantic(text.splitlines(keepends=True), root, path, files.semantic_dir)
-                if root is not None and root.is_map
-                else None
+                split_semantic(text.splitlines(keepends=True), root, path) if root is not None and root.is_map else None
             )
             plans.extend(() if plan is None else (plan,))
         for path, text in sorted(files.tools.items()):

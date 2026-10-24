@@ -16,9 +16,9 @@ def test_init_reads_the_configured_semantic_models_dir(tmp_path: Path) -> None:
     (tmp_path / "dbt_project.yml").write_text("name: p\nprofile: p\n", encoding="utf-8")
     (tmp_path / "sst_config.yml").write_text("project:\n  semantic_models_dir: semantics\n", encoding="utf-8")
     check = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--check-only", "--output", "json"])
-    assert (check.exit_code, json.loads(check.output)["data"]["missing"]) == (1, ["semantics/semantic_views"])
+    assert (check.exit_code, json.loads(check.output)["data"]["missing"]) == (1, ["semantics"])
     initialized = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--output", "json"])
-    assert json.loads(initialized.output)["data"]["created"] == ["semantics/semantic_views"]
+    assert json.loads(initialized.output)["data"]["created"] == ["semantics"]
     assert not (tmp_path / "semantic_models").exists()
     complete = CliRunner().invoke(cli, ["init", "--project-dir", str(tmp_path), "--check-only", "--output", "json"])
     assert (complete.exit_code, json.loads(complete.output)["data"]["status"]) == (0, "complete")
@@ -35,15 +35,15 @@ def test_init_debug_clean_and_list_json(tmp_path: Path) -> None:
     assert (check.exit_code, json.loads(check.output)["data"]["status"]) == (1, "incomplete")
     initialized = CliRunner().invoke(cli, ["init", "--project-dir", str(root), "--skip-prompts", "--output", "json"])
     assert initialized.exit_code == 0
-    assert json.loads(initialized.output)["data"]["created"] == ["sst_config.yml", "semantic_models/semantic_views"]
-    assert (root / "semantic_models" / "semantic_views").is_dir()
+    assert json.loads(initialized.output)["data"]["created"] == ["sst_config.yml", "semantic_models"]
+    assert (root / "semantic_models").is_dir()
     assert "snowflake_syntax_check: true" in (root / "sst_config.yml").read_text(encoding="utf-8")
     complete = CliRunner().invoke(cli, ["init", "--project-dir", str(root), "--check-only", "--output", "json"])
     assert (complete.exit_code, json.loads(complete.output)["data"]["status"]) == (0, "complete")
     again = CliRunner().invoke(cli, ["init", "--project-dir", str(root), "--output", "json"])
     assert json.loads(again.output)["data"] == {
         "created": [],
-        "skipped": ["sst_config.yml", "semantic_models/semantic_views"],
+        "skipped": ["sst_config.yml", "semantic_models"],
         "status": "scaffolded",
     }
 

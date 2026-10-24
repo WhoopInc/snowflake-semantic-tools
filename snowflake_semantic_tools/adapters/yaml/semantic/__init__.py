@@ -8,7 +8,7 @@ WHERE THE INFORMATION LIVES. A view declares its name, tables, and a few view-le
 keys. Everything else in the rendered DDL arrives by ATTACHMENT from elsewhere in the
 project:
 
-    semantic_models/semantic_views/**/*.yml   the view
+    semantic_models/**/*.yml (semantic_view:) the view, in any folder
     target/manifest.json                      physical relation, model grain and
                                               resolved column metadata
     semantic_models/<member>/*.yml            metrics, filters, relationships,

@@ -32,9 +32,13 @@ def test_semantic_reads_another_directory_and_dbt_replaces_model_paths(tmp_path:
     project = project_copy(tmp_path)
     empty = project / "empty_semantic"
     empty.mkdir()
-    elsewhere = CliRunner().invoke(cli, ["compile", *common(project), "--semantic", str(empty), "-o", "json"])
-    assert elsewhere.exit_code == 4
-    assert "empty_semantic" in json.loads(elsewhere.stdout)["data"]["error"]
+    listing = ["list", *common(project), "--no-manifest", "semantic-views", "-o", "json"]
+    elsewhere = CliRunner().invoke(cli, [*listing, "--semantic", str(empty)])
+    read = json.loads(elsewhere.stdout)
+    assert read["data"]["count"] == 0
+    routes = [item["params"]["root"] for item in read["diagnostics"] if item["code"] == "SST-CFG041"]
+    assert [root.endswith("empty_semantic") for root in routes] == [True]
+    assert json.loads(CliRunner().invoke(cli, listing).stdout)["data"]["count"] == 3
     dbt = project / "dbt_project.yml"
     text = dbt.read_text(encoding="utf-8")
     dbt.write_text(re.sub(r"(?m)^model-paths:.*$", "model-paths: 5", text), encoding="utf-8")

@@ -91,12 +91,12 @@ These go before the command name.
 Scaffold SST into an existing dbt project without overwriting a file.
 
 Writes `sst_config.yml`, with the validation, enrichment, governance, apply and state keys at
-their defaults, and creates the `semantic_views` directory under the semantic models directory
-it names. On a terminal (stdin and stderr both terminals) it asks for that directory, unless
+their defaults, and creates the semantic models directory it names (views and their members
+may sit in any folder of it). On a terminal (stdin and stderr both terminals) it asks for that directory, unless
 --skip-prompts or --output json or agent; off one it takes the default. A file or directory
 that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
 is the directory used. With --check-only nothing is written, and the command exits
-1 unless the configuration file and the semantic views directory exist. Exit 4 when the
+1 unless the configuration file and the semantic models directory exist. Exit 4 when the
 directory is not a dbt project.
 
 ```text
@@ -174,8 +174,7 @@ sst migrate refs [OPTIONS]
 
 Write each listed member to a file of its own, tool group members to their group's folder.
 
-Semantic views go under `<semantic_models_dir>/semantic_views/`, in the subfolder their file
-sat in, and a `semantic_view:` file outside it moves there whole.
+Every member, a view too, stays in the folder of the file that listed it.
 
 Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
 configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to

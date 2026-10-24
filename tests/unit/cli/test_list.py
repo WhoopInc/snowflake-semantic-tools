@@ -98,7 +98,7 @@ def test_list_long_prints_each_setting_with_where_it_came_from(tmp_path: Path) -
     assert lines[menu + 1 : menu + 4] == [
         '    database="SST_REF_DEV" (root)',
         "    enabled=true (root)",
-        '    schema="CORE" (route:core)',
+        '    schema="CORE" (route:semantic_views/core)',
     ]
     assert '    orchestration_model="claude-sonnet-4-6" (config)' in lines
     assert "    secure=false (default)" in lines

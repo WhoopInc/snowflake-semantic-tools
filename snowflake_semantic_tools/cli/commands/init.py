@@ -68,12 +68,12 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     """Scaffold SST into an existing dbt project without overwriting a file.
 
     Writes `sst_config.yml`, with the validation, enrichment, governance, apply and state keys at
-    their defaults, and creates the `semantic_views` directory under the semantic models directory
-    it names. On a terminal (stdin and stderr both terminals) it asks for that directory, unless
+    their defaults, and creates the semantic models directory it names (views and their members
+    may sit in any folder of it). On a terminal (stdin and stderr both terminals) it asks for that directory, unless
     --skip-prompts or --output json or agent; off one it takes the default. A file or directory
     that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
     is the directory used. With --check-only nothing is written, and the command exits
-    1 unless the configuration file and the semantic views directory exist. Exit 4 when the
+    1 unless the configuration file and the semantic models directory exist. Exit 4 when the
     directory is not a dbt project.
     """
     project_dir = paths.project_dir
@@ -85,8 +85,8 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
     config = paths.config_file or project_dir / CONFIG_FILE
     # A configuration that exists names the semantic models directory; a new one is asked for.
     semantic_dir = semantic_models_dir(paths) if config.is_file() else _DEFAULT_SEMANTIC_DIR
-    views = Path(semantic_dir) / "semantic_views"
-    wanted = ((config, str(config.relative_to(project_dir))), (project_dir / views, views.as_posix()))
+    models_dir = Path(semantic_dir)
+    wanted = ((config, str(config.relative_to(project_dir))), (project_dir / models_dir, models_dir.as_posix()))
     present = [name for path, name in wanted if path.exists()]
     missing = [name for path, name in wanted if not path.exists()]
     if check_only:
@@ -105,10 +105,10 @@ def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: Glo
             semantic_dir = asking.ask("Semantic models directory", _DEFAULT_SEMANTIC_DIR)
         write_text(output_root(project_dir, config.parent), config, config_template(semantic_dir))
         created.append(config.name)
-    directory = project_dir / semantic_dir / "semantic_views"
+    directory = project_dir / semantic_dir
     if not directory.is_dir():
         make_folders_within(project_dir, directory)
-        created.append((Path(semantic_dir) / "semantic_views").as_posix())
+        created.append(Path(semantic_dir).as_posix())
     skipped = [item for item in present if item not in created]
     data = {"created": created, "skipped": skipped, "status": "scaffolded"}
     return CommandResult(data=data, headline=f"initialized the SST project; created {plural(len(created), 'item')}")

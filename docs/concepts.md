@@ -169,8 +169,8 @@ semantic_views:
 Keys that start with `+` set a default for everything below them. In every
 artifact block -- `semantic_views:`, `tools:`, `agents:`, `cowork_profiles:`, `evals:`,
 `skills:`, `plugins:` and `coco_desktop_profiles:` -- an unprefixed key names a folder below that
-type's directory (for views, below `semantic_views/` in the semantic models
-directory), and its `+` keys apply to what is in that folder (`SST-CFG041` when
+type's directory (for views, the semantic models directory itself, as a `models:` key
+names a folder of `models/` in dbt), and its `+` keys apply to what is in that folder (`SST-CFG041` when
 the folder does not exist). An artifact's own `config:` block overrides every
 route; [Precedence](guides/configuration.md#precedence) gives the whole chain.
 

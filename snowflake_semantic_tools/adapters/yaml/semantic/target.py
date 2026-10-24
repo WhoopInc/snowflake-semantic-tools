@@ -7,8 +7,6 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.documents import RawDocuments
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.config_schema import (
     Setting,
     resolve_settings,
@@ -17,29 +15,29 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     with_defaults,
 )
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
-from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
 
 def _view_settings(
-    config: Mapping[str, Any], path: Path, views_dir: Path, node: Mapping[str, Any] | None = None
+    config: Mapping[str, Any], path: Path, semantic_dir: Path, node: Mapping[str, Any] | None = None
 ) -> Mapping[str, Setting]:
     """Resolve a view's settings: its own `config:`, then the folder routes over its file, then the root.
 
-    The folder is the view file's directory below `views_dir`.
+    The folder is the view file's directory below `semantic_dir`, the semantic-model directory,
+    as a dbt model's folder is below `models/`.
     """
-    folder = path.resolve().relative_to(views_dir.resolve()).parent.parts
+    folder = path.resolve().relative_to(semantic_dir.resolve()).parent.parts
     return resolve_settings(config.get("semantic_views"), folder, (node or {}).get("config"))
 
 
 def _semantic_view_target(
-    config: Mapping[str, Any], path: Path, views_dir: Path, target: DbtTarget, node: Mapping[str, Any] | None = None
+    config: Mapping[str, Any], path: Path, semantic_dir: Path, target: DbtTarget, node: Mapping[str, Any] | None = None
 ) -> DbtTarget:
     """Return where a view publishes: its resolved `database` and `schema`, else the target's own.
 
     A setting that renders empty -- a target conditional whose chosen arm is `''` -- is unset,
     so the target's own value applies, as it does for every other block's location.
     """
-    return _view_location(_view_settings(config, path, views_dir, node), target)
+    return _view_location(_view_settings(config, path, semantic_dir, node), target)
 
 
 def _view_location(settings: Mapping[str, Setting], target: DbtTarget) -> DbtTarget:
@@ -60,21 +58,3 @@ def _view_provenance(settings: Mapping[str, Setting], location: DbtTarget) -> Ma
         {**settings, **rendered}, {"database": location.database, "schema": location.schema, "enabled": True}
     )
     return MappingProxyType({item.key: item for item in filled})
-
-
-def _stray_view_diagnostics(documents: RawDocuments, views_dir: Path) -> tuple[Diagnostic, ...]:
-    """Report each view list outside `views_dir` as an unread key (SST-PRS004).
-
-    Views are validated from every file but built only from files under `views_dir`, so
-    such a list would otherwise be dropped without a word.
-    """
-    root_key = node_root("semantic_view")
-    built = {document.path for document in documents.under(views_dir, root_key)}
-    diagnostics: list[Diagnostic] = []
-    for document in documents.documents:
-        if document.path in built or not isinstance(document.tree.get(root_key), list):
-            continue
-        position = document.position((root_key,))
-        origin = Origin(document.path, position.line if position else None, position.col if position else None)
-        diagnostics.append(D("SST-PRS004", origin=origin, artifact=document.path, field=root_key))
-    return tuple(diagnostics)

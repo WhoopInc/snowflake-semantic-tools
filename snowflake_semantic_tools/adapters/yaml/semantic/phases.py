@@ -23,7 +23,6 @@ from snowflake_semantic_tools.adapters.yaml.semantic.relationships import (
     _relationship_diagnostics,
     _relationship_parse_diagnostics,
 )
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _stray_view_diagnostics
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef, VerifiedQueryDef
@@ -65,7 +64,8 @@ class LoadContext:
     """The fixed inputs of one semantic load, which every phase reads and none changes.
 
     Attributes:
-        views_dir: `<semantic_models_dir>/semantic_views`; only the views under it are built.
+        semantic_dir: `<semantic_models_dir>`; a view in any folder of it is built, and its
+            folder there picks its `semantic_views:` routes.
         models: The target's dbt models, by casefolded name.
         catalog: The manifest those models come from, with the models it could not read.
     """
@@ -74,7 +74,7 @@ class LoadContext:
     config: dict[str, Any]
     semantic_models_dir: str
     documents: RawDocuments
-    views_dir: Path
+    semantic_dir: Path
     target: DbtTarget
     models: dict[str, DbtModel]
     catalog: DbtCatalog
@@ -150,7 +150,7 @@ def _structural_checks(context: LoadContext, parsed: ParsedProject, metrics: tup
     """Check what the project declares, before any reference in it is resolved.
 
     Reports, in order: repeated view names, malformed table references, the folder routes,
-    view lists outside semantic_views/, authored keys, each view's `config:`, member names, descriptions, the
+    authored keys, each view's `config:`, member names, descriptions, the
     shape of metrics, filters and relationships, the dbt models and columns the views use,
     the legacy globals, and the verified queries.
     """
@@ -217,7 +217,6 @@ def _document_diagnostics(
         *consumed_model_diagnostics(context.catalog, referenced_models),
         *collapse_diagnostics(context.catalog, referenced_models),
         *routed_diagnostics(context.config, context.project_dir, "semantic_view"),
-        *_stray_view_diagnostics(documents, context.views_dir),
         *authored_key_diagnostics(documents),
         *view_config_diagnostics(documents),
         *renderer_fidelity_diagnostics(documents),

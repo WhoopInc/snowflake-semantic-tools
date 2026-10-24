@@ -129,8 +129,8 @@ else the change reaches. Selectors and `+` are in @SST_DOCS@/guides/lineage.md.
   file and target that were resolved.
 - `profiles.yml`: the same targets dbt uses.
 - The semantic models directory (`project.semantic_models_dir`, default `semantic_models`):
-  views under `semantic_views/`, and metrics, relationships, filters, verified queries, and
-  custom instructions anywhere below it, usually one item per file under its singular root.
+  views, metrics, relationships, filters, verified queries, and custom instructions anywhere
+  below it (a view's folder picks its `semantic_views:` routes), usually one item per file under its singular root.
 - Column metadata: each dbt model's YAML, under `config.meta.sst`.
 - `agents/`, `cowork_profiles/`, `tools/`, `skills/`, `plugins/`, `coco_desktop_profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and

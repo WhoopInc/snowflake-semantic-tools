@@ -31,7 +31,7 @@ def test_blocks_and_project_roots_read_as_empty_or_default_when_absent_or_mistyp
     assert configured_dir({"project": {"tools_dir": ""}}, "tools_dir", "tools") == "tools"
     assert configured_dir({"project": "nope"}, "tools_dir", "tools") == "tools"
     views, skills = ARTIFACT_REGISTRY.artifacts["semantic_view"], ARTIFACT_REGISTRY.artifacts["skill"]
-    assert route_root({}, views) == "semantic_models/semantic_views"
+    assert route_root({}, views) == "semantic_models"
     assert route_root({"project": {"skills_dir": "kit"}}, skills) == "kit"
 
 

@@ -17,7 +17,7 @@ cannot be downgraded by any setting.
 
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 47 codes
-- [Discovery (DIS)](#discovery-dis) -- 16 codes
+- [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
@@ -32,7 +32,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 76 numbers
+- [Retired numbers](#retired-numbers) -- 77 numbers
 
 ## Registry (REG)
 
@@ -895,16 +895,6 @@ Fix: add a semantic view, or widen --select and --exclude
 Raised when `sst enrich` is given a PATH or `--select` value and no dbt model of the project matches any of them, so there is nothing to enrich; one per value.
 
 Fix: check the PATH or selector against model-paths and the model names
-
-### SST-DIS014
-
-**Semantic views folder missing** (error)
-
-`<path> does not exist, and SST reads semantic views only from it`
-
-Raised when the semantic-model directory exists but holds no `semantic_views/` folder, the one place SST reads semantic views from; a 0.3 project kept them anywhere under the directory.
-
-Fix: move each view file under {path}; `sst migrate split --write` moves the views a 0.3 project keeps elsewhere
 
 ### SST-DIS200
 
@@ -8738,6 +8728,12 @@ Retired because `meta.sst.database` and `meta.sst.schema` are refused outright (
 **meta.sst location is hardcoded** (retired in 1.0.0)
 
 Retired because the keys it warned against are refused outright (SST-DBT030).
+
+### SST-DIS014
+
+**Semantic views folder missing** (retired in 1.0.0)
+
+Retired because a view may sit in any folder of the semantic-model directory, so no folder is required.
 
 ### SST-INT006
 

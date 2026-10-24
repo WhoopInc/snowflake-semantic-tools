@@ -147,7 +147,7 @@ a mistyped route cannot quietly route nothing.
 
 | Block | Routes start from | An artifact's folder is |
 |---|---|---|
-| `semantic_views` | `<semantic_models_dir>/semantic_views/` | the view file's directory |
+| `semantic_views` | `<semantic_models_dir>/` | the view file's directory |
 | `tools` | `tools_dir/` | the tool file's directory |
 | `agents` | `agents_dir/` | the agent's own folder |
 | `evals` | `agents_dir/` | its agent's folder |

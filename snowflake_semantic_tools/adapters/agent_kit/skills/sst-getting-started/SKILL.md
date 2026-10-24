@@ -40,7 +40,7 @@ would change in Snowflake, then apply that plan. Nothing is built by clicking in
 
 | Piece | What it is | Where it lives |
 |---|---|---|
-| Semantic view | A Snowflake object that describes tables in business terms -- which columns are measures, which are categories, how tables join -- so Cortex Analyst can turn a question into correct SQL. | `semantic_models/semantic_views/` |
+| Semantic view | A Snowflake object that describes tables in business terms -- which columns are measures, which are categories, how tables join -- so Cortex Analyst can turn a question into correct SQL. | any folder of `semantic_models/` |
 | Member | One part of a view: a metric, relationship, filter, verified query (a question with its known-good SQL), or custom instruction. A member joins every view that has all its tables. | `semantic_models/` |
 | Column metadata | Whether each column is a dimension, fact, or time dimension, plus keys and synonyms. | each dbt model's YAML, under `config.meta.sst` |
 | Cortex Agent | An AI assistant in Snowflake that answers questions by choosing among its tools. | `agents/<name>/agent.yml` |

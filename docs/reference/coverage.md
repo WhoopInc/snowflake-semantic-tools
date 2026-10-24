@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 815
+- Codes: 814
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -168,7 +168,6 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DIS011`](error-codes.md#sst-dis011) | DIS | warning | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis011.py` |
 | [`SST-DIS012`](error-codes.md#sst-dis012) | DIS | error | local | `snowflake_semantic_tools.cli.commands.test` | `tests/codes/dis/test_sst_dis012.py` |
 | [`SST-DIS013`](error-codes.md#sst-dis013) | DIS | error | local | `snowflake_semantic_tools.cli.commands.enrich` | `tests/codes/dis/test_sst_dis013.py` |
-| [`SST-DIS014`](error-codes.md#sst-dis014) | DIS | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.pipeline` | `tests/codes/dis/test_sst_dis014.py` |
 | [`SST-DIS200`](error-codes.md#sst-dis200) | DIS | info | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis200.py` |
 | [`SST-DIS201`](error-codes.md#sst-dis201) | DIS | info | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis201.py` |
 | [`SST-INT001`](error-codes.md#sst-int001) | INT | error | local | `snowflake_semantic_tools.cli.runner` | `tests/codes/int/test_sst_int001.py` |
@@ -302,7 +301,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRS001`](error-codes.md#sst-prs001) | PRS | warning | local | `snowflake_semantic_tools.domain.parse.records` | `tests/codes/prs/test_sst_prs001.py` |
 | [`SST-PRS002`](error-codes.md#sst-prs002) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.agents`<br>`snowflake_semantic_tools.adapters.yaml.cowork_profiles`<br>`snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.adapters.yaml.evals.dataset`<br>`snowflake_semantic_tools.adapters.yaml.evals.metrics`<br>`snowflake_semantic_tools.adapters.yaml.evals.readers`<br>`snowflake_semantic_tools.adapters.yaml.semantic.file_reads`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.adapters.yaml.tool_members`<br>`snowflake_semantic_tools.domain.validate.eval_dataset`<br>`snowflake_semantic_tools.domain.validate.semantic.shape`<br>`snowflake_semantic_tools.domain.validate.skill`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs002.py` |
 | [`SST-PRS003`](error-codes.md#sst-prs003) | PRS | error | local | `snowflake_semantic_tools.adapters.dbt.manifest`<br>`snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.documents`<br>`snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.adapters.yaml.evals.dataset`<br>`snowflake_semantic_tools.adapters.yaml.evals.metrics`<br>`snowflake_semantic_tools.adapters.yaml.evals.readers`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.adapters.yaml.semantic.build`<br>`snowflake_semantic_tools.adapters.yaml.semantic.nodes`<br>`snowflake_semantic_tools.adapters.yaml.tool_members`<br>`snowflake_semantic_tools.adapters.yaml.tools`<br>`snowflake_semantic_tools.app.compile.agents.settled`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt`<br>`snowflake_semantic_tools.domain.validate.semantic.scope`<br>`snowflake_semantic_tools.domain.validate.semantic.shape`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs003.py` |
-| [`SST-PRS004`](error-codes.md#sst-prs004) | PRS | warning | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.adapters.yaml.semantic.target`<br>`snowflake_semantic_tools.domain.parse.fields`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/prs/test_sst_prs004.py` |
+| [`SST-PRS004`](error-codes.md#sst-prs004) | PRS | warning | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.domain.parse.fields`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/prs/test_sst_prs004.py` |
 | [`SST-PRS005`](error-codes.md#sst-prs005) | PRS | error | local | `snowflake_semantic_tools.domain.resolve.template`<br>`snowflake_semantic_tools.domain.validate.agent`<br>`snowflake_semantic_tools.domain.validate.sql`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs005.py` |
 | [`SST-PRS006`](error-codes.md#sst-prs006) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.build` | `tests/codes/prs/test_sst_prs006.py` |
 | [`SST-PRS007`](error-codes.md#sst-prs007) | PRS | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/prs/test_sst_prs007.py` |

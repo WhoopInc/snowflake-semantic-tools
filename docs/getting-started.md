@@ -69,7 +69,7 @@ sst debug --no-connect
 
 `sst init` writes an `sst_config.yml` that sets the validation, enrichment,
 governance, apply, and state keys to their defaults,
-and a `semantic_models/semantic_views/` directory. It never overwrites a file
+and a `semantic_models/` directory. It never overwrites a file
 that exists; run interactively, it asks for the semantic models directory first
 (`--skip-prompts` takes the default). `sst debug` prints the configuration file,
 profile, target, database, schema, and state table SST resolved:
@@ -142,7 +142,7 @@ instead; see [Enriching models](guides/enrich.md).
 ## 5. Write a semantic view and a metric
 
 ```yaml
-# semantic_models/semantic_views/sales.yml
+# semantic_models/sales/sales.yml
 semantic_view:
   name: sales
   description: Orders and their value. Use for order counts and revenue.
@@ -161,7 +161,7 @@ metric:
 Each file holds one item under its type's singular root. A list under the plural
 root (`semantic_views:`, `snowflake_metrics:`) is also read, for several items in
 one file. Any YAML file under `semantic_models/` is read, and each member is
-recognized by its root key; only views must live under `semantic_views/`. A metric's tables
+recognized by its root key, a view's too. A metric's tables
 are the models its expression names with `ref()`, and it joins every view whose
 tables include all of them, so `order_count` lands in `sales` without the view
 naming it.

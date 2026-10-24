@@ -7,9 +7,9 @@ entry in the [error code reference](../reference/error-codes.md).
 
 Files live under `project.semantic_models_dir` (default `semantic_models/`) and
 can be split and named however you like: SST reads every YAML file there, at any
-depth, and recognizes members by their root key. Views themselves live under its
-`semantic_views/` folder, where folder routes apply; a view anywhere else is not
-built and is reported (`SST-PRS004`).
+depth, and recognizes members by their root key. A view may sit in any folder too;
+its folder there picks its `semantic_views:` folder routes, as a dbt model's folder
+picks its `models:` config.
 
 ### File shapes
 
@@ -56,7 +56,7 @@ first. The examples below use the single-item shape.
 ## Views
 
 ```yaml
-# semantic_models/semantic_views/sales.yml
+# semantic_models/sales/sales.yml
 semantic_view:
   name: sales
   description: |-

@@ -76,7 +76,7 @@ models:
 ## Members find their views
 
 Write one item per file, named for it (`metrics/total_revenue.yml`), under its singular root
-as a mapping: `semantic_view:` (only under `semantic_views/`), `metric:`, `relationship:`,
+as a mapping: `semantic_view:` (any folder; its folder picks its routes), `metric:`, `relationship:`,
 `filter:`, `verified_query:`, or `custom_instruction:`. A list under the plural root
 (`semantic_views:`, `snowflake_metrics:`, `snowflake_relationships:`, `snowflake_filters:`,
 `snowflake_verified_queries:`, `snowflake_custom_instructions:`) is still read, as several
@@ -89,7 +89,7 @@ and it attaches to every view whose `tables:` hold all of them; a member that la
 `SST-MEM005`. Custom instructions are the exception: a view names them.
 
 ```yaml
-# semantic_views/sales.yml
+# sales/sales.yml
 semantic_view:
   name: sales
   description: |-
@@ -115,7 +115,7 @@ In `sst_config.yml`, a `+` key sets a block's default and an unprefixed key is a
 ```yaml
 semantic_views:
   +schema: SEMANTIC
-  finance:          # views under <semantic_models_dir>/semantic_views/finance/
+  finance:          # views under <semantic_models_dir>/finance/
     +schema: FINANCE_SEMANTIC
 ```
 

@@ -158,7 +158,7 @@ LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "ri
 def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
     """Report each key of a view's `config:` block that is not a `semantic_views:` setting with a value.
 
-    Every document is read, as the authored keys are, so a view outside semantic_views/ is
+    Every document is read, as the authored keys are, so a view in any folder is
     checked too. Each key is placed where it is written, else at the view.
 
     Diagnostics:

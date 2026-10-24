@@ -2,12 +2,11 @@
 
 A semantic model file listing members under a list root (`snowflake_metrics:` and the rest)
 becomes one file per member, `<same folder>/<name>.yml`, holding it under the singular root
-(`metric:`). A semantic view goes under `<semantic_models_dir>/semantic_views/`, the one place
-SST reads views from, in the subfolder its file sat in (`<dir>/sales/views.yml` gives
-`<dir>/semantic_views/sales/<name>.yml`); a `semantic_view:` file outside that folder moves there
-whole. A tools file listing members does the same with `tool:`. A tools file listing tool
-groups, as SST read them before groups went, becomes one `tool:` file per member under
-`<file's folder>/<group>/`, so a `tools.<group>` route in `sst_config.yml` routes that folder:
+(`metric:`). A view stays in its file's folder too: SST reads views from any folder, and a
+view's folder picks its `semantic_views:` routes. A tools file listing members does the same
+with `tool:`. A tools file listing tool groups, as SST read them before groups went, becomes
+one `tool:` file per member under `<file's folder>/<group>/`, so a `tools.<group>` route in
+`sst_config.yml` routes that folder:
 
 - the group's `owner` becomes each member's `meta.owner`, unless the member names its own;
 - its `description` becomes a comment heading each member's file;
@@ -75,21 +74,17 @@ class _Group:
     immutable_config: bool
 
 
-def split_semantic(lines: Sequence[str], root: Node, path: str, semantic_dir: str = "") -> SplitPlan | None:
-    """Plan the split of one semantic model file; None when it lists no members and moves nowhere.
+def split_semantic(lines: Sequence[str], root: Node, path: str) -> SplitPlan | None:
+    """Plan the split of one semantic model file; None when it lists no members.
 
-    Args:
-        semantic_dir: The semantic-model directory, project-relative; views go under its
-            `semantic_views/`. "" leaves every view in its file's folder.
-
-    A file is refused when it holds any root key besides its member lists, or a member that is
-    not a mapping with a `name:`, or two members of one name.
+    Every member, a view too, is written to the folder of the file that lists it. A file is
+    refused when it holds any root key besides its member lists, or a member that is not a
+    mapping with a `name:`, or two members of one name.
     """
     folder = posixpath.dirname(path)
-    views = _views_folder(folder, semantic_dir)
     listed = [entry for entry in root.entries if entry.key in _ROOTS and entry.value.is_seq]
     if not listed:
-        return _moved_view(lines, root, path, views) if views != folder else None
+        return None
     others = [entry.key for entry in root.entries if entry not in listed]
     if others:
         return SplitPlan(path, refused=f"it holds {', '.join(others)} beside its member lists")
@@ -99,32 +94,8 @@ def split_semantic(lines: Sequence[str], root: Node, path: str, semantic_dir: st
         root,
         path,
         items,
-        lambda entry, _item: (_ROOTS[entry.key], views if entry.key == _VIEWS else folder, None),
+        lambda entry, _item: (_ROOTS[entry.key], folder, None),
     )
-
-
-def _views_folder(folder: str, semantic_dir: str) -> str:
-    """Return where a view from `folder` belongs: under `semantic_views/`, in the same subfolder."""
-    if not semantic_dir:
-        return folder
-    views = posixpath.join(semantic_dir, "semantic_views")
-    if folder == views or folder.startswith(views + "/"):
-        return folder
-    inside = folder == semantic_dir or folder.startswith(semantic_dir + "/")
-    rest = posixpath.relpath(folder, semantic_dir) if inside else ""
-    return views if rest in ("", ".") else posixpath.join(views, rest)
-
-
-def _moved_view(lines: Sequence[str], root: Node, path: str, views: str) -> SplitPlan | None:
-    """Plan the move of a `semantic_view:` file into `views`; None for any other file."""
-    if [entry.key for entry in root.entries] != [_VIEW]:
-        return None
-    view = root.entries[0].value
-    name = view.get("name") if view.is_map else None
-    if name is None or not name.text:
-        return SplitPlan(path, refused="its semantic_view: has no name, so it cannot move under semantic_views/")
-    text = _rebased("".join(lines), posixpath.dirname(path), views)
-    return SplitPlan(path, (NewFile(posixpath.join(views, posixpath.basename(path)), text, name.text),))
 
 
 def split_tools(

@@ -132,8 +132,7 @@ def load_semantic_views_result(
 
     1. Inputs: parse the documents into views and members, and resolve the member references
        in each custom instruction's text; a block whose text does not resolve is poisoned.
-    2. Typed members: split the members by type and find the metric cycles. Only then is
-       a missing semantic_views/ directory refused, so an unreadable member is reported first.
+    2. Typed members: split the members by type and find the metric cycles.
     3. Structural checks: repeated view names, malformed tables, routes, authored keys,
        descriptions, shapes, the dbt models and columns in use, legacy globals, verified queries.
     4. Semantic checks: filter, verified query and metric references, tables that are not
@@ -154,7 +153,7 @@ def load_semantic_views_result(
     10. Member resolution: attach every unpoisoned member to the views it belongs to, and
         report what the attachment means (`domain.resolve.membership`), each member that
         reaches no view, and the verified queries one view attaches that share a question.
-    11. Build every enabled, unpoisoned view under semantic_views/; one that fails is
+    11. Build every enabled, unpoisoned view; one that fails is
         reported and left out. Then the dbt seam: each model that feeds several built views,
         and a summary of what was read.
     12. Check each built view against the members attached to it (`domain.resolve.rendered`).
@@ -171,7 +170,7 @@ def load_semantic_views_result(
         catalog: The manifest the models come from; None stands for one holding just `models`.
 
     Raises:
-        ProjectError: A member cannot be read at all, or there is no semantic_views/ directory.
+        ProjectError: A member cannot be read at all.
     """
     if inputs.refused:
         return SemanticViewProject(())
@@ -404,21 +403,15 @@ def _load_context(
 ) -> LoadContext:
     """Gather the fixed inputs every later phase reads.
 
-    Raises:
-        ProjectError: `<semantic_models_dir>/semantic_views` is not a directory (SST-DIS014).
-
-    Diagnostics:
-        SST-DIS014: `<semantic_models_dir>/semantic_views` does not exist; raised.
+    A view may sit in any folder of the semantic-model directory, as a dbt model may in any
+    folder of `models/`; its folder there picks its `semantic_views:` routes.
     """
-    views_dir = project_dir / inputs.semantic_models_dir / "semantic_views"
-    if not views_dir.is_dir():
-        diagnostic = D("SST-DIS014", path=str(views_dir.relative_to(project_dir)))
-        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    semantic_dir = project_dir / inputs.semantic_models_dir
     catalog = catalog or DbtCatalog(
         schema_version="", dbt_version=None, project_name=None, models=tuple(models.values())
     )
     return LoadContext(
-        project_dir, inputs.config, inputs.semantic_models_dir, inputs.documents, views_dir, target, models, catalog
+        project_dir, inputs.config, inputs.semantic_models_dir, inputs.documents, semantic_dir, target, models, catalog
     )
 
 
@@ -437,7 +430,7 @@ def _build_views(
     views: dict[str, SemanticView] = {}
     diagnostics: list[Diagnostic] = []
     for path, node in nodes:
-        settings = _view_settings(context.config, path, context.views_dir, node)
+        settings = _view_settings(context.config, path, context.semantic_dir, node)
         view_target = _view_location(settings, context.target)
         try:
             views[view_key(str(node["name"]))] = _build_view(
@@ -470,7 +463,7 @@ def _variable_origins(context: LoadContext, path: Path, node: Mapping[str, Any])
     assert root_key is not None
     entries = node.get("variables")
     count = len(entries) if isinstance(entries, list) else 0
-    for document in context.documents.under(context.views_dir, root_key):
+    for document in context.documents.under(context.semantic_dir, root_key):
         for index, candidate in enumerate(document.tree.get(root_key) or []):
             if document.abs_path == path and candidate is node:
                 return tuple(_located(document, (root_key, index, "variables", item)) for item in range(count))
@@ -486,7 +479,7 @@ def _located(document: RawDocument, path: NodePath) -> Origin:
 
 
 def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Path, dict[str, Any]]]:
-    """Yield, in document order, each named view under semantic_views/ that is enabled and not poisoned."""
+    """Yield, in document order, each named view that is enabled and not poisoned."""
     for path, node, enabled in _named_views(context):
         if not enabled:
             continue
@@ -498,23 +491,23 @@ def _buildable_nodes(context: LoadContext, poison: Poison) -> Iterator[tuple[Pat
 
 
 def _named_views(context: LoadContext) -> Iterator[tuple[Path, dict[str, Any], bool]]:
-    """Yield, in document order, each named view under semantic_views/ and whether it is enabled.
+    """Yield, in document order, each named view and whether it is enabled.
 
     Only a resolved `enabled` of false disables a view: its own `config.enabled`, else the
     closest folder route's `+enabled`, else the root's.
     """
     root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
     assert root_key is not None
-    for document in context.documents.under(context.views_dir, root_key):
+    for document in context.documents.under(context.semantic_dir, root_key):
         for node in document.tree.get(root_key) or []:
             if not isinstance(node, dict) or not node.get("name"):
                 continue
-            settings = _view_settings(context.config, document.abs_path, context.views_dir, node)
+            settings = _view_settings(context.config, document.abs_path, context.semantic_dir, node)
             yield document.abs_path, node, setting_value(settings, "enabled") is not False
 
 
 def _disabled_views(context: LoadContext) -> tuple[str, ...]:
-    """The casefolded names of the views under semantic_views/ that are disabled, in document order."""
+    """The casefolded names of the views that are disabled, in document order."""
     return tuple(str(node["name"]).casefold() for _, node, enabled in _named_views(context) if not enabled)
 
 
