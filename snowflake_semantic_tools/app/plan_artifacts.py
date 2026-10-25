@@ -49,7 +49,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.catalog import CatalogPort,
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
-from snowflake_semantic_tools.domain.state import DEACTIVATED, Manifest, State
+from snowflake_semantic_tools.domain.state import ADOPTED, DEACTIVATED, Manifest, State
 from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
 
 
@@ -363,6 +363,7 @@ class PlanArtifacts:
                 else frozenset()
             ),
             kind_targets=kind_targets if kind_targets is not None else targets_by_kind(rendered.values(), state),
+            adopted=adopted_names(state),
         )
         if self._observe_options.grants:
             observation, unread = observe_replaced_tags(
@@ -599,3 +600,15 @@ def targets_by_kind(rendered: Iterable[RenderedArtifact], state: State) -> Mappi
         if separator and entry.qualified_name:
             found.setdefault(kind, {})[QualifiedName.parse(entry.qualified_name)] = None
     return MappingProxyType({kind: tuple(targets) for kind, targets in found.items()})
+
+
+def adopted_names(state: State) -> frozenset[tuple[str, str, str]]:
+    """Return the folded names of the objects state records as adopted, which observation digests."""
+    names: set[tuple[str, str, str]] = set()
+    for entry in state.applied.values():
+        if entry.outcome == ADOPTED:
+            try:
+                names.add(QualifiedName.parse(entry.qualified_name).folded)
+            except ValueError:
+                continue
+    return frozenset(names)

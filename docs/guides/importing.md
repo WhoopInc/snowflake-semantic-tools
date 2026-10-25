@@ -30,7 +30,9 @@ sst import                                                       # on a terminal
 | `cowork_profile` | as an agent, its spec holding an `agent_router` tool | its `cowork_profile.yml` (Snowflake private preview) |
 | `eval` | an eval input table's `INPUT_QUERY` and `GROUND_TRUTH` | a dataset in the agent folder `--to` names |
 
-`--agent-version` reads another version of an agent or profile than the one it serves. A
+A tool member no agent references is `SST-CFG018`, so import a tool with the agent that calls it,
+or reference it before you plan. `--agent-version` reads another version of an agent or profile
+than the one it serves. A
 three-part name reads one object; a two-part name every object of the type in the schema; a
 one-part name every one in the database. `--like` and `--not-like` narrow a schema or database
 by Snowflake `LIKE` patterns, case-insensitive. An object of the other agent kind in a scope is

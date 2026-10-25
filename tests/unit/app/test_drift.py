@@ -117,6 +117,25 @@ def test_an_unmarked_or_undesired_object_is_not_digested() -> None:
     )
 
 
+def test_an_unmarked_object_state_records_as_adopted_is_digested() -> None:
+    port = _port()
+    port.objects.clear()
+    port.show(ShowRow("P", "DB", "SCHEMA", "OWNER", "now", "no marker", object_type="PROCEDURE"))
+    desired = {"tool:p": _artifact("PROCEDURE", PROCEDURE)}
+    observation, _ = observe(
+        port,
+        SEMANTIC_REGISTRY,
+        (PROCEDURE,),
+        fetched_at="now",
+        observed_object_types={"tool": frozenset(("PROCEDURE",))},
+        desired_artifacts=desired,
+        adopted=frozenset({PROCEDURE.folded}),
+    )
+    # The row this test shows lists no `is_secure`, so the digest holds the DESCRIBE alone.
+    expected = live_digest(drift_properties("PROCEDURE", {}, described=DESCRIBED))
+    assert observation.artifacts["tool:p"].live_digest == expected
+
+
 def test_apply_reads_back_the_digest_of_what_it_wrote_and_state_records_it() -> None:
     port = _port()
     artifact = _artifact("PROCEDURE", PROCEDURE)

@@ -94,6 +94,7 @@ def observe(
     options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
     absent_schemas: frozenset[tuple[str, str]] = frozenset(),
     kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
+    adopted: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -117,6 +118,8 @@ def observe(
             An object type more than one kind publishes (AGENT, for agents and CoWork
             profiles) is listed only in the schemas of its own kind's objects there, so one
             object is never observed under two keys; None lists it in every target schema.
+        adopted: The folded names of the objects state records as `sst state adopt` left them,
+            which carry no marker; each is digested, so plan can tell it changed since.
 
     Diagnostics:
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
@@ -148,7 +151,8 @@ def observe(
     )
     reads = iter(
         readers.map(
-            lambda session, item: _observe_row(session, item[0][0], item[0][1], item[1], desired, options), listed
+            lambda session, item: _observe_row(session, item[0][0], item[0][1], item[1], desired, options, adopted),
+            listed,
         )
     )
     for listing in listings:
@@ -203,6 +207,7 @@ def _observe_row(
     row: ShowRow,
     desired: Mapping[_FoldedName, RenderedArtifact],
     options: ObserveOptions,
+    adopted: frozenset[tuple[str, str, str]] = frozenset(),
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
     """Observe one listed object: its marker, grants, definition, an agent's versions, and its digest."""
     desired_artifact = desired.get(row.qualified_name.folded)
@@ -220,8 +225,8 @@ def _observe_row(
     newest = versions.newest
     newest_spec = held_spec_fingerprint(newest.comment, newest.specification) if newest is not None else None
     marker = extract_marker(row.comment)
-    # Only an object plan may compare with what apply recorded is digested: one that a rendered
-    # artifact names and SST's marker claims.
+    # Only an object plan may compare with what was recorded is digested: one a rendered artifact
+    # names that SST's marker claims, or that `sst state adopt` recorded without one.
     digest, digest_diagnostics = (
         observed_digest(
             port,
@@ -232,7 +237,7 @@ def _observe_row(
             newest_spec=newest_spec,
             drift_check=options.drift_check,
         )
-        if desired_artifact is not None and marker is not None
+        if desired_artifact is not None and (marker is not None or row.qualified_name.folded in adopted)
         else (None, ())
     )
     artifact = ObservedArtifact(

@@ -22,6 +22,7 @@ from snowflake_semantic_tools.app.apply.lock import LockPolicy, RunLease
 from snowflake_semantic_tools.app.apply.state import EntryStamp
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.diff import name_map
+from snowflake_semantic_tools.app.drift import written_digest
 from snowflake_semantic_tools.app.plan_diff import COMPARISONS, Comparison, live_object
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -149,7 +150,10 @@ class AdoptObjects:
         run_id = self._clock.new_run_id()
         stamp = EntryStamp(run_id, self._clock.now_iso(), self._git_sha)
         changes = {change.key: change for change in changeset.changes}
-        entries = {key: _adopted_entry(changes[key], changeset.manifest_id, stamp) for key in pending}
+        entries = {
+            key: _adopted_entry(changes[key], changeset.manifest_id, stamp, self._digest(changes[key]))
+            for key in pending
+        }
         lease = RunLease(
             self._state_store,
             self._port,
@@ -176,6 +180,13 @@ class AdoptObjects:
             if item.key in written
         )
         return AdoptResult(kept, DiagnosticBag((*reported, *recorded)), wrote=written)
+
+    def _digest(self, change: Change) -> str | None:
+        """Digest the adopted object as apply digests what it writes, so plan can tell it changed since.
+
+        Adopt takes only an object at the artifact's own name, so the rendered target is the live one.
+        """
+        return written_digest(self._port, change.rendered) if change.rendered is not None else None
 
     def _decide(
         self,
@@ -275,7 +286,7 @@ def _not_adoptable(change: Change) -> str | None:
     return None
 
 
-def _adopted_entry(change: Change, manifest_id: str, stamp: EntryStamp) -> AppliedEntry:
+def _adopted_entry(change: Change, manifest_id: str, stamp: EntryStamp, digest: str | None) -> AppliedEntry:
     """Record an adopted object: the compiled definition, at the live object, as it read when adopted."""
     rendered, observed = change.rendered, change.observed
     if rendered is None or observed is None:
@@ -290,5 +301,5 @@ def _adopted_entry(change: Change, manifest_id: str, stamp: EntryStamp) -> Appli
         manifest_id=manifest_id,
         git_sha=stamp.git_sha,
         physical_resources=((observed.object_type, observed.qualified_name.sql),),
-        live_digest=observed.live_digest,
+        live_digest=digest if digest is not None else observed.live_digest,
     )
