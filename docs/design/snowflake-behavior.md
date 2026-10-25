@@ -156,6 +156,57 @@ CREATE SEMANTIC VIEW <db>.<schema>.probe_view
 passes `is_enum` through for any column kind; `_sample_value_diagnostics` in
 [validate/semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py).
 
+### Sample values are cast to the member's type, as TRY_CAST casts them
+
+**Docs say**: nothing, since `SAMPLE_VALUES` itself is undocumented.
+
+**Server does**: when it creates the view, it casts each `SAMPLE_VALUES` entry
+to its member's type, and refuses the whole view with `010913 (42601)`
+`Sample Values validation failed: Invalid sample values for calculations
+'T.MEMBER': ['<value>']`. Facts are checked as well as dimensions. A text
+member takes any value. The rule was probed on 2026-10-25, one view per value,
+and matched `TRY_CAST` on every case:
+
+- Accepted: `nan`, `inf`, `-inf`, `Infinity`, `1e3` and ` 12 ` on FLOAT;
+  `1.5`, `1e3` and `+7` on `NUMBER(38,0)`; `1700000000`, `1/2/2024` and ISO
+  forms on TIMESTAMP_NTZ and DATE; `yes`, `on`, `1` and `T` on BOOLEAN;
+  `NaT` and `nan` on VARCHAR.
+- Refused: `NaT`, `''` and `0,2` on FLOAT; `nan` and `0,2` on NUMBER;
+  `NaT`, `nan`, `''` and `2024-13-45` on TIMESTAMP_NTZ; `NaT` on DATE and TIME;
+  `maybe` on BOOLEAN.
+
+`TRY_CAST` is lenient elsewhere too: NUMBER reads `e`, `e3` and `.` as 0, and
+FLOAT reads `0x1F`. Date and time parsing follows the session's input formats.
+
+**Evidence**: `Observed` for the server's rule. SST's side is `Enforced`:
+- [test_sst_val341.py](../../tests/codes/val/test_sst_val341.py) pins the offline
+  rule, which refuses only what no reading of the type accepts, and its silence
+  on each accepted case above.
+- [test_sst_val419.py](../../tests/codes/val/test_sst_val419.py) pins the
+  connected cast.
+- [test_sst_sno036.py](../../tests/codes/sno/test_sst_sno036.py) pins the
+  refusal's message.
+
+Probe:
+
+```sql
+CREATE TABLE <db>.<schema>.probe_t (TS TIMESTAMP_NTZ, F FLOAT);
+CREATE SEMANTIC VIEW <db>.<schema>.probe_view
+  TABLES (T AS <db>.<schema>.probe_t)
+  DIMENSIONS (T.D_TS AS T.TS SAMPLE_VALUES ('NaT'));
+-- Expect: refused, Sample Values validation failed. With ('2024-01-01') it is
+-- accepted; with T.F SAMPLE_VALUES ('nan') it is accepted.
+```
+
+**SST depends on it at**:
+- `sample_problem` in
+  [column_metadata.py](../../snowflake_semantic_tools/domain/validate/column_metadata.py),
+  which validate and enrich share.
+- [sample_casts.py](../../snowflake_semantic_tools/app/sample_casts.py), whose
+  cast is `TRY_CAST`.
+- The `SST-SNO036` signature in
+  [signatures.py](../../snowflake_semantic_tools/domain/diagnostics/signatures.py).
+
 ### GET_DDL output does not re-execute
 
 **Docs say**: `GET_DDL` returns "the text of the DDL statement that created the

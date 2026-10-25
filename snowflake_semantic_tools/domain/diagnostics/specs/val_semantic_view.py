@@ -135,8 +135,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: '{member}'.{field} contains '{value}'",
         "delete the value, or run `sst enrich --force sample-values` to sample the column again",
         condition=(
-            "a column's `sample_values` holds a missing value written as text: `nan`, `none`, `null` or "
-            "`<na>`, in any case; checked on every dbt model"
+            "a column's `sample_values` holds a missing value written as text: `nan`, `nat`, `none`, "
+            "`null` or `<na>`, in any case; checked on every dbt model, but for a value SST-VAL341 "
+            "reports because the column's type cannot hold it"
         ),
     ),
     spec(
@@ -242,7 +243,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "correct `data_type`, or run `sst enrich --force data-types`",
         condition=(
             "`sst enrich` finds a written `meta.sst.data_type` that differs from the relation's type, "
-            "on a column dbt gives no `data_type`"
+            "on a column dbt gives no `data_type`; or connected validation, with "
+            "`validation.snowflake_syntax_check` on, finds a published column's declared type differs "
+            "from the type `DESCRIBE TABLE` reports"
         ),
         precheck=Precheck.OBSERVE,
     ),
@@ -416,6 +419,29 @@ SPECS: tuple[ErrorSpec, ...] = (
             "validation in CI and pre-commit. Such values are never rendered: the column publishes "
             "without `SAMPLE_VALUES` and `IS_ENUM`. The message names the kind of data only, never the "
             "value."
+        ),
+    ),
+    spec(
+        "SST-VAL341",
+        Severity.ERROR,
+        "Sample value cannot be the column's type",
+        "{artifact}: '{member}'.sample_values holds '{value}', which Snowflake cannot read as {type}: {reason}",
+        (
+            "delete the value, or run `sst enrich --force sample-values` to sample the column again; if the "
+            "declared `data_type` is what is wrong, correct it (`sst enrich --force data-types`)"
+        ),
+        condition=(
+            "a published column of a model a view uses is numeric, temporal or BOOLEAN, and a "
+            "`sample_values` entry is blank; or, on a numeric or temporal column, is a missing value "
+            "written as text (`nan` excepted on a FLOAT); or, on a temporal column, holds no digit; or, "
+            "on a numeric column, holds a character no number holds, such as `,`; or, on a BOOLEAN "
+            "column, is not one of Snowflake's boolean texts"
+        ),
+        note=(
+            "Snowflake casts each sample value to its member's type when it creates the view, and "
+            "refuses the view when one fails, so the publish of every view holding the column would "
+            "fail. Only a value no reading of the type accepts is reported offline; connected "
+            "validation casts the rest as the warehouse types the column (SST-VAL419)."
         ),
     ),
 )

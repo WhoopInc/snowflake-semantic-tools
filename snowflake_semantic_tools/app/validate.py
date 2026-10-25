@@ -4,7 +4,9 @@ The offline checks live in `domain.validate`. The connected checks stay here bec
 run SQL through the `ExecutionPort`: the syntax check (SST-VAL418) compiles each expression
 over columns typed as the target describes its tables (`app.explain_projection`), the
 verified-query row count (SST-VAL415) runs each query that compiles, and the spot checks
-(SST-VAL212, SST-VAL218) read the joined tables. With `governance.read_column_tags`, each table's
+(SST-VAL212, SST-VAL218) read the joined tables. Each table's published sample values are cast
+to the column types the target describes (SST-VAL419), and a declared type the table
+contradicts is reported (SST-VAL327, `app.sample_casts`). With `governance.read_column_tags`, each table's
 column tags are checked against its model's YAML (SST-VAL338, `app.validate_tags`). Each model
 `snowflake.orchestration_models`
 allows is run in a throwaway agent (SST-VAL551 to SST-VAL556, `app.validate_models`). SST-VAL020
@@ -32,6 +34,7 @@ from snowflake_semantic_tools.app.explain_projection import (
     explain_expression,
 )
 from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.sample_casts import cast_findings, cast_reads, published_columns, type_drift
 from snowflake_semantic_tools.app.validate_models import ModelCheck, check_orchestration_models
 from snowflake_semantic_tools.app.validate_tags import TagAnswer, read_tags, tag_findings
 from snowflake_semantic_tools.app.verify_schema import verify_columns
@@ -175,6 +178,8 @@ class ValidateArtifacts:
             SST-VAL415: a verified query ran and returned no rows.
             SST-VAL212: a relationship's target holds more than one row for a join key.
             SST-VAL218: a distinct range's rows overlap.
+            SST-VAL419: Snowflake cannot read a column's sample value as the column's type.
+            SST-VAL327: a column's declared data type names another type than its table has.
             Those of `tag_findings`, when `governance` reads tags.
             Those of `ObserveLiveObjects`, with a catalog; with `references` and the checks
                 skipped, those of its `references`.
@@ -214,9 +219,11 @@ class ValidateArtifacts:
         """Run the views' connected checks, each distinct statement once, and report in view order.
 
         Three rounds of reads, each on `readers`: every table the views read is described, and
-        its column tags read when `governance` asks; then every EXPLAIN is run; then each
-        verified query that compiled is counted, and each relationship spot-checked. Each
-        view's findings are read from the answers, and the tag findings follow them.
+        its column tags read when `governance` asks; then every EXPLAIN is run, with each
+        table's cast of the sample values its columns publish; then each verified query that
+        compiled is counted, and each relationship spot-checked. Each view's findings are read
+        from the answers; the sample-value findings, each column once whatever views hold it,
+        and the declared types the tables contradict follow them, then the tag findings.
         """
         relations = tuple(sorted({table.fqn for item in views for table in item.view.tables}))
         observed = MappingProxyType(dict(zip(relations, readers.map(describe_columns, relations), strict=True)))
@@ -225,7 +232,11 @@ class ValidateArtifacts:
             MappingProxyType(dict(zip(relations, readers.map(read_tags, relations), strict=True))) if patterns else {}
         )
         compiles = {item.artifact_key: _compile_checks(item, observed) for item in views}
-        explained = self._answers(readers, (check.read for checks in compiles.values() for check in checks))
+        columns = published_columns(views, observed)
+        casts = {fqn: _Read(read) for fqn, read in cast_reads(columns).items()}
+        explained = self._answers(
+            readers, (*(check.read for checks in compiles.values() for check in checks), *casts.values())
+        )
         diagnostics = {
             item.artifact_key: _compile_findings(item, compiles[item.artifact_key], explained) for item in views
         }
@@ -246,6 +257,9 @@ class ValidateArtifacts:
                 if empty is not None:
                     found.append(empty)
             found.extend(_spot_findings(item, spots[item.artifact_key], answered))
+        for fqn, read in casts.items():
+            found.extend(cast_findings(columns, fqn, explained[read].result))
+        found.extend(type_drift(columns))
         if patterns:
             found.extend(tag_findings(tuple(item.view for item in views), tagged, patterns))
         return found
@@ -467,7 +481,7 @@ def _spot_finding(relationship: Relationship, target: Table, rows: tuple[tuple[o
 
 # The connected rules, which offline validation skips and reports as skipped; SST-VAL551
 # stands for the orchestration-model check.
-CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218", "SST-VAL551", "SST-VAL338")
+CONNECTED_RULES = ("SST-VAL418", "SST-VAL415", "SST-VAL212", "SST-VAL218", "SST-VAL419", "SST-VAL551", "SST-VAL338")
 # Every validation rule in the registry: one per VAL code, the connected rules among them.
 VALIDATION_RULES = tuple(sorted(code for code, spec in ERROR_REGISTRY.items() if spec.subsystem == "VAL"))
 

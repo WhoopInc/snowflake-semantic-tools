@@ -61,7 +61,7 @@ def _references(item: CompiledView) -> Iterable[tuple[str, str, str, bool]]:
     """Yield `(table FQN, logical table, column, quoted)` for each plain column reference of one view."""
     tables = {table.logical_name.casefold(): table for table in item.view.tables}
     for column in (*item.view.facts, *item.view.dimensions):
-        reference = _plain_reference(column)
+        reference = plain_reference(column)
         if reference is None:
             continue
         table = tables.get(reference[0].casefold())
@@ -69,7 +69,7 @@ def _references(item: CompiledView) -> Iterable[tuple[str, str, str, bool]]:
             yield table.fqn, table.logical_name.casefold(), reference[1], reference[2]
 
 
-def _plain_reference(column: Column) -> tuple[str, str, bool] | None:
+def plain_reference(column: Column) -> tuple[str, str, bool] | None:
     """Return a column's `(table, column, quoted)` when its expression is one plain reference; else None."""
     if column.kind is ColumnKind.FILTER:
         return None

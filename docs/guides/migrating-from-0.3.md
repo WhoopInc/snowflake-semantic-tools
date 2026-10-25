@@ -354,6 +354,14 @@ was shipping silently:
     with `metric()` on a metric the scope removes (`SST-VAL336`).
   - A filter or verified query that reads with `ref()` a column the scope
     removes is left out of that view and reported (`SST-VAL337`, info).
+- **Sample values must be values of their column's type.** 0.3's enrich read
+  samples through pandas, which writes a missing timestamp as `NaT` and a
+  missing number as `nan`; Snowflake refuses to create a view whose sample
+  values its columns cannot hold. A value no reading of the declared type
+  accepts is an error offline (`SST-VAL341`); connected validation casts the
+  rest to the warehouse's types (`SST-VAL419`) and reports a declared
+  `data_type` the table contradicts (`SST-VAL327`). Delete the values, or run
+  `sst enrich --force sample-values` on the models named.
 
 ## Publishing over a 0.3 deployment
 

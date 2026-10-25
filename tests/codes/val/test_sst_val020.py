@@ -15,6 +15,7 @@ def test_sst_val020_fires() -> None:
         "SST-VAL415",
         "SST-VAL212",
         "SST-VAL218",
+        "SST-VAL419",
         "SST-VAL551",
         "SST-VAL338",
     ]

@@ -32,7 +32,7 @@ def test_sentinels_are_missing_values_in_any_case() -> None:
         True,
         True,
         True,
-        False,
+        True,
         False,
     ]
 

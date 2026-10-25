@@ -77,6 +77,8 @@ _AUTHENTICATION = _words(r"\bincorrect username or password\b|\bauthentication (
 _SESSION_GONE = _words(r"\bsession no longer exists\b|\bsession (?:has )?expired\b")
 # Snowflake's numbers for that: a session that no longer exists, and one that expired.
 _SESSION_GONE_ERRNOS = (390111, 390112)
+# Snowflake's wording when a sample value cannot be read as its member's type.
+_SAMPLE_VALUES = _words(r"\bsample values validation failed\b")
 _DURATION = _words(r"(\d+\s*(?:(?:second|minute|hour)(?:\(s\)|s)?|ms|s)(?![a-z]))")
 
 # The table. Specific rows come before general ones that share their wording, so the
@@ -132,6 +134,17 @@ SIGNATURES: tuple[Signature, ...] = (
         True,
     ),
     Signature("SST-SNO010", None, None, _words(r"\bSQL execution internal error\b|\bincident\s+\d+")),
+    # 10913 is the number of every semantic-view validation failure; sample values are one.
+    Signature(
+        "SST-SNO036",
+        10913,
+        None,
+        _SAMPLE_VALUES,
+        _SYNTAX,
+        extract=_words(r"invalid sample values for calculations\s+(.+?)\.?\s*$"),
+        shared_errno=True,
+    ),
+    Signature("SST-SNO036", None, None, _SAMPLE_VALUES, _SYNTAX),
     Signature("SST-SNO009", 1003, "42000", _words(r"\bsyntax error\b|\bSQL compilation error\b"), _SYNTAX),
     Signature("SST-SNO009", None, "42601", None, _SYNTAX),
     # A session Snowflake ended (aborted, or dropped with the network) or let expire. Not

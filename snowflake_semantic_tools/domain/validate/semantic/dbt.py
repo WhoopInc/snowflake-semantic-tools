@@ -9,7 +9,13 @@ from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
 from snowflake_semantic_tools.domain.model.pii_shape import first_pii_shape
 from snowflake_semantic_tools.domain.model.project import ParsedView
-from snowflake_semantic_tools.domain.validate.column_metadata import is_numeric, is_sentinel, is_temporal
+from snowflake_semantic_tools.domain.validate.column_metadata import (
+    is_numeric,
+    is_sentinel,
+    is_temporal,
+    printable,
+    sample_problem,
+)
 from snowflake_semantic_tools.domain.validate.semantic.shape import synonym_diagnostics
 
 
@@ -21,24 +27,29 @@ def dbt_column_diagnostics(
 
     Only a model a view uses is checked for its metadata: `referenced_models` holds their
     casefolded names, and None means every model. Sentinel sample values are reported on every
-    model. Per column the rules run in the order below, so its diagnostics come out rule by rule:
-    role, data type, sample values, sensitive sample values, description, unknown meta keys,
-    declared type, sentinels, personal-data sample values. Values shaped like personal data are
-    reported on every model too.
+    model, but for one SST-VAL341 reports. Per column the rules run in the order below, so its
+    diagnostics come out rule by rule: role, data type, sample values, sample values of the
+    wrong type, sensitive sample values, description, unknown meta keys, declared type,
+    sentinels, personal-data sample values. Values shaped like personal data are reported on
+    every model too.
     """
     diagnostics: list[Diagnostic] = []
     for model in sorted(models.values(), key=lambda item: item.name):
         is_referenced = referenced_models is None or model.name.casefold() in referenced_models
         for column in model.columns:
+            typed: frozenset[str] = frozenset()
             if is_referenced:
                 diagnostics.extend(_role_diagnostics(model, column))
                 diagnostics.extend(_data_type_diagnostics(model, column))
                 diagnostics.extend(_sample_value_diagnostics(model, column))
+                wrong_type = _sample_type_diagnostics(model, column)
+                typed = frozenset(item.context["value"] for item in wrong_type)
+                diagnostics.extend(wrong_type)
                 diagnostics.extend(_sensitive_sample_diagnostics(model, column))
                 diagnostics.extend(_column_description_diagnostics(model, column))
                 diagnostics.extend(_column_meta_diagnostics(model, column))
                 diagnostics.extend(_declared_type_diagnostics(model, column))
-            diagnostics.extend(_sentinel_diagnostics(model, column))
+            diagnostics.extend(_sentinel_diagnostics(model, column, reported=typed))
             diagnostics.extend(_pii_shaped_sample_diagnostics(model, column))
     return tuple(diagnostics)
 
@@ -108,6 +119,37 @@ def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagno
             )
         ]
     return []
+
+
+def _sample_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report each sample value Snowflake could not read as the column's data type.
+
+    Only a column that publishes its values is checked: one with a role, not excluded, and not
+    sensitive, whose values SST never renders (SST-VAL328). A value shaped like personal data is
+    never rendered either, and SST-VAL340 already refuses it.
+
+    Diagnostics:
+        SST-VAL341: once per value `sample_problem` refuses for the column's data type.
+    """
+    if column.column_type is None or column.excluded or column.sensitive or column.data_type is None:
+        return []
+    artifact, subject = _column_keys(model, column)
+    found: list[Diagnostic] = []
+    for value in dict.fromkeys(column.sample_values):
+        problem = sample_problem(value, column.data_type)
+        if problem is not None:
+            found.append(
+                D(
+                    "SST-VAL341",
+                    artifact=artifact,
+                    member=column.name,
+                    value=printable(value),
+                    type=column.data_type,
+                    reason=problem,
+                    subject=subject,
+                )
+            )
+    return found
 
 
 def _pii_shaped_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
@@ -252,11 +294,14 @@ def _declared_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagn
     ]
 
 
-def _sentinel_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+def _sentinel_diagnostics(model: DbtModel, column: DbtColumn, *, reported: frozenset[str]) -> list[Diagnostic]:
     """Report each sample value that is a missing value written as text, such as `nan`.
 
+    A value in `reported`, printed as SST-VAL341 printed it, is left to that error: on a column
+    whose type cannot hold it, the value fails the view, not just reads as junk.
+
     Diagnostics:
-        SST-VAL316: when a sample value is `nan`, `none`, `null` or `<na>`, in any case.
+        SST-VAL316: when a sample value is `nan`, `nat`, `none`, `null` or `<na>`, in any case.
     """
     artifact, subject = _column_keys(model, column)
     return [
@@ -269,7 +314,7 @@ def _sentinel_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic
             subject=subject,
         )
         for value in column.sample_values
-        if is_sentinel(value)
+        if is_sentinel(value) and printable(value) not in reported
     ]
 
 

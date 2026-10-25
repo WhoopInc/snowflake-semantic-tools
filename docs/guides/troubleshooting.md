@@ -502,6 +502,24 @@ reports an expression or query Snowflake will not compile. A verified query is
 compiled in its view's schema, or on the plain session while that schema does
 not exist yet, before the first apply creates it.
 
+## `apply` fails with `Sample Values validation failed` (`SST-SNO036`)
+
+Snowflake casts each sample value to its column's type when it creates a
+semantic view, and refuses the view when one fails. One column shared by many
+views fails each of them. Two kinds of value cause it:
+
+- A missing value written as text, such as `NaT` (left by the pandas-based
+  enrich of SST 0.3) or `nan` on a column that is not FLOAT. `sst validate`
+  reports these offline (`SST-VAL341`).
+- A value the column's real type cannot hold, hidden by a stale declared
+  `data_type`, such as `0,2` on a column declared `TEXT` that the warehouse has
+  as FLOAT. Only connected validation sees the real type: it reports the value
+  (`SST-VAL419`) and the stale type (`SST-VAL327`).
+
+Run `sst validate` with `validation.snowflake_syntax_check` on to list every
+value before apply. Delete each one, or run `sst enrich --force sample-values`
+(and `--force data-types` for a stale type) on the models it names.
+
 ## An allowed orchestration model fails the check (`SST-VAL551` to `SST-VAL556`)
 
 `CREATE AGENT` accepts any model name, and Snowflake keeps no list of the

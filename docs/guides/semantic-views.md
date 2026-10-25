@@ -269,6 +269,13 @@ models:
 - `is_enum: true` declares that `sample_values` is the complete set of values
   and renders `IS_ENUM`; it needs sample values (`SST-VAL314`), and only a
   dimension can be an enum (`SST-VAL335`).
+- Snowflake casts each sample value to the column's type when it creates the
+  view, and refuses the view when one fails. `sst validate` reports a value no
+  reading of the declared `data_type` accepts, such as `NaT` on a timestamp or
+  `0,2` on a number (`SST-VAL341`); connected validation casts every value to
+  the type the warehouse reports (`SST-VAL419`), and reports a declared type the
+  table contradicts (`SST-VAL327`). A missing value written as text, such as
+  `nan`, on a text column is a warning (`SST-VAL316`).
 - `access_modifier` may be `public_access`, the default, which every column
   renders as. SST does not render a private column, although Snowflake supports
   a private fact: `private_access` is refused on a dimension or time dimension

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
-from snowflake_semantic_tools.app.verify_schema import _plain_reference, _references, _unquoted, verify_columns
+from snowflake_semantic_tools.app.verify_schema import _references, _unquoted, plain_reference, verify_columns
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.semantic_view import Column, ColumnKind
@@ -19,10 +19,10 @@ def _column(expr: str, kind: ColumnKind = ColumnKind.DIMENSION) -> Column:
 
 
 def test_only_a_plain_reference_is_a_column_to_look_up() -> None:
-    assert _plain_reference(_column("ORDERS.ORDER_ID")) == ("ORDERS", "ORDER_ID", False)
-    assert _plain_reference(_column('"Orders"."Order Id"')) == ("Orders", "Order Id", True)
-    assert _plain_reference(_column("SUM(ORDERS.AMOUNT)")) is None
-    assert _plain_reference(_column("ORDERS.STATE = 'x'", ColumnKind.FILTER)) is None
+    assert plain_reference(_column("ORDERS.ORDER_ID")) == ("ORDERS", "ORDER_ID", False)
+    assert plain_reference(_column('"Orders"."Order Id"')) == ("Orders", "Order Id", True)
+    assert plain_reference(_column("SUM(ORDERS.AMOUNT)")) is None
+    assert plain_reference(_column("ORDERS.STATE = 'x'", ColumnKind.FILTER)) is None
     assert _unquoted('"a""b"') == 'a"b'
 
 

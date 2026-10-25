@@ -281,6 +281,7 @@ def test_run_refuses_what_validation_promotes_to_an_error_without_reading_state(
         ("SST-VAL020", Severity.INFO),
         ("SST-VAL020", Severity.INFO),
         ("SST-VAL020", Severity.INFO),
+        ("SST-VAL020", Severity.INFO),
     ]
     assert port.queries == [] and store.writes == []
 
@@ -345,6 +346,7 @@ def test_partial_run_refuses_a_validation_error_that_names_no_artifact() -> None
     assert isinstance(refused, PlanRefused)
     assert [item.code for item in refused.diagnostics] == [
         "SST-LOD003",
+        "SST-VAL020",
         "SST-VAL020",
         "SST-VAL020",
         "SST-VAL020",

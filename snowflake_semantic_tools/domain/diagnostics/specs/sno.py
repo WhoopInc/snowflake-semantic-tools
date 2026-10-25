@@ -223,6 +223,23 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
+        "SST-SNO036",
+        Severity.ERROR,
+        "Sample values the member's type cannot hold",
+        "Snowflake cannot read these sample values as their members' types: {detail}",
+        (
+            "delete the values, or run `sst enrich --force sample-values`; `sst validate` with "
+            "`validation.snowflake_syntax_check` on lists every one before apply"
+        ),
+        condition=("Snowflake reported error 10913 saying `Sample Values validation failed`, or that wording alone"),
+        note=(
+            "Snowflake casts each sample value to its member's type when it creates a semantic view. "
+            "Validation reports such a value first: SST-VAL341 offline, SST-VAL419 connected. The detail "
+            "names each member as `TABLE.MEMBER` with the values refused."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
         "SST-SNO020",
         Severity.ERROR,
         "Identifier too long",

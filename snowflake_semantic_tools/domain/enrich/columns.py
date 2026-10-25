@@ -313,6 +313,7 @@ def _sample_values(
     options: EnrichOptions,
     settings: EnrichmentConfig,
     fetched: Sequence[str] | None,
+    data_type: str,
 ) -> list[tuple[str, object]]:
     """Return the sample values and `is_enum` to write from one column's sampled values.
 
@@ -323,7 +324,9 @@ def _sample_values(
     """
     if fetched is None:
         return []
-    decision = decide_samples(fetched, distinct_limit=settings.distinct_limit, display_limit=settings.display_limit)
+    decision = decide_samples(
+        fetched, distinct_limit=settings.distinct_limit, display_limit=settings.display_limit, data_type=data_type
+    )
     declared = _declared(existing)
     written_values = existing.sample_values if existing is not None else ()
     written_enum = existing.is_enum if existing is not None else None
@@ -353,6 +356,7 @@ def _hand_edited_enum(
     options: EnrichOptions,
     settings: EnrichmentConfig,
     fetched: Sequence[str] | None,
+    data_type: str,
 ) -> list[Diagnostic]:
     """Report a written `is_enum: true` that the sampled data contradicts, which enrich leaves as written.
 
@@ -365,7 +369,9 @@ def _hand_edited_enum(
     if fetched is None or existing is None or existing.is_enum is not True or column_role == "fact":
         return []
     declared = _declared(existing)
-    decision = decide_samples(fetched, distinct_limit=settings.distinct_limit, display_limit=settings.display_limit)
+    decision = decide_samples(
+        fetched, distinct_limit=settings.distinct_limit, display_limit=settings.display_limit, data_type=data_type
+    )
     enum_open = "is_enum" not in declared or options.forces(Component.ENUMS)
     write_values = bool(decision.values) and (
         "sample_values" not in declared or options.forces(Component.SAMPLE_VALUES)
@@ -535,8 +541,10 @@ def enrich_model(
             "synonyms": _synonym_value(existing, options, synonyms.get(folded)),
             "governance_tags": _governance_value(existing, column) if tags_read else None,
         }
-        found.update(_sample_values(existing, column_role, options, settings, fetched))
-        diagnostics.extend(_hand_edited_enum(model, existing, column_role, options, settings, fetched))
+        found.update(_sample_values(existing, column_role, options, settings, fetched, column.data_type))
+        diagnostics.extend(
+            _hand_edited_enum(model, existing, column_role, options, settings, fetched, column.data_type)
+        )
         values = tuple((key, found[key]) for key in WRITTEN_KEYS if found.get(key) is not None)
         name = existing.name if existing is not None else yaml_column_name(column.name)
         refused = templated_text(name, values) if values else ()

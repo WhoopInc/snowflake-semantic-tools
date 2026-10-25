@@ -22,7 +22,7 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 338 codes
+- [Validation (VAL)](#validation-val) -- 340 codes
 - [dbt (DBT)](#dbt-dbt) -- 32 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
@@ -30,7 +30,7 @@ cannot be downgraded by any setting.
 - [Apply (APL)](#apply-apl) -- 49 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Import (IMP)](#import-imp) -- 16 codes
-- [Snowflake (SNO)](#snowflake-sno) -- 30 codes
+- [Snowflake (SNO)](#snowflake-sno) -- 31 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 77 numbers
@@ -3215,7 +3215,7 @@ Fix: set `is_enum: true` if the set is closed, or `is_enum: false` to mark the v
 
 `<artifact>: '<member>'.<field> contains '<value>'`
 
-Raised when a column's `sample_values` holds a missing value written as text: `nan`, `none`, `null` or `<na>`, in any case; checked on every dbt model.
+Raised when a column's `sample_values` holds a missing value written as text: `nan`, `nat`, `none`, `null` or `<na>`, in any case; checked on every dbt model, but for a value SST-VAL341 reports because the column's type cannot hold it.
 
 Fix: delete the value, or run `sst enrich --force sample-values` to sample the column again
 
@@ -3319,7 +3319,7 @@ Note: Snowflake would reject the whole CREATE with `invalid identifier`
 
 `model '<model>': column '<column>' declares data_type <declared>, and the relation has <found>`
 
-Raised when `sst enrich` finds a written `meta.sst.data_type` that differs from the relation's type, on a column dbt gives no `data_type`.
+Raised when `sst enrich` finds a written `meta.sst.data_type` that differs from the relation's type, on a column dbt gives no `data_type`; or connected validation, with `validation.snowflake_syntax_check` on, finds a published column's declared type differs from the type `DESCRIBE TABLE` reports.
 
 Fix: correct `data_type`, or run `sst enrich --force data-types`
 
@@ -3466,6 +3466,18 @@ Raised when a column of any dbt model has a `sample_values` entry shaped like an
 Fix: delete the column's `sample_values` (and `is_enum`), and add `pii_tags` to the column
 
 Note: No setting lowers it and no baseline holds it, so a value that reached the YAML fails validation in CI and pre-commit. Such values are never rendered: the column publishes without `SAMPLE_VALUES` and `IS_ENUM`. The message names the kind of data only, never the value.
+
+### SST-VAL341
+
+**Sample value cannot be the column's type** (error)
+
+`<artifact>: '<member>'.sample_values holds '<value>', which Snowflake cannot read as <type>: <reason>`
+
+Raised when a published column of a model a view uses is numeric, temporal or BOOLEAN, and a `sample_values` entry is blank; or, on a numeric or temporal column, is a missing value written as text (`nan` excepted on a FLOAT); or, on a temporal column, holds no digit; or, on a numeric column, holds a character no number holds, such as `,`; or, on a BOOLEAN column, is not one of Snowflake's boolean texts.
+
+Fix: delete the value, or run `sst enrich --force sample-values` to sample the column again; if the declared `data_type` is what is wrong, correct it (`sst enrich --force data-types`)
+
+Note: Snowflake casts each sample value to its member's type when it creates the view, and refuses the view when one fails, so the publish of every view holding the column would fail. Only a value no reading of the type accepts is reported offline; connected validation casts the rest as the warehouse types the column (SST-VAL419).
 
 ### SST-VAL401
 
@@ -3652,6 +3664,18 @@ Raised when offline: an expression or a tool member's `where:` is not one SQL ex
 Fix: fix the expression or query; the message carries the reason
 
 Note: Offline, verified-query SQL is checked for its shape only, so a misspelt keyword or column needs the connected check. That check compiles a verified query over its view's own tables, each logical table it names bound to the relation the view reads, wherever the view publishes, and resolves any other name in the view's schema; before apply creates that schema, on the session's own. It compiles a metric, dimension or filter over a projection with no rows, in which each `TABLE.COLUMN` reference is a NULL of the column's type: the type `DESCRIBE TABLE` reports in the target, else the `data_type` the dbt model declares, else none. It therefore catches a syntax error, an unknown function, and an argument type Snowflake refuses when it compiles, such as `SUM` over a timestamp, but not a value that fails only when a query runs, such as `SUM` over text that is not numeric, nor a column the table lacks (`--verify-schema` reports that, SST-VAL325); a reference to a metric, a filter, or a variable is untyped, and facts are not compiled. A finding is reported once, its detail naming every semantic view that holds the member.
+
+### SST-VAL419
+
+**Sample value cannot be the column's type in Snowflake** (error)
+
+`model '<model>': column '<column>' has sample value '<value>', which Snowflake cannot read as <type>, so creating <view> would fail`
+
+Raised when connected, with `validation.snowflake_syntax_check` on: `TRY_CAST` of a published column's sample value to the type `DESCRIBE TABLE` reports for the column (else the `data_type` its dbt model declares) returns NULL, for a numeric, BOOLEAN, date, time or timestamp column.
+
+Fix: delete the value, or run `sst enrich --force sample-values` to sample the column again
+
+Note: Snowflake casts each sample value to its member's type when it creates a semantic view, as `TRY_CAST` does, and refuses the view when one fails. The cast follows the session's input formats, so it catches what the offline check (SST-VAL341) cannot: a date that does not exist, and a value a stale declared `data_type` hides, such as `0,2` on a FLOAT column declared TEXT. Each table's values are cast in one statement that reads no rows, and a column is reported once, naming every view that holds it.
 
 ### SST-VAL506
 
@@ -8436,6 +8460,18 @@ Raised when a question of a CoWork profile's eval run has a result, but the run'
 Fix: run the eval again; if questions stay untraced, check what the role reads of the events table
 
 Note: Snowflake private preview: CoWork profiles. A record with a root span and no routing span was declined; one with no root span has not been traced yet, so it is not read as a decline. Whether spans can land after a run's terminal status is not measured.
+
+### SST-SNO036
+
+**Sample values the member's type cannot hold** (error)
+
+`Snowflake cannot read these sample values as their members' types: <detail>`
+
+Raised when Snowflake reported error 10913 saying `Sample Values validation failed`, or that wording alone.
+
+Fix: delete the values, or run `sst enrich --force sample-values`; `sst validate` with `validation.snowflake_syntax_check` on lists every one before apply
+
+Note: Snowflake casts each sample value to its member's type when it creates a semantic view. Validation reports such a value first: SST-VAL341 offline, SST-VAL419 connected. The detail names each member as `TABLE.MEMBER` with the values refused.
 
 ## External systems (PRT)
 

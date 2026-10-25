@@ -35,4 +35,4 @@ $ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-synt
    [34m[1m=[0m [2msst explain SST-CFG018[0m
 
 [32m[1m✓[0m [1mvalidated 17 artifacts[0m · 0 errors, 6 warnings · <n>s
-[2m  hidden: 57 info (--show-info)[0m
+[2m  hidden: 58 info (--show-info)[0m

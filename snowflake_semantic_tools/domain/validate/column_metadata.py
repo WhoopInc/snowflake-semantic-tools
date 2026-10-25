@@ -38,8 +38,19 @@ TEMPORAL_TYPES = frozenset(
     )
 )
 
+# The numeric types that hold IEEE values, so read `nan`, `inf` and `infinity` as numbers.
+FLOAT_TYPES = frozenset(("DOUBLE", "DOUBLE PRECISION", "FLOAT", "FLOAT4", "FLOAT8", "REAL"))
+
 # A sample value that is really a missing value written out as text, compared casefolded.
-SAMPLE_SENTINELS = frozenset(("nan", "none", "null", "<na>"))
+# `nat` is pandas' missing timestamp, which SST 0.3's enrich wrote.
+SAMPLE_SENTINELS = frozenset(("nan", "nat", "none", "null", "<na>"))
+
+# The text Snowflake reads as a BOOLEAN, compared casefolded with surrounding space removed.
+BOOLEAN_TEXT = frozenset(("true", "false", "t", "f", "yes", "no", "y", "n", "on", "off", "1", "0"))
+# A character no reading of a number holds: Snowflake's numeric parse is lenient (it reads `e`
+# and `.` as 0, and FLOAT reads hexadecimal), so only text outside every such form is certain.
+_NOT_NUMERIC = re.compile(r"[^0-9A-Za-z+\-.\s]")
+_DIGIT = re.compile(r"[0-9]")
 
 # Text a template engine would read. dbt renders the YAML it reads, and the YAML enrich writes,
 # as Jinja, so a synonym or value holding one would run as code at the next parse; SST's own
@@ -75,6 +86,34 @@ def is_boolean_type(data_type: str | None) -> bool:
 def is_sentinel(value: str) -> bool:
     """Report whether a sample value is a missing value written as text, such as `nan`."""
     return value.casefold() in SAMPLE_SENTINELS
+
+
+def sample_problem(value: str, data_type: str | None) -> str | None:
+    """Return why Snowflake cannot read a sample value as `data_type`; None when it may.
+
+    Snowflake casts each `SAMPLE_VALUES` entry to its member's type when it creates the view,
+    as `TRY_CAST` would, and refuses the view when one fails. Its parsing is lenient, and for
+    dates and times follows the session's input formats, so only a value no reading of the type
+    accepts is refused here; connected validation casts the rest (SST-VAL419). A numeric,
+    temporal or BOOLEAN column refuses a blank value; numeric and temporal ones refuse a missing
+    value written as text, but for `nan` on a FLOAT; a temporal one refuses text with no digit, a
+    numeric one a character no number holds, and a BOOLEAN one any text but `BOOLEAN_TEXT`.
+    Any other type, text among them, accepts every value.
+    """
+    base = base_type(data_type)
+    numeric, temporal = base in NUMERIC_TYPES, base in TEMPORAL_TYPES
+    if not (numeric or temporal or base == "BOOLEAN"):
+        return None
+    text = value.strip()
+    if not text:
+        return "it is blank"
+    if not (numeric or temporal):
+        return None if text.casefold() in BOOLEAN_TEXT else "it is not true or false"
+    if is_sentinel(text) and not (base in FLOAT_TYPES and text.casefold() == "nan"):
+        return "it is a missing value written as text"
+    if temporal:
+        return None if _DIGIT.search(text) else "it holds no digit"
+    return "it is not a number" if _NOT_NUMERIC.search(text) else None
 
 
 def has_template_syntax(text: str) -> bool:

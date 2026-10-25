@@ -91,6 +91,15 @@ def test_samples_are_complete_only_when_every_distinct_value_was_read_and_is_usa
     assert decide_samples([], distinct_limit=3, display_limit=2) == SampleDecision((), True)
 
 
+def test_enrich_refuses_a_value_validation_would_refuse_for_the_column_type() -> None:
+    assert not usable_sample("NaT")
+    assert not usable_sample("0,2", "FLOAT")
+    assert usable_sample("0,2", "TEXT")
+    assert usable_sample("1.5", "NUMBER")
+    typed = decide_samples(["1.5", "0,2"], distinct_limit=3, display_limit=2, data_type="FLOAT")
+    assert typed == SampleDecision(("1.5",), False)
+
+
 def test_synonyms_are_cleaned_capped_and_kept_apart_from_names_already_used() -> None:
     proposals = [
         "Order  Total",

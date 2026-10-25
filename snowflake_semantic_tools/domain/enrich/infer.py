@@ -17,6 +17,7 @@ from snowflake_semantic_tools.domain.validate.column_metadata import (
     is_numeric,
     is_sentinel,
     printable,
+    sample_problem,
     synonym_problem,
 )
 
@@ -80,15 +81,17 @@ def is_sampled_type(data_type: str) -> bool:
     return semantic_data_type(data_type) in SAMPLED_TYPES
 
 
-def usable_sample(value: str) -> bool:
+def usable_sample(value: str, data_type: str | None = None) -> bool:
     """Report whether a sampled value may be written: short, single-line, and not a placeholder.
 
     A value is refused when it is blank, a missing-value sentinel such as `nan`, longer than
-    `MAX_SAMPLE_LENGTH`, holds a control character or a line break, or holds template syntax.
+    `MAX_SAMPLE_LENGTH`, holds a control character or a line break, or holds template syntax;
+    and, given the column's `data_type`, when validation would refuse it for that type
+    (`sample_problem`, SST-VAL341).
     """
     if not value.strip() or is_sentinel(value.strip()) or len(value) > MAX_SAMPLE_LENGTH:
         return False
-    if has_template_syntax(value):
+    if has_template_syntax(value) or sample_problem(value, data_type) is not None:
         return False
     return all(character == "\t" or character.isprintable() for character in value)
 
@@ -107,15 +110,18 @@ class SampleDecision:
     complete: bool
 
 
-def decide_samples(fetched: Sequence[str], *, distinct_limit: int, display_limit: int) -> SampleDecision:
+def decide_samples(
+    fetched: Sequence[str], *, distinct_limit: int, display_limit: int, data_type: str | None = None
+) -> SampleDecision:
     """Decide what to write from a column's distinct values, fetched most frequent first.
 
     The query fetches at most `distinct_limit + 1` values, so more than `distinct_limit` means
     the column has more. A refused value makes the set incomplete: writing the rest as an enum
-    would claim a value the column holds does not exist.
+    would claim a value the column holds does not exist. `data_type` is the column's, which
+    `usable_sample` checks each value against.
     """
     distinct = tuple(dict.fromkeys(fetched))
-    usable = tuple(value for value in distinct if usable_sample(value))
+    usable = tuple(value for value in distinct if usable_sample(value, data_type))
     complete = len(distinct) <= distinct_limit and len(usable) == len(distinct)
     return SampleDecision(usable if complete else usable[:display_limit], complete)
 

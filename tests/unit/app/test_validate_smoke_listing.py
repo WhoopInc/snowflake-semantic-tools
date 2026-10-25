@@ -47,6 +47,7 @@ def test_validation_promotes_warnings_and_reports_connected_skip_or_failure() ->
         ("SST-VAL020", "SST-VAL415"),
         ("SST-VAL020", "SST-VAL212"),
         ("SST-VAL020", "SST-VAL218"),
+        ("SST-VAL020", "SST-VAL419"),
         ("SST-VAL020", "SST-VAL551"),
         ("SST-VAL020", "SST-VAL338"),
     ]
