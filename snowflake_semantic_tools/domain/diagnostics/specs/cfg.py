@@ -494,6 +494,51 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-CFG058",
+        Severity.ERROR,
+        "Target conditional is not one SST evaluates",
+        "'{key}' is a target conditional SST cannot read, from `{text}`",
+        "write each arm as `'<value>' if target.name == '<target>'` (or `!=`), or "
+        "`'<value>' if target.name in ('<target>', ...)` (or `not in`), chained with `else`",
+        demotable=False,
+        condition=(
+            "a whole-value target conditional in `sst_config.yml` has an arm, or text after its arms, "
+            "outside the grammar SST evaluates"
+        ),
+        note=(
+            "The configuration evaluates only that grammar, never general Jinja, so a value is never resolved "
+            "by a guess; the key is read as unset and the run fails rather than falling back to another location."
+        ),
+    ),
+    spec(
+        "SST-CFG059",
+        Severity.ERROR,
+        "Variable is the wrong shape for where it is used",
+        "var('{name}') holds {found}",
+        "after `target.name in` or `not in`, use a variable holding a non-empty list of quoted target "
+        "names; everywhere else, a variable holding text",
+        demotable=False,
+        condition=(
+            "in `sst_config.yml`, a `target.name in var('<name>')` arm names a variable that is not a non-empty "
+            "list of target names, or a `{{ var('<name>') }}` used as text names a list or mapping"
+        ),
+        note="A list substituted as text would write its Python spelling into the value, so it is refused.",
+    ),
+    spec(
+        "SST-CFG060",
+        Severity.ERROR,
+        "Target conditional is part of a longer value",
+        "'{key}' has a target conditional inside a longer value, which never resolves",
+        "make the conditional the whole value, with the full value in each arm, or hold the full value "
+        "in a variable and make the key `{{ var('<name>') }}`",
+        demotable=False,
+        condition=(
+            "a value in `sst_config.yml`, after its `var()` calls are substituted, holds a "
+            "`{{ ... if target.name ... }}` template with other text beside it"
+        ),
+        note="Only a whole-value conditional is evaluated; any other would reach its reader as template text.",
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

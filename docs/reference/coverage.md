@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 830
+- Codes: 833
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -122,6 +122,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-CFG055`](error-codes.md#sst-cfg055) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config`<br>`snowflake_semantic_tools.domain.validate.settings` | `tests/codes/cfg/test_sst_cfg055.py` |
 | [`SST-CFG056`](error-codes.md#sst-cfg056) | CFG | error | local | `snowflake_semantic_tools.adapters.dbt.profiles`<br>`snowflake_semantic_tools.cli.commands.drop` | `tests/codes/cfg/test_sst_cfg056.py` |
 | [`SST-CFG057`](error-codes.md#sst-cfg057) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg057.py` |
+| [`SST-CFG058`](error-codes.md#sst-cfg058) | CFG | error | local | `snowflake_semantic_tools.domain.resolve.config` | `tests/codes/cfg/test_sst_cfg058.py` |
+| [`SST-CFG059`](error-codes.md#sst-cfg059) | CFG | error | local | `snowflake_semantic_tools.domain.resolve.config` | `tests/codes/cfg/test_sst_cfg059.py` |
+| [`SST-CFG060`](error-codes.md#sst-cfg060) | CFG | error | local | `snowflake_semantic_tools.domain.resolve.config` | `tests/codes/cfg/test_sst_cfg060.py` |
 | [`SST-CFG200`](error-codes.md#sst-cfg200) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg200.py` |
 | [`SST-DBT001`](error-codes.md#sst-dbt001) | DBT | error | local | `snowflake_semantic_tools.domain.validate.dbt_seam` | `tests/codes/dbt/test_sst_dbt001.py` |
 | [`SST-DBT002`](error-codes.md#sst-dbt002) | DBT | error | local | `snowflake_semantic_tools.app.enrich` | `tests/codes/dbt/test_sst_dbt002.py` |

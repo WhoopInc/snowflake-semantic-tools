@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 24 codes
-- [Configuration (CFG)](#configuration-cfg) -- 47 codes
+- [Configuration (CFG)](#configuration-cfg) -- 50 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
@@ -752,6 +752,42 @@ Raised when an entry of `governance.sensitive_tags` is not text, or is neither a
 Fix: write the entry as `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for every tag in the schema
 
 Note: Such an entry would be read as naming nothing, so a column carrying the tag it meant would be sampled; no setting lowers it, and `sst enrich` stops on it before any read.
+
+### SST-CFG058
+
+**Target conditional is not one SST evaluates** (error, always an error)
+
+`` '<key>' is a target conditional SST cannot read, from `<text>` ``
+
+Raised when a whole-value target conditional in `sst_config.yml` has an arm, or text after its arms, outside the grammar SST evaluates.
+
+Fix: write each arm as `'<value>' if target.name == '<target>'` (or `!=`), or `'<value>' if target.name in ('<target>', ...)` (or `not in`), chained with `else`
+
+Note: The configuration evaluates only that grammar, never general Jinja, so a value is never resolved by a guess; the key is read as unset and the run fails rather than falling back to another location.
+
+### SST-CFG059
+
+**Variable is the wrong shape for where it is used** (error, always an error)
+
+`var('<name>') holds <found>`
+
+Raised when in `sst_config.yml`, a `target.name in var('<name>')` arm names a variable that is not a non-empty list of target names, or a `{{ var('<name>') }}` used as text names a list or mapping.
+
+Fix: after `target.name in` or `not in`, use a variable holding a non-empty list of quoted target names; everywhere else, a variable holding text
+
+Note: A list substituted as text would write its Python spelling into the value, so it is refused.
+
+### SST-CFG060
+
+**Target conditional is part of a longer value** (error, always an error)
+
+`'<key>' has a target conditional inside a longer value, which never resolves`
+
+Raised when a value in `sst_config.yml`, after its `var()` calls are substituted, holds a `{{ ... if target.name ... }}` template with other text beside it.
+
+Fix: make the conditional the whole value, with the full value in each arm, or hold the full value in a variable and make the key `{{ var('<name>') }}`
+
+Note: Only a whole-value conditional is evaluated; any other would reach its reader as template text.
 
 ### SST-CFG200
 

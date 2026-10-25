@@ -109,12 +109,18 @@ Two more templates are evaluated anywhere in the file except inside `vars:`:
 - `{{ var('<name>') }}` becomes the value `vars:` declares for it; an
   undeclared name is an error (`SST-CFG029`), and a declared variable whose
   value is empty, `""` or nothing at all, is an error too (`SST-REF009`), as in
-  project YAML.
+  project YAML. A variable holding a list or a mapping cannot be used as text
+  (`SST-CFG059`).
 - A value that is wholly a target conditional becomes the literal of its first
-  true arm. Arms compare `target.name` with `==` or `!=` and chain with
-  `else`; the final `else` is optional, but a target no arm matches is then an
-  error (`SST-CFG016`). For a boolean or integer key, `'true'`, `'false'`, or
-  digits are read as that type.
+  true arm. Arms compare `target.name` with `==` or `!=`, or test it with `in`
+  or `not in` against a tuple or list of quoted names (`('prod', 'ci_prod')`,
+  `['prod']`) or a variable holding a list of them (`var('production_targets')`,
+  `SST-CFG059` when it holds anything else), and chain with `else`; the final
+  `else` is optional, but a target no arm matches is then an error
+  (`SST-CFG016`). A conditional with an arm outside this grammar is an error for
+  every target (`SST-CFG058`), and so is one that is only part of a value, such
+  as `"{{ ... if target.name ... }}.STATE"` (`SST-CFG060`). For a boolean or
+  integer key, `'true'`, `'false'`, or digits are read as that type.
 
 A key whose template does not resolve is read as unset once its error is
 reported: no reader then refuses its template text as a name or a type, and
@@ -134,6 +140,35 @@ spelling above. The same holds for every template in project YAML.
 Every other template, `{{ target.* }}` among them, is left as written for the
 key that reads it; every key that takes `{{ target.* }}` renders it the same
 way, each placeholder with the target's own value.
+
+### Reusing targets and values
+
+Name a set of targets once, and a value that depends on the target once, in
+`vars:`. A key whose value is wholly `{{ var('<name>') }}` resolves as the
+conditional the variable holds, so every key that uses it moves together:
+
+```yaml
+vars:
+  production_targets: [prod, ci_prod, prefect_prod]
+  sst_db: "{{ 'SST' if target.name in var('production_targets') else '' }}"
+  agent_spec_stage: "{{ 'SST.STATE.AGENT_SPECS' if target.name in var('production_targets') else 'AGENT_SPECS' }}"
+
+state:
+  +database: "{{ var('sst_db') }}"
+apply:
+  agent_spec_stage: "{{ var('agent_spec_stage') }}"
+```
+
+A variable holding a conditional resolves only as a key's whole value:
+`"{{ var('sst_db') }}.STATE.AGENT_SPECS"` is `SST-CFG060`, so hold the full
+value in its own variable instead, as `agent_spec_stage` does above. An error in
+a shared conditional is reported at every key that uses it.
+
+The configuration never runs dbt macros or any other Jinja. It is read before
+dbt runs, since it decides how dbt is invoked, and it stays offline and the same
+whichever dbt is installed. Where dbt macros already decide a location, such as
+a model's schema through `generate_schema_name`, SST reads the result from the
+manifest.
 
 ## Folder routes
 
