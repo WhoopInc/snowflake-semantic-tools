@@ -86,7 +86,7 @@ def load_coco_desktop_profile_catalog(
 
     Diagnostics:
         SST-CFG041: a `coco_desktop_profiles:` folder route names no folder under `coco_desktop_profiles_dir`.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports a profile manifest's `config:` block.
         SST-VAL801: when a profile folder holds no manifest or both spellings, or its manifest's
             `name` is not the folder's; or `shared/` holds both spellings.
@@ -220,7 +220,7 @@ def _load_profile(project_dir: Path, folder: Path, diagnostics: list[Diagnostic]
             key's function.
         Every code `read_authored_text` lists, for an `AGENTS.md` it refuses; the profile then has
             no prompt.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block, each at its first line.
     """
     subject = artifact_key("coco_desktop_profile", folder.name)

@@ -161,6 +161,12 @@ ALIASES: Mapping[str, Alias] = _aliases(
 
 TOMBSTONES: Mapping[str, Tombstone] = _tombstones(
     (
+        "SST-CFG055",
+        "Root-only setting set below the block root",
+        None,
+        "its one root-only key, skills.+threads, became session.threads, which no folder route can set",
+    ),
+    (
         "SST-MEM003",
         "Declared table does not name a known dbt model",
         "SST-REF001",

@@ -45,7 +45,7 @@ from snowflake_semantic_tools.cli.options import (
     threads_option,
     validation_options,
 )
-from snowflake_semantic_tools.cli.output import render_policy
+from snowflake_semantic_tools.cli.output import announce, render_policy
 from snowflake_semantic_tools.cli.plan_output import outcome_json, print_plan, write_plan_sql
 from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.render.report import apply_headline, blocked_count, outcome_lines
@@ -68,6 +68,7 @@ from snowflake_semantic_tools.cli.wiring.plan import (
     refuse_unvalidated,
 )
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error
+from snowflake_semantic_tools.cli.wiring.saved_plan import Reuse, drifted, reusable_plan
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.lifecycle import (
     Action,
@@ -113,6 +114,7 @@ def _refuse_invocation(
 @state_option()
 @defer_target_option()
 @click.option("--plan", "plan_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option("--replan", is_flag=True)
 @prune_option()
 @partial_option()
 @overwrite_option()
@@ -133,6 +135,7 @@ def apply(
     excluded: tuple[str, ...],
     state_dir: Path | None,
     plan_path: Path | None,
+    replan: bool,
     prune: bool,
     partial: bool,
     overwrite: bool,
@@ -149,7 +152,9 @@ def apply(
 ) -> CommandResult:
     """Apply a current reviewed plan; smoke probes never run here.
 
-    Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
+    Without --plan, a fresh plan `sst plan` saved is applied, re-planning only its writes, as
+    `cli.wiring.saved_plan` says; --replan, or a plan that cannot be reused, plans afresh.
+    Planning afresh, apply plans as `sst plan` does, prints the plan, and asks before it
     writes; --yes skips the question, and is required with --prune, with --output json or agent, and
     whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
     asks about shows what each update changes, member by member, as `sst plan` does; with --yes
@@ -202,10 +207,10 @@ def apply(
         overwrite=overwrite,
     )
     saved = _saved_plan(plan_path, request)
-    planned = request.following(saved)
-    session = plan_runtime(planned)
-    if isinstance(session, PlanRefused):
-        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+    chosen = _planned(request, saved, plan_path, replan=replan)
+    if isinstance(chosen, CommandResult):
+        return chosen
+    planned, session, reuse = chosen
     with closed_on_error(session.port):
         apply_options, notes, sql_path = _confirmed_options(
             planned,
@@ -219,8 +224,64 @@ def apply(
             break_stale_lock=break_stale_lock,
         )
     result = _apply_plan(planned, session, apply_options, notes, sql_path)
+    _spend(reuse, result)
     disagreement = strict_disagreement(paths, strict)
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*disagreement, *result.diagnostics)))
+
+
+def _spend(reuse: Reuse | None, result: CommandResult) -> None:
+    """Remove a reused saved plan once it applied: applying it again would find each write done."""
+    if reuse is not None and result.exit_code == OK:
+        reuse.path.unlink(missing_ok=True)
+
+
+def _planned(
+    request: PlanRequest, saved: SavedPlan | None, plan_path: Path | None, *, replan: bool
+) -> tuple[PlanRequest, PlanSession, Reuse | None] | CommandResult:
+    """Plan what apply applies: the plan `sst plan` saved when it may be reused, else afresh.
+
+    Returns the request planned, its session, and the saved plan reused; or the run's result
+    when nothing is left to plan: a refusal, or a reused plan that writes nothing.
+    """
+    reuse = None
+    flagged = bool(
+        request.selected or request.excluded or request.prune or request.partial or request.overwrite
+    ) or bool(request.temporary or request.state_dir)
+    if plan_path is None:
+        found = "--replan was given" if replan else reusable_plan(request, flagged=flagged)
+        reuse = found if isinstance(found, Reuse) else None
+        if reuse is None:
+            announce(f"planning ({found})")
+    if reuse is not None and not reuse.writes:
+        announce(f"the plan sst plan saved {reuse.minutes}m ago writes nothing")
+        return CommandResult(OK, DiagnosticBag(), {"applied": [], "failed": [], "pruned": [], "outcomes": []})
+    session = _reused_session(request, reuse) if reuse is not None else None
+    if reuse is not None and session is not None:
+        planned = dataclasses.replace(request, selected=reuse.selectors)
+    else:
+        reuse, planned = None, request.following(saved)
+        session = plan_runtime(planned)
+    if isinstance(session, PlanRefused):
+        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+    return planned, session, reuse
+
+
+def _reused_session(request: PlanRequest, reuse: Reuse) -> PlanSession | PlanRefused | None:
+    """Plan again only the saved plan's writes; None when one is no longer what it saved.
+
+    The session returned is a plan of exactly the saved writes, which apply runs as it runs any
+    plan; None means the whole project must be planned, which is announced with the reason.
+    """
+    announce(f"using the plan sst plan saved {reuse.minutes}m ago", f"re-planning {len(reuse.writes)} change(s)")
+    session = plan_runtime(dataclasses.replace(request, selected=reuse.selectors))
+    if isinstance(session, PlanRefused):
+        return session
+    reason = drifted(reuse, session.ready.changeset)
+    if reason is None:
+        return session
+    session.port.close()
+    announce(f"planning ({reason})")
+    return None
 
 
 def _require_yes(command: str) -> NoReturn:

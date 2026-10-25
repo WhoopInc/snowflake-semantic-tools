@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.sql import (
     number,
     typed_default,
 )
-from snowflake_semantic_tools.domain.sql.datatype import type_family
+from snowflake_semantic_tools.domain.sql.datatype import text_length, type_family
 from tests.helpers.sql_reference import snowflake_reads
 
 TRICKY = [
@@ -163,3 +163,12 @@ def test_a_default_its_type_cannot_hold_is_refused(data_type: str, value: object
         typed_default(data_type, value)
     assert raised.value.expected == expected
     assert str(raised.value) == f"a {data_type} default must be {expected}"
+
+
+def test_text_length_reads_a_bounded_text_type_and_nothing_else() -> None:
+    assert text_length("VARCHAR(3)") == 3
+    assert text_length("char( 15 )") == 15
+    assert text_length("VARCHAR(16777216)") is None
+    assert text_length("TEXT") is None
+    assert text_length("NUMBER(38,0)") is None
+    assert text_length("BINARY(8)") is None

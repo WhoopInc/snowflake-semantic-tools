@@ -206,7 +206,7 @@ def test_an_items_own_settings_are_checked_against_its_block(tmp_path: Path) -> 
     )
     catalog = load_skill_catalog(tmp_path, skills_dir="skills", plugins_dir="plugins")
     found = [(item.code, item.subject, item.context.get("key")) for item in catalog.diagnostics]
-    assert ("SST-CFG055", "skill:close", "config.threads") in found
+    assert ("SST-CFG053", "skill:close", "config.threads") in found
     assert ("SST-CFG053", "skill:close", "config.stage") in found
     assert ("SST-CFG054", "skill:close", "config.certified") in found
     [mistyped] = [item for item in catalog.diagnostics if item.code == "SST-CFG004"]

@@ -18,6 +18,7 @@ from pathlib import Path
 import click
 
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
+from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
@@ -32,10 +33,11 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.state import AppliedEntry
 
-# Where a command's shared `LoadCache` is kept, in the click context's `meta`.
+# Where a command's shared `LoadCache` and `DbtCache` are kept, in the click context's `meta`.
 LOAD_CACHE = "sst.load_cache"
-# `generation.view_timeout` unset: a generating statement runs for at most its default seconds.
-VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["generation.view_timeout"].default or 0)
+DBT_CACHE = "sst.dbt_cache"
+# `session.statement_timeout` unset: a generating statement runs for at most its default seconds.
+VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["session.statement_timeout"].default or 0)
 
 
 def target_dir(project_dir: Path) -> Path:
@@ -94,7 +96,8 @@ def project_inputs(
     through its `git_dirty`, each looked up when a use case needs it, so replacing one here
     changes what every use case sees. Under a click
     command, every input the command builds shares one load cache, so a file read twice in the
-    run is parsed once. The cache notes the reads it served only under `--verbose`, and a stale
+    run is parsed once, and one dbt cache, so each `dbt parse` runs and each manifest is
+    decoded once. The cache notes the reads it served only under `--verbose`, and a stale
     `--manifest` is a warning only under the command's `--allow-stale-manifest`.
 
     Args:
@@ -112,6 +115,7 @@ def project_inputs(
         if context is not None
         else None,
         allow_stale_manifest=context is not None and context.params.get("allow_stale_manifest") is True,
+        dbt_cache=context.meta.setdefault(DBT_CACHE, DbtCache()) if context is not None else None,
     )
 
 
@@ -138,7 +142,7 @@ def connect(
 
     Args:
         generating: The session creates semantic views, as plan and apply's do: every statement
-            it runs is bounded by `generation.view_timeout` seconds, the session's
+            it runs is bounded by `session.statement_timeout` seconds, the session's
             `STATEMENT_TIMEOUT_IN_SECONDS`. Sessions opened from the returned connection
             parameters are bounded the same way.
 
@@ -184,8 +188,8 @@ def connect(
 
 
 def view_timeout(config: Mapping[str, object]) -> int:
-    """Return `generation.view_timeout`, the seconds one generating statement may run; 300 when unset."""
-    return config_int(config_block(config.get("generation")).get("view_timeout")) or VIEW_TIMEOUT_SECONDS
+    """Return `session.statement_timeout`, the seconds one generating statement may run; 300 when unset."""
+    return config_int(config_block(config.get("session")).get("statement_timeout")) or VIEW_TIMEOUT_SECONDS
 
 
 @contextmanager

@@ -13,6 +13,7 @@ and each artifact lists, sorted, the codes of the diagnostics whose subject is i
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView, CompileResult
@@ -54,7 +55,45 @@ def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> Dia
         SST-MAN009: the compiled manifest is not the one the project compiles to now.
     """
     if compiled.manifest_id != current.manifest_id:
-        return D("SST-MAN009", command=before)
+        return D("SST-MAN009", command=before, reason="the project compiles to another manifest now")
+    return None
+
+
+def stale_inputs(
+    compiled: Manifest, *, config_checksum: str, file_checksums: Mapping[str, str], before: str
+) -> Diagnostic | None:
+    """Report a compiled manifest whose recorded inputs changed, read before dbt runs; None if not.
+
+    Every value compared is one the manifest id hashes, so a difference is always a stale
+    manifest; agreement proves nothing about the dbt manifest, which `stale_manifest` checks once
+    the project compiles. The first difference is named: the SST version, then `sst_config.yml`,
+    then the first changed, added or removed file in path order.
+
+    Diagnostics:
+        SST-MAN009: the compiled manifest records other inputs than the project has now.
+    """
+    reason = _changed_input(compiled, config_checksum, file_checksums)
+    return None if reason is None else D("SST-MAN009", command=before, reason=reason)
+
+
+def _changed_input(compiled: Manifest, config_checksum: str, file_checksums: Mapping[str, str]) -> str | None:
+    """Name the first input `stale_inputs` finds changed, in its order; None when none did."""
+    version = str(compiled.generator.get("version") or "")
+    if version != SST_VERSION:
+        return f"SST {version or 'of another version'} compiled it, and this is SST {SST_VERSION}"
+    if str(compiled.project.get("config_checksum") or "") != config_checksum:
+        return "sst_config.yml changed"
+    recorded = {
+        path: str(entry.get("checksum") or "") if isinstance(entry, Mapping) else ""
+        for path, entry in compiled.files.items()
+    }
+    for path in sorted({*recorded, *file_checksums}):
+        if path not in file_checksums:
+            return f"{path} was removed"
+        if path not in recorded:
+            return f"{path} was added"
+        if recorded[path] != file_checksums[path]:
+            return f"{path} changed"
     return None
 
 

@@ -34,7 +34,13 @@ from snowflake_semantic_tools.app.explain_projection import (
     explain_expression,
 )
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.sample_casts import cast_findings, cast_reads, published_columns, type_drift
+from snowflake_semantic_tools.app.sample_casts import (
+    cast_findings,
+    cast_reads,
+    length_findings,
+    published_columns,
+    type_drift,
+)
 from snowflake_semantic_tools.app.validate_models import ModelCheck, check_orchestration_models
 from snowflake_semantic_tools.app.validate_tags import TagAnswer, read_tags, tag_findings
 from snowflake_semantic_tools.app.verify_schema import verify_columns
@@ -259,6 +265,7 @@ class ValidateArtifacts:
             found.extend(_spot_findings(item, spots[item.artifact_key], answered))
         for fqn, read in casts.items():
             found.extend(cast_findings(columns, fqn, explained[read].result))
+        found.extend(length_findings(columns))
         found.extend(type_drift(columns))
         if patterns:
             found.extend(tag_findings(tuple(item.view for item in views), tagged, patterns))

@@ -395,7 +395,7 @@ own diagnostic, and the suite fails.
 
 A round runs at most this many attempts at once, across all evals, each on a
 session of its own: `evals.+concurrency`, else the largest `concurrency` any
-eval resolves, else `--threads` (else `$SST_THREADS`, else `generation.threads`),
+eval resolves, else `--threads` (else `$SST_THREADS`, else `session.threads`),
 else 1. Every attempt re-invokes the agent on every question, so concurrency is
 real load and real spend. With `--fail-fast`, evals run one after another, and
 the suite stops after the first one that did not pass.

@@ -281,8 +281,6 @@ skills:
   # Profiles take their VERSION prefix from here too.
   +version_prefix: "SST_"
 
-  # Root-only: set in a folder route or a skill's `config:` it is SST-CFG055.
-  +threads: 4
 
   # A folder route, as under semantic_views: the skill in
   # skills/jaffle-operations/ resolves these keys before the root's. It
@@ -332,3 +330,7 @@ apply:
     stage: AGENT_SPECS_SSE
   eval_config_stage:
     stage: EVAL_CONFIGS
+
+# How the commands that reach Snowflake pace their sessions.
+session:
+  threads: 4

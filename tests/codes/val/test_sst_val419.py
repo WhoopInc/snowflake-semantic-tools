@@ -74,7 +74,16 @@ def _run(port: CastingWarehouse, *columns: Column, views: tuple[str, ...] = ("SA
     return coded(ValidateArtifacts(port).run(compiled, strict=False, connected=True).diagnostics, "SST-VAL419")
 
 
-TABLES = {"DB.S.ORDERS": (("ENDED_AT", "TIMESTAMP_NTZ(9)"), ("AMOUNT", "FLOAT"), ("STATUS", "VARCHAR(16)"))}
+TABLES = {
+    "DB.S.ORDERS": (
+        ("ENDED_AT", "TIMESTAMP_NTZ(9)"),
+        ("AMOUNT", "FLOAT"),
+        ("STATUS", "VARCHAR(16)"),
+        ("TEST_TYPE", "VARCHAR(3)"),
+        ("NOTE", "VARCHAR(16777216)"),
+        ("CODE", "VARCHAR(10) COLLATE 'en-ci'"),
+    )
+}
 
 
 def test_sst_val419_fires() -> None:
@@ -130,3 +139,23 @@ def test_sst_val419_skipped_offline() -> None:
     result = ValidateArtifacts(CastingWarehouse(TABLES, frozenset())).run(compiled, strict=False, connected=False)
     skipped = [item.context["rule_id"] for item in result.diagnostics if item.code == "SST-VAL020"]
     assert "SST-VAL419" in skipped
+
+
+def test_sst_val419_fires_on_a_value_longer_than_its_varchar() -> None:
+    port = CastingWarehouse(TABLES, frozenset())
+    [found] = _run(port, _column("TEST_TYPE", "TEXT", "BFT", "unknown"))
+    assert found.message == (
+        "model 'orders': column 'test_type' has sample value 'unknown', which Snowflake cannot read as "
+        "VARCHAR(3), so creating sales would fail"
+    )
+    assert port.casts == []
+
+
+def test_sst_val419_checks_a_collated_varchar() -> None:
+    port = CastingWarehouse(TABLES, frozenset())
+    assert [item.context["type"] for item in _run(port, _column("CODE", "TEXT", "abcdefghijk"))] == ["VARCHAR(10)"]
+
+
+def test_sst_val419_silent_on_a_value_that_fits_or_an_unbounded_text_column() -> None:
+    port = CastingWarehouse(TABLES, frozenset())
+    assert _run(port, _column("TEST_TYPE", "TEXT", "BFT"), _column("NOTE", "TEXT", "x" * 400)) == []

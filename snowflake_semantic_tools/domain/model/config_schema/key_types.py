@@ -77,8 +77,6 @@ class ConfigKey:
             code, or the code for a value outside `choices` or bounds.
         folded: An `ENUM` value is matched against `choices` by `vocabulary_key`, ignoring case
             and runs of spaces, as the member key it is the default for is matched.
-        root_only: A `+` key that only the block's root may set: a folder route or an artifact's
-            `config:` that sets it is an error (SST-CFG055).
         unset_code: The code an unset key reports; `default` applies once that code is demoted.
     """
 
@@ -94,7 +92,6 @@ class ConfigKey:
     replacement: str | None = None
     code: str | None = None
     folded: bool = False
-    root_only: bool = False
     unset_code: str | None = None
 
     @property

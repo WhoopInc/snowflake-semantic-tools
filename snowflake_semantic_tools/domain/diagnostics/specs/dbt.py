@@ -310,4 +310,19 @@ SPECS: tuple[ErrorSpec, ...] = (
             "the command exits 4"
         ),
     ),
+    spec(
+        "SST-DBT035",
+        Severity.INFO,
+        "Deferred manifest reused",
+        "read the dbt manifest of deferred target '{target}' as dbt wrote it {detail}; its inputs are unchanged",
+        "set defer.reuse_manifest: false to parse the deferred target on every run",
+        condition=(
+            "`defer.auto_compile` would run dbt for the deferred target, and the manifest's "
+            "`sst_stamp.json` shows nothing that parse reads changed since it was written"
+        ),
+        note=(
+            "Inputs are the dbt files, `profiles.yml`, the target, the `DBT_` environment variables "
+            "and the dbt executable; a `var()` read from any other environment variable is not one."
+        ),
+    ),
 )

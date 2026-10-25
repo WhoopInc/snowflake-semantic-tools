@@ -122,6 +122,8 @@ class GlobalOptions:
     verbose: bool = False
     quiet: bool = False
     log_level: str = "warn"
+    # Whether `--log-level` or `$SST_LOG_LEVEL` set the level, rather than its default.
+    log_level_given: bool = False
     no_color: bool = False
     color: str = "auto"
     project_dir: Path = Path(".")
@@ -155,6 +157,7 @@ class GlobalOptions:
             field.name: params[field.name] if params.get(field.name) is not None else getattr(defaults, field.name)
             for field in dataclasses.fields(cls)
         }
+        values["log_level_given"] = params.get("log_level") is not None
         return cls(**values)
 
 

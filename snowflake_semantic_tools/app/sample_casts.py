@@ -12,6 +12,7 @@ A column is checked once however many views hold it, and its finding names them 
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 
@@ -22,12 +23,14 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import same_data_type, semantic_data_type
 from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
 from snowflake_semantic_tools.domain.sql import Sql, datatype, is_datatype, join, literal, number, sql
-from snowflake_semantic_tools.domain.sql.datatype import type_family
+from snowflake_semantic_tools.domain.sql.datatype import text_length, type_family
 from snowflake_semantic_tools.domain.validate.column_metadata import printable
 
 # The families whose values Snowflake parses, so a cast can refuse one; text and the rest
 # (binary, semi-structured, geospatial, vector) take every sample value as written.
 _CAST_FAMILIES = frozenset(("fixed", "float", "boolean", "date", "time", "timestamp"))
+# A collation is part of a column's type as DESCRIBE reports it, but no cast takes one.
+_COLLATION = re.compile(r"\s+COLLATE\s+'(?:[^']|'')*'\s*$", re.IGNORECASE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,9 +59,20 @@ class SampleColumn:
     def cast_type(self) -> str | None:
         """The type to cast to: the observed one, else the declared; None when neither parses one."""
         for text in (self.observed, self.declared):
-            if text and is_datatype(text):
-                return text
+            bare = _COLLATION.sub("", text).strip() if text else ""
+            if bare and is_datatype(bare):
+                return bare
         return None
+
+    @property
+    def length(self) -> int | None:
+        """The length the column's observed text type bounds its values to; None when it bounds none.
+
+        Only the type `DESCRIBE TABLE` reports is read: a declared `data_type` seldom carries a
+        length, and a length it did carry could be stale.
+        """
+        bare = _COLLATION.sub("", self.observed).strip() if self.observed else ""
+        return text_length(bare) if bare and is_datatype(bare) else None
 
     @property
     def subject(self) -> str:
@@ -180,6 +194,32 @@ def cast_findings(columns: Sequence[SampleColumn], fqn: str, result: QueryResult
             if value in bad
         )
     return found
+
+
+def length_findings(columns: Sequence[SampleColumn]) -> list[Diagnostic]:
+    """Report each sample value longer than its text column holds, in column order.
+
+    Snowflake casts each sample value to its member's type, a bounded VARCHAR included, and
+    refuses one longer than the bound; the length is checked here, with no statement.
+
+    Diagnostics:
+        SST-VAL419: once per column and value, naming every view that holds the column.
+    """
+    return [
+        D(
+            "SST-VAL419",
+            model=column.model,
+            column=column.column,
+            value=printable(value),
+            type=_COLLATION.sub("", str(column.observed)).strip(),
+            view=", ".join(column.views),
+            subject=column.subject,
+        )
+        for column in columns
+        if (bound := column.length) is not None
+        for value in column.values
+        if len(value) > bound
+    ]
 
 
 def type_drift(columns: Sequence[SampleColumn]) -> list[Diagnostic]:

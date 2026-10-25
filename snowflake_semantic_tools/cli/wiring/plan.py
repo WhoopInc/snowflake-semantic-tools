@@ -34,7 +34,7 @@ from snowflake_semantic_tools.app.plan_values import PlanCandidates, PlanReady, 
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.wiring import compile as compiling
 from snowflake_semantic_tools.cli.wiring.compile import compiled_universe, manifest_universe, selection, selector_report
-from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, refuse_stale_inputs
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
     connect,
@@ -370,6 +370,7 @@ def _prepared(request: PlanRequest) -> tuple[PreparePlan, PlanCandidates, Diagno
     """
     scope = plan_scope(request)
     project_dir = request.project_dir
+    refuse_stale_inputs(request.paths, request.target_name, request.manifest_path, before="plan or apply")
     full_result = compiling.compile_result(request.paths, request.target_name, request.manifest_path)
     # The compiled manifest is the one this compile matches, or the run is refused as stale.
     selectors = selector_report(

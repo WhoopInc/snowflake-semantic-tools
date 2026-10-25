@@ -21,7 +21,7 @@ from snowflake_semantic_tools.app.evals.progress import (
 )
 from snowflake_semantic_tools.cli import output
 from snowflake_semantic_tools.cli.commands.eval import _print_eval_progress
-from snowflake_semantic_tools.cli.logs import configure_logging
+from snowflake_semantic_tools.cli.logs import configure_logging, hidden_warnings
 from snowflake_semantic_tools.cli.output import RenderPolicy, announce, print_progress, use_render_policy
 from snowflake_semantic_tools.cli.render import progress
 from snowflake_semantic_tools.cli.render.progress import (
@@ -325,3 +325,18 @@ def test_eval_events_on_a_terminal_are_rows_named_by_their_eval_and_end_as_one_l
         "✓ eval:a  COMPLETED · 0.0s",
         "✗ EVAL_B  FAILED · 0.0s",
     ]
+
+
+@pytest.mark.usefixtures("policy")
+def test_a_library_warning_is_held_back_unless_the_level_was_given(
+    root_logging: logging.Logger, capsys: pytest.CaptureFixture[str]
+) -> None:
+    configure_logging("warn", given=False)
+    logging.getLogger("snowflake.connector.vendored.urllib3").warning("Retrying after RemoteDisconnected")
+    logging.getLogger("snowflake.connector").error("failed")
+    assert capsys.readouterr().err == "error snowflake.connector: failed\n"
+    assert hidden_warnings() == 1
+    configure_logging("warn", given=True)
+    logging.getLogger("snowflake.connector").warning("retrying")
+    assert capsys.readouterr().err == "warn  snowflake.connector: retrying\n"
+    assert hidden_warnings() == 0

@@ -95,7 +95,6 @@ def validate_config(
         SST-CFG043: a removed key is set; the message says what replaced it.
         SST-CFG023: `semantic_views.+max_staleness` is below 120 seconds.
         SST-CFG054: a `+` key is written with no value.
-        SST-CFG055: a folder route sets a `+` key only the block root may set.
         SST-CFG200: a deprecated key is set; it is checked as the key it is read as.
         SST-CFG025: `agents.+orchestration_model` or `cowork_profiles.+orchestration_model`, or a
             folder route's, is not in `snowflake.orchestration_models`.
@@ -401,20 +400,12 @@ def _walk(
     is the routed block's own path; `actual` is the path as written in the file.
     """
     declared = CHILDREN.get(entry_path, {})
-    # A folder route is walked as its routed block, so it is written deeper than the block's path.
-    in_route = len(actual) > (len(entry_path.split(".")) if entry_path else 0)
     for raw_key, child in value.items():
         key = str(raw_key)
         path = (*actual, key)
         spec, route = _child_spec(declared, policy, key)
         if spec is None:
             diagnostics.append(_unknown(path, positions))
-            continue
-        if spec.root_only and in_route:
-            block = entry_path
-            diagnostics.append(
-                _diagnostic("SST-CFG055", path, positions, key=".".join(path), block=block, expected=spec.path)
-            )
             continue
         _check(spec, child, path, positions, diagnostics, route_of=entry_path if route else None)
     diagnostics.extend(_block_problems(entry_path, value, actual, positions))

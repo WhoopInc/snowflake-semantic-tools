@@ -614,13 +614,9 @@ def _setting_key(block: str, setting: Setting) -> str:
 def _rendered(
     block: str, settings: Mapping[str, Setting], target: TargetIdentity, defaults: Mapping[str, object]
 ) -> tuple[Setting, ...]:
-    """Return an item's settings rendered for the target, with each built-in default it took.
-
-    A root-only key, such as `skills.+threads`, paces the whole run rather than the item, so the
-    item does not report it.
-    """
+    """Return an item's settings rendered for the target, with each built-in default it took."""
     keys = block_settings(block)
-    own = {key: item for key, item in settings.items() if key in keys and not keys[key].root_only}
+    own = {key: item for key, item in settings.items() if key in keys}
     rendered = {
         key: Setting(key, target_text(item.value, target, "") or "", item.source)
         for key, item in own.items()

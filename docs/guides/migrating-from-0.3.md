@@ -309,10 +309,12 @@ snapshot counts.
   warning (`SST-CFG003`), and an error under `--strict`.
 - These keep their 0.3 meaning: `validation.exclude_dirs`, `validation.strict`,
   `defer.target`, `defer.state_path`,
-  `defer.auto_compile`, `generation.threads` (how many Snowflake sessions
+  `defer.auto_compile`, and the `enrichment:` limits and model.
+- `generation.threads` is now `session.threads` (how many Snowflake sessions
   `plan`, `validate`, `apply` and `test` work on at once, unless `--threads` or
-  `SST_THREADS` says), `generation.view_timeout`, and the `enrichment:` limits
-  and model.
+  `SST_THREADS` says), and `generation.view_timeout` is now
+  `session.statement_timeout`. The old keys are an error (`SST-CFG043`) naming
+  the new one.
 
 In the semantic model YAML, an unknown key on a semantic view, metric, filter,
 relationship, verified query, or custom instruction, or under a dbt model's

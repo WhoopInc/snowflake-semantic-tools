@@ -60,7 +60,7 @@ These go before the command name.
 | `--output / -o` | table\|plain\|agent\|json\|yaml\|csv |  | `table` (default), `plain` (`table` without color), `agent` (short fixed-grammar text for coding agents), or `json`, else `$SST_OUTPUT`; `list` also takes `yaml` and `csv`. With neither set, a run whose stdout is not a terminal defaults to `agent` when a coding agent's variable is set (`SST_AGENT`, `CLAUDECODE`, `COCO_AGENT`, `CURSOR_AGENT`, `CODEX_SANDBOX`, `GEMINI_CLI`; `0` or empty is unset) and says so. A format the command does not take is refused (SST-PRT106). |
 | `--verbose / -v` | flag |  | Add each diagnostic's phase and fingerprint, and report each file the run's parse cache served (SST-LOD201). Cannot be combined with `--quiet`. |
 | `--quiet / -q` | flag |  | Show error diagnostics only, with no counts line or progress lines; the report still prints. |
-| `--log-level` | debug\|info\|warn\|error |  | Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. Independent of `--verbose`. |
+| `--log-level` | debug\|info\|warn\|error |  | Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. Left unset, a library's warning, such as a request it retried, is counted rather than printed. Independent of `--verbose`. |
 | `--no-color` | flag |  | No ANSI color, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`. |
 | `--color` | auto\|always\|never |  | When to color `table` output: `auto` (the default) on a terminal, `always` even through a pipe, as a CI log viewer renders it, or `never`; else `$SST_COLOR`. Under `auto`, a non-empty `$FORCE_COLOR` or `$CLICOLOR_FORCE` turns color on and `$NO_COLOR` off. No other format is ever colored. |
 | `--project-dir` | DIRECTORY |  | Project root, else `$SST_PROJECT_DIR`, else the current directory: where `sst_config.yml` and `dbt_project.yml` are. |
@@ -340,7 +340,7 @@ sst validate [OPTIONS]
 | `--dbt` | DIRECTORY |  | Read the dbt models from this directory instead of `dbt_project.yml`'s `model-paths`. |
 | `--semantic` | DIRECTORY |  | Read the semantic models from this directory instead of `project.semantic_models_dir`. |
 | `--verify-schema` | flag |  | Connects: confirm each column a semantic view reads exists in the warehouse. |
-| `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 works serially. Output is the same for any count. |
+| `--threads` | INTEGER RANGE |  | Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 4; 1 works serially. Output is the same for any count. |
 | `--show-info` | flag |  | Show info diagnostics instead of counting them, among them which registered type owns each semantic-model file. |
 
 ## sst baseline
@@ -580,7 +580,7 @@ sst plan [OPTIONS]
 | `--diff-out` | FILE |  | Write what each update changes, member by member, as a unified diff here instead of `sst_target/plan.<target>.diff`. Refused with `--no-diff`. |
 | `--sql-out` | DIRECTORY |  | Write each create's and update's statements into this directory instead of `sst_target/sql`. A file an earlier run wrote there, named `<type>__<name>.sql`, `.json` or `.yaml`, for a change this run does not make is removed; any other file is left. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
-| `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 4; 1 reads serially. The plan is the same for any count. |
+| `--threads` | INTEGER RANGE |  | Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 4; 1 reads serially. The plan is the same for any count. |
 | `--full` | flag |  | Also print, under each update, the properties it changes on the object, and the definition it replaces when `--capture-prior` read it; and show each member's diff whole, not cut short. |
 | `--names-only` | flag |  | Print the name of each changed artifact, one per line, and nothing else. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when changes are pending, instead of 2. |
@@ -591,7 +591,9 @@ sst plan [OPTIONS]
 
 Apply a current reviewed plan; smoke probes never run here.
 
-Without --plan, apply plans afresh as `sst plan` does, prints the plan, and asks before it
+Without --plan, a fresh plan `sst plan` saved is applied, re-planning only its writes, as
+`cli.wiring.saved_plan` says; --replan, or a plan that cannot be reused, plans afresh.
+Planning afresh, apply plans as `sst plan` does, prints the plan, and asks before it
 writes; --yes skips the question, and is required with --prune, with --output json or agent, and
 whenever stdin or stderr is not a terminal, which apply refuses before it plans. The plan it
 asks about shows what each update changes, member by member, as `sst plan` does; with --yes
@@ -638,12 +640,13 @@ sst apply [OPTIONS]
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
 | `--plan` | FILE |  | Apply this saved plan. It must still match the compiled project. |
+| `--replan` | flag |  | Plan afresh even when `sst plan` saved a plan in `sst_target/plan.json` that a bare apply would apply; see `apply.reuse_plan_minutes`. |
 | `--prune` | flag |  | Also act on managed artifacts whose source was deleted, as far as each type allows: drop, deactivate, or report. |
 | `--partial` | flag |  | Go ahead with every artifact that has no errors and depends on nothing that does; still exits 1 while errors remain. Cannot be combined with `--prune`. |
 | `--overwrite` | flag |  | Publish the planned definition over each selected object changed out of band (SST-PLN014) instead of blocking it; an agent keeps its versions and gains one. A saved plan made with it is applied with it. |
 | `--yes / -y` | flag |  | Apply without asking for confirmation. |
 | `--fail-fast / --no-fail-fast` | flag |  | Stop at the first failure instead of continuing, and refuse a plan with a blocked change instead of skipping it. Defaults to `apply.fail_fast`. |
-| `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. Planning defaults to 4; applying to `skills.+threads`, else 4. |
+| `--threads` | INTEGER RANGE |  | Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 4. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 | `--temporary` | flag |  | Publish agents as temporary agents, dropped when the apply's session ends, and skip their evals; views, tools and skills still publish permanently. Refused for a production-like target. |
 | `--no-validate` | flag |  | Skip validation: no cycle check, connected check, agent reference lookup, or strict promotion. Only when `sst validate` already ran on the same tree; compile errors still stop the run. Refused with `--snowflake-syntax-check`. |
@@ -699,7 +702,7 @@ sst diff [OPTIONS]
 | `--names-only` | flag |  | Print the name of each differing artifact, one per line, and nothing else. |
 | `--no-diff` | flag |  | Compare by fingerprint alone, as an artifact's recorded state says, reading no definition: two targets that publish to different databases then differ in every artifact. |
 | `--diff-out` | FILE |  | Write what differs in each modified artifact, member by member, as a unified diff here. Refused with `--no-diff`. |
-| `--threads` | INTEGER RANGE |  | Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, else `generation.threads`, else 4. |
+| `--threads` | INTEGER RANGE |  | Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, else `session.threads`, else 4. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 when the states differ, instead of 2. |
 
 ## sst test
@@ -726,7 +729,7 @@ sst test [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
-| `--threads` | INTEGER RANGE |  | Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
+| `--threads` | INTEGER RANGE |  | Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 1. |
 | `--fail-fast` | flag |  | Stop at the first failing probe, running the probes one at a time. |
 
 ## sst eval
@@ -764,7 +767,7 @@ sst eval [OPTIONS]
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--defer-target` | TEXT |  | The `profiles.yml` target whose relations dbt objects resolve to, while publishing to `--target`; else `$SST_DEFER_TARGET`, else `defer.target`. |
 | `--no-defer` | flag |  | Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say. |
-| `--threads` | INTEGER RANGE |  | Eval runs at once when neither `evals.+concurrency` nor an eval's `concurrency` setting paces them, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1. |
+| `--threads` | INTEGER RANGE |  | Eval runs at once when neither `evals.+concurrency` nor an eval's `concurrency` setting paces them, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 1. |
 | `--fail-fast` | flag |  | Stop at the first failing eval, running the evals one at a time. |
 | `--capture-baseline` | flag |  | Record this eval run as each eval's new baseline instead of gating it on the stored one. Requires `--reason`; refused with `--unpublished`, `--compare-models` or `--refresh-cost`. |
 | `--reason` | TEXT |  | Why the baseline is changing; stored with it. Requires `--capture-baseline`. |

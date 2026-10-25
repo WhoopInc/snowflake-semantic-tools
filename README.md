@@ -60,7 +60,7 @@ sst enrich --target prod models/marts   # column and data types, read from a pro
 sst validate
 sst compile                # writes the manifest plan and apply read
 sst plan                   # exit 2 means there are changes to apply
-sst apply --plan sst_target/plan.json --yes
+sst apply --plan sst_target/plan.json --yes   # or a bare `sst apply`, which reuses a fresh saved plan
 ```
 
 The [getting started guide](docs/getting-started.md) walks through a first

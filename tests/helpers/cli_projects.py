@@ -72,6 +72,16 @@ def compile_project(project: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
+def compile_broken(project: Path) -> None:
+    """Compile a project that fails to, with `--partial`, so its manifest records the broken files.
+
+    A plan, apply or test then gets past the early stale check and reports the errors itself.
+    """
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--partial"])
+    assert result.exit_code in (0, 1), result.output
+    assert (project / "sst_target" / "manifest.json").is_file(), result.output
+
+
 def validate_json(project: Path, *flags: str) -> tuple[int, list[dict[str, Any]]]:
     """Run `sst validate --output json` on `project` with `flags`; return its exit code and diagnostics."""
     return invoke_json(["validate", *common(project), *flags])

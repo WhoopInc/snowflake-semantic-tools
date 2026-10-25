@@ -9,7 +9,7 @@ from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_inputs, stale_manifest, target_mismatch
 from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.lineage.graph import GraphSource, manifest_lineage
@@ -74,3 +74,24 @@ def current_manifest(project_dir: Path, result: CompileResult, inputs: YamlProje
     if stale is not None:
         raise ProjectError(diagnostics=(stale,))
     return current
+
+
+def refuse_stale_inputs(paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, before: str) -> None:
+    """Refuse the run before dbt runs when the compiled manifest records other inputs than the project's.
+
+    Only what the manifest id hashes and SST reads without dbt is compared, as `stale_inputs`
+    says, so the run is refused in a second rather than after a parse; the full comparison after
+    the project compiles stays the authority. Without a compiled manifest nothing is refused
+    here: the run reports SST-MAN001 where it reads it.
+
+    Raises:
+        ProjectError: an input the manifest records changed (SST-MAN009).
+    """
+    path = target_dir(paths.project_dir) / "manifest.json"
+    compiled = ManifestFileStore(path).read() if path.is_file() else None
+    if compiled is None:
+        return
+    checksum, files = project_inputs(paths, target_name, manifest_path).recorded_inputs()
+    stale = stale_inputs(compiled, config_checksum=checksum, file_checksums=files, before=before)
+    if stale is not None:
+        raise ProjectError(diagnostics=(stale,))

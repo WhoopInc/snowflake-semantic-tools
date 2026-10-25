@@ -222,13 +222,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "connected, with `validation.snowflake_syntax_check` on: `TRY_CAST` of a published column's sample "
             "value to the type `DESCRIBE TABLE` reports for the column (else the `data_type` its dbt model "
-            "declares) returns NULL, for a numeric, BOOLEAN, date, time or timestamp column"
+            "declares) returns NULL, for a numeric, BOOLEAN, date, time or timestamp column; or a text "
+            "column's value is longer than the length its described type bounds it to, such as "
+            "`unknown` in a VARCHAR(3)"
         ),
         note=(
             "Snowflake casts each sample value to its member's type when it creates a semantic view, as "
             "`TRY_CAST` does, and refuses the view when one fails. The cast follows the session's input "
             "formats, so it catches what the offline check (SST-VAL341) cannot: a date that does not exist, "
             "and a value a stale declared `data_type` hides, such as `0,2` on a FLOAT column declared TEXT. "
+            "A bounded VARCHAR is checked too: Snowflake sizes a column a CASE of short literals builds to "
+            "its longest literal, so a value the code no longer emits can exceed it. "
             "Each table's values are cast in one statement that reads no rows, and a column is reported once, "
             "naming every view that holds it."
         ),

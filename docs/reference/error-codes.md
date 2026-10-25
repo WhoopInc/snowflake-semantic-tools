@@ -16,14 +16,14 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 24 codes
-- [Configuration (CFG)](#configuration-cfg) -- 50 codes
+- [Configuration (CFG)](#configuration-cfg) -- 49 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 58 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
 - [Validation (VAL)](#validation-val) -- 340 codes
-- [dbt (DBT)](#dbt-dbt) -- 32 codes
+- [dbt (DBT)](#dbt-dbt) -- 33 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
 - [Planning (PLN)](#planning-pln) -- 50 codes
@@ -33,7 +33,7 @@ cannot be downgraded by any setting.
 - [Snowflake (SNO)](#snowflake-sno) -- 31 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 77 numbers
+- [Retired numbers](#retired-numbers) -- 78 numbers
 
 ## Registry (REG)
 
@@ -720,16 +720,6 @@ Fix: use one of {expected}, written without its `+`; any other key belongs outsi
 Raised when a key of an artifact's `config:` block, or a `+` key in `sst_config.yml`, is written with no value or as `null`; an absent key inherits, and null is not a value.
 
 Fix: delete the key to inherit its value from the folder routes, the block root, or the default, or give it a value
-
-### SST-CFG055
-
-**Root-only setting set below the block root** (error)
-
-`'<key>' can be set only at the root of <block>`
-
-Raised when a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder route, or in an artifact's `config:` block.
-
-Fix: set {expected} once, at the root of {block}, and remove it here
 
 ### SST-CFG056
 
@@ -3671,11 +3661,11 @@ Note: Offline, verified-query SQL is checked for its shape only, so a misspelt k
 
 `model '<model>': column '<column>' has sample value '<value>', which Snowflake cannot read as <type>, so creating <view> would fail`
 
-Raised when connected, with `validation.snowflake_syntax_check` on: `TRY_CAST` of a published column's sample value to the type `DESCRIBE TABLE` reports for the column (else the `data_type` its dbt model declares) returns NULL, for a numeric, BOOLEAN, date, time or timestamp column.
+Raised when connected, with `validation.snowflake_syntax_check` on: `TRY_CAST` of a published column's sample value to the type `DESCRIBE TABLE` reports for the column (else the `data_type` its dbt model declares) returns NULL, for a numeric, BOOLEAN, date, time or timestamp column; or a text column's value is longer than the length its described type bounds it to, such as `unknown` in a VARCHAR(3).
 
 Fix: delete the value, or run `sst enrich --force sample-values` to sample the column again
 
-Note: Snowflake casts each sample value to its member's type when it creates a semantic view, as `TRY_CAST` does, and refuses the view when one fails. The cast follows the session's input formats, so it catches what the offline check (SST-VAL341) cannot: a date that does not exist, and a value a stale declared `data_type` hides, such as `0,2` on a FLOAT column declared TEXT. Each table's values are cast in one statement that reads no rows, and a column is reported once, naming every view that holds it.
+Note: Snowflake casts each sample value to its member's type when it creates a semantic view, as `TRY_CAST` does, and refuses the view when one fails. The cast follows the session's input formats, so it catches what the offline check (SST-VAL341) cannot: a date that does not exist, and a value a stale declared `data_type` hides, such as `0,2` on a FLOAT column declared TEXT. A bounded VARCHAR is checked too: Snowflake sizes a column a CASE of short literals builds to its longest literal, so a value the code no longer emits can exceed it. Each table's values are cast in one statement that reads no rows, and a column is reported once, naming every view that holds it.
 
 ### SST-VAL506
 
@@ -5297,7 +5287,7 @@ Note: A version that is not content-derived could change content under a pinned 
 
 ### SST-VAL804
 
-**Extension version referenced by no agent** (warning)
+**Extension version referenced by no agent** (info)
 
 `<artifact>: version <value> is referenced by no agent`
 
@@ -5305,7 +5295,7 @@ Raised when the project defines agents, and a skill or plugin it publishes is pi
 
 Fix: reference it, or stop publishing it
 
-Note: A skill people use directly from the catalog has a consumer SST cannot see; baseline the warning, or demote it with `diagnostics.severity_overrides`.
+Note: A skill people use directly from the catalog has a consumer SST cannot see, so this is information, not a fault; raise it with `diagnostics.severity_overrides` to make an unconsumed extension a warning.
 
 ### SST-VAL806
 
@@ -6359,6 +6349,18 @@ Raised when the dbt YAML file of a model `sst enrich` updates has a root, `model
 
 Fix: correct the dbt YAML to the shape dbt reads, or delete the key so sst enrich adds it
 
+### SST-DBT035
+
+**Deferred manifest reused** (info)
+
+`read the dbt manifest of deferred target '<target>' as dbt wrote it <detail>; its inputs are unchanged`
+
+Raised when `defer.auto_compile` would run dbt for the deferred target, and the manifest's `sst_stamp.json` shows nothing that parse reads changed since it was written.
+
+Fix: set defer.reuse_manifest: false to parse the deferred target on every run
+
+Note: Inputs are the dbt files, `profiles.yml`, the target, the `DBT_` environment variables and the dbt executable; a `var()` read from any other environment variable is not one.
+
 ## Rendering (RND)
 
 ### SST-RND001
@@ -6601,9 +6603,9 @@ Fix: fix the reported errors, then re-compile
 
 **Compiled manifest is stale** (error)
 
-`compiled SST manifest is stale; run sst compile before <command>`
+`compiled SST manifest is stale (<reason>); run sst compile before <command>`
 
-Raised when the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, `sst test`, or a published `sst eval` refuses to start from it; the command exits 4.
+Raised when the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, `sst test`, or a published `sst eval` refuses to start from it; the command exits 4. A changed SST file, `sst_config.yml` or SST version is found before dbt runs, and named; any other change is found once the project compiles.
 
 Fix: run sst compile, then re-run the command
 
@@ -8953,6 +8955,12 @@ Retired because `generation.emit_relationship_type` is removed: relationship and
 **infer_is_enum is enabled** (retired in 1.0.0)
 
 Retired because there is no such setting; `sst enrich` writes `is_enum`.
+
+### SST-CFG055
+
+**Root-only setting set below the block root** (retired in 1.0.0)
+
+Retired because its one root-only key, skills.+threads, became session.threads, which no folder route can set.
 
 ### SST-DBT007
 

@@ -29,7 +29,7 @@ from snowflake_semantic_tools.app.apply.recovery import Reconnect, Reconnection,
 from snowflake_semantic_tools.app.apply.stages import UploadStages
 from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after, _run_outcome
 from snowflake_semantic_tools.app.apply.temporary import temporary_notes, temporary_refusal, temporary_skips
-from snowflake_semantic_tools.app.apply.waves import _WaveRun, lost_lock
+from snowflake_semantic_tools.app.apply.waves import _WaveRun, lost_lock, passes_through
 from snowflake_semantic_tools.app.baseline import blocking
 from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.state import table_state
@@ -352,6 +352,8 @@ class ApplyArtifacts:
         skipped = temporary_skips(changeset, temporary=options.temporary)
 
         def apply_one(change: Change, options: ApplyOptions) -> ApplyOutcome:
+            if passes_through(change):
+                return _skipped(change, _rendered_ddl(change))
             self._progress.unit_started("publish", change.key, change.action.value)
             outcome: ApplyOutcome | None = None
             try:
@@ -372,7 +374,7 @@ class ApplyArtifacts:
             changeset, options, apply_one, lost, verify=lease.verify, on_second_interrupt=self._halt_interrupted
         )
         if outcomes is None:
-            self._progress.expect("publish", len(changeset.changes))
+            self._progress.expect("publish", sum(not passes_through(change) for change in changeset.changes))
             with self._phases.phase("publish"):
                 outcomes, wave_diagnostics = waves.run()
         diagnostics = DiagnosticBag((*reported, *wave_diagnostics, *_accounted(changeset, outcomes)))

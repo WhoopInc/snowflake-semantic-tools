@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters import project_source
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
+from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
 from snowflake_semantic_tools.adapters.deferral import Deferral, resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
@@ -109,6 +113,79 @@ def test_auto_compile_runs_dbt_for_the_deferred_target_into_its_state_path(tmp_p
     # The deferred manifest is read once per source.
     source.dbt_catalog()
     assert len(dbt.runs) == 2
+
+
+def test_sources_sharing_a_run_cache_parse_and_decode_each_manifest_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    manifest_path = _small(tmp_path, "defer:\n  target: prod\n  state_path: prod_state\n  auto_compile: true\n")
+    state = tmp_path / "prod_state"
+    document = manifest({"model.fixture.products": model_node("products", "PROD_DB.SCH.PRODUCTS")})
+    dbt = FakeDbt(writes=(state / "manifest.json", document))
+    decoded: list[Path] = []
+    real = project_source.load_manifest_catalog
+
+    def counting(path: Path, **options: Any) -> Any:
+        decoded.append(path)
+        return real(path, **options)
+
+    monkeypatch.setattr(project_source, "load_manifest_catalog", counting)
+    cache = DbtCache()
+    paths = project_paths(tmp_path)
+    inputs = YamlProjectInputs(
+        paths, target_name=None, manifest_path=manifest_path, git_sha=lambda: "abc1234", dbt_runner=dbt, dbt_cache=cache
+    )
+    for source in (YamlProjectSource(paths, manifest_path=manifest_path, dbt_runner=dbt, dbt_cache=cache),) * 2:
+        assert [model.relation_name for model in source.dbt_catalog().models] == ["PROD_DB.SCH.PRODUCTS"]
+    other = YamlProjectSource(paths, manifest_path=manifest_path, dbt_runner=dbt, dbt_cache=cache)
+    other.dbt_catalog()
+    inputs.manifest_sources()
+    assert [run[:2] for run in dbt.runs].count(("dbt", "parse")) == 1
+    assert sorted(decoded) == sorted({manifest_path, state / "manifest.json"})
+
+
+def _deferred_parses(tmp_path: Path, config: str = "") -> tuple[Callable[[], tuple[str, ...]], Path]:
+    """A deferring project; the callable runs one fresh source and returns the codes it noted."""
+    manifest_path = _small(
+        tmp_path, f"defer:\n  target: prod\n  state_path: prod_state\n  auto_compile: true\n{config}"
+    )
+    document = manifest({"model.fixture.products": model_node("products", "PROD_DB.SCH.PRODUCTS")})
+    dbt = FakeDbt(writes=(tmp_path / "prod_state" / "manifest.json", document))
+
+    def run() -> tuple[str, ...]:
+        source = YamlProjectSource(project_paths(tmp_path), manifest_path=manifest_path, dbt_runner=dbt)
+        catalog = source.dbt_catalog()
+        assert [model.relation_name for model in catalog.models] == ["PROD_DB.SCH.PRODUCTS"]
+        return tuple(item.code for item in source._seam_diagnostics(catalog))
+
+    def parses() -> tuple[str, ...]:
+        codes = run()
+        return (str([argv[:2] for argv in dbt.runs].count(("dbt", "parse"))), *codes)
+
+    return parses, tmp_path
+
+
+def test_an_unchanged_project_reads_the_deferred_manifest_without_parsing(tmp_path: Path) -> None:
+    parses, root = _deferred_parses(tmp_path)
+    assert parses() == ("1",)
+    assert (root / "prod_state" / "sst_stamp.json").is_file()
+    assert parses() == ("1", "SST-DBT035")
+    # An edited dbt input, here a model file, parses again.
+    (root / "models").mkdir(exist_ok=True)
+    (root / "models" / "new.sql").write_text("select 1", encoding="utf-8")
+    assert parses()[0] == "2"
+    assert parses() == ("2", "SST-DBT035")
+
+
+def test_an_edited_profile_or_reuse_turned_off_parses_again(tmp_path: Path) -> None:
+    parses, root = _deferred_parses(tmp_path)
+    parses()
+    profiles = root / "profiles.yml"
+    profiles.write_text(profiles.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    assert parses() == ("2",)
+    off, _ = _deferred_parses(tmp_path / "off", "  reuse_manifest: false\n")
+    off()
+    assert off() == ("2",)
 
 
 def test_dbt_invoke_false_reads_the_deferred_manifest_as_supplied(tmp_path: Path) -> None:

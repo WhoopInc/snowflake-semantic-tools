@@ -14,7 +14,7 @@ from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
 from snowflake_semantic_tools.domain.state import AppliedEntry
-from tests.helpers.cli_projects import common, compile_project, invoke_with_port, skill_project
+from tests.helpers.cli_projects import common, compile_broken, compile_project, invoke_with_port, skill_project
 from tests.helpers.reference_project import break_menu_view, project_copy
 from tests.helpers.snowflake_fake import FakeSnowflake
 
@@ -198,6 +198,7 @@ def test_a_cached_plan_refuses_what_fails_validation_without_connecting(
     assert strict.exit_code == 1, strict.output
     assert "SST-PLN016" not in {item["code"] for item in _diagnostics(strict)}
     break_menu_view(project)
+    compile_broken(project)
     refused = _cached(project, monkeypatch, "--no-validate", "-o", "json")
     assert refused.exit_code == 1, refused.output
     codes = [item["code"] for item in _diagnostics(refused)]

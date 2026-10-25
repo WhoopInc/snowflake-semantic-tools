@@ -1,6 +1,6 @@
 """Configuration keys the spec keeps and the engine reads: each changes what a run does.
 
-`generation.view_timeout`, `validation.exclude_dirs`, `dbt.*`, `snowflake.tool_types`,
+`session.statement_timeout`, `validation.exclude_dirs`, `dbt.*`, `snowflake.tool_types`,
 `agents.+secure`, `agents.+tags` and `semantic_views.+tags`.
 """
 
@@ -34,11 +34,11 @@ def _append(project: Path, text: str) -> None:
     config.write_text(config.read_text(encoding="utf-8") + text, encoding="utf-8")
 
 
-def test_plan_sessions_bound_every_statement_by_the_view_timeout(
+def test_plan_sessions_bound_every_statement_by_the_statement_timeout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     project = project_copy(tmp_path)
-    _append(project, "\ngeneration:\n  view_timeout: 120\n")
+    _append(project, "  statement_timeout: 120\n")
     opened: list[dict[str, Any]] = []
     port = FakeSnowflake(state={})
     port.close = lambda: None  # type: ignore[attr-defined]
@@ -52,7 +52,7 @@ def test_plan_sessions_bound_every_statement_by_the_view_timeout(
     result = CliRunner().invoke(cli, ["plan", *common(project), "--output", "json"])
     assert result.exit_code in (0, 2), result.output
     assert opened and all(params["session_parameters"]["STATEMENT_TIMEOUT_IN_SECONDS"] == 120 for params in opened)
-    assert view_timeout({}) == 300 and view_timeout({"generation": {"view_timeout": 30}}) == 30
+    assert view_timeout({}) == 300 and view_timeout({"session": {"statement_timeout": 30}}) == 30
 
 
 def test_excluded_directories_are_not_discovered(tmp_path: Path) -> None:

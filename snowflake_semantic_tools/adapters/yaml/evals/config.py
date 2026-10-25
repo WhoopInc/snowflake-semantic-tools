@@ -158,7 +158,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         SST-PRS003: a field has the wrong type, such as a `run:` block that is not a mapping.
         SST-PRS013: a `run.accept_statuses` entry, a `config.metrics` name, or a
             `metrics.routing` name is not an accepted value.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the `config:` block.
         SST-PRS126: the file writes `agent_version`, or a `run:` setting, outside `config:`.
         SST-PRS018: an entry of `metrics.system`, `metrics.custom` or `metrics.routing` has the
@@ -219,7 +219,7 @@ def _check_item_config(source_file: str, parsed: ParsedYaml, value: object, diag
     """Check a config's `config:` block against the `evals:` settings, and the system metrics it names.
 
     Diagnostics:
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports them.
         SST-PRS013: a `config.metrics` name is not a system metric.
     """

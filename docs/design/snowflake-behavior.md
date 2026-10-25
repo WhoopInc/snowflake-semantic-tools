@@ -178,6 +178,12 @@ and matched `TRY_CAST` on every case:
 `TRY_CAST` is lenient elsewhere too: NUMBER reads `e`, `e3` and `.` as 0, and
 FLOAT reads `0x1F`. Date and time parsing follows the session's input formats.
 
+A bounded text member is checked the same way: `unknown` is refused as a sample value of a
+`VARCHAR(3)` column. Snowflake sizes a column a `CASE` of short literals produces to its
+longest literal, so a value the model no longer emits can exceed it (observed in analytics-dbt
+on 2026-10-25: `unknown` on `VARCHAR(3)`, `worse than` on `VARCHAR(5)`). An unbounded text
+column (`VARCHAR(16777216)`) takes any sample value.
+
 **Evidence**: `Observed` for the server's rule. SST's side is `Enforced`:
 - [test_sst_val341.py](../../tests/codes/val/test_sst_val341.py) pins the offline
   rule, which refuses only what no reading of the type accepts, and its silence

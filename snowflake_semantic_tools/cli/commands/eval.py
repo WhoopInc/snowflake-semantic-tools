@@ -68,7 +68,7 @@ from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.manifest import current_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import current_manifest, refuse_stale_inputs
 from snowflake_semantic_tools.cli.wiring.project import (
     closed_on_error,
     connect,
@@ -193,6 +193,8 @@ def eval_command(
     """
     if refresh_cost is not None:
         return refresh_comparison(paths, target_name, refresh_cost)
+    if not unpublished:
+        refuse_stale_inputs(paths, target_name, manifest_path, before="eval")
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
         return CommandResult(ERROR, compiled.diagnostics)

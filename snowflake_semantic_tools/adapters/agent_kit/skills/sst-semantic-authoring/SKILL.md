@@ -121,7 +121,7 @@ semantic_views:
 
 Each setting resolves closest first: the item's own `config:`, then the closest folder route
 over its file, then the block root, then SST's default. A route that names no folder is
-`SST-CFG041`; `skills.+threads` is root-only (`SST-CFG055`). Every artifact block routes the
+`SST-CFG041`. Every artifact block routes the
 same way: `tools:`, `agents:`, `evals:`, `skills:`, `plugins:`, `coco_desktop_profiles:`. Prefer a folder
 route for what a whole folder shares and `config:` for the one item that differs.
 `sst list --long` prints each setting with where it came from.

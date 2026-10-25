@@ -132,9 +132,12 @@ def test_a_stale_compile_refuses_the_plan() -> None:
 
     refused, _, _ = select(compiled(), compiled_manifest=other)
 
-    stale = D("SST-MAN009", command="plan or apply")
+    stale = D("SST-MAN009", command="plan or apply", reason="the project compiles to another manifest now")
     assert refused == PlanRefused(DiagnosticBag((stale,)), reason=stale.message)
-    assert stale.message == "compiled SST manifest is stale; run sst compile before plan or apply"
+    assert stale.message == (
+        "compiled SST manifest is stale (the project compiles to another manifest now); "
+        "run sst compile before plan or apply"
+    )
 
 
 def test_flags_override_the_validation_block() -> None:

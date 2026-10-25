@@ -174,12 +174,12 @@ def test_error_codes_refuse_a_subsystem_without_a_section() -> None:
         render_error_codes({stray.code: stray})
 
 
-def test_config_page_renders_types_root_only_keys_and_removed_keys() -> None:
+def test_config_page_renders_types_and_removed_keys() -> None:
     schema = (
         ConfigKey("orphan.key", KeyKind.STRING, "A key whose block has no row."),
         ConfigKey("bare", KeyKind.BLOCK, "A block with no keys."),
         ConfigKey("pick", KeyKind.BLOCK, "Pick one."),
-        ConfigKey("pick.+runs", KeyKind.INTEGER, "Runs.", root_only=True),
+        ConfigKey("pick.+runs", KeyKind.INTEGER, "Runs."),
         ConfigKey("pick.mode", KeyKind.ENUM, "Mode.", default="fast", choices=("fast", "slow")),
         ConfigKey("pick.count", KeyKind.INTEGER, "How many.", default="the default", minimum=1, maximum=9),
         ConfigKey("pick.gone", KeyKind.ANY, "no longer read", status=KeyStatus.REMOVED),
@@ -189,7 +189,7 @@ def test_config_page_renders_types_root_only_keys_and_removed_keys() -> None:
     assert "## orphan\n\n| Key |" in page
     assert "## bare\n\nA block with no keys.\n\n## pick" in page
     assert "## pick\n\nPick one.\n\n| Key |" in page
-    assert "| `pick.+runs` | integer, root only |  | Runs. |" in page
+    assert "| `pick.+runs` | integer |  | Runs. |" in page
     assert "| `pick.mode` | enum: `fast`, `slow` | `fast` | Mode. |" in page
     assert "| `pick.count` | integer, 1 to 9 | the default | How many. |" in page
     removed = page.split("## Removed keys", 1)[1]

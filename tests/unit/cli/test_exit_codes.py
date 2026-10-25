@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePort
 from tests.helpers.cli_projects import (
     applied_port,
     common,
+    compile_broken,
     compile_project,
     invoke_with_port,
     on_a_terminal,
@@ -435,6 +436,7 @@ def _plan_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Res
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
+    compile_broken(project)
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), *flags])
 
 
@@ -450,6 +452,7 @@ def _apply_broken(tmp: Path, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Re
     project = project_copy(tmp)
     compile_project(project)
     break_menu_view(project)
+    compile_broken(project)
     return invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["apply", *common(project), "--yes", *flags])
 
 

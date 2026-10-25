@@ -48,7 +48,6 @@ def test_a_complete_current_configuration_is_clean() -> None:
         "evals": {"+retry": 1, "+eval_tier": "report", "ops": {"+eval_tier": "blocking"}},
         "skills": {
             "+certified": False,
-            "+threads": 16,
             "+bundle_stage": "SKILL_BUNDLE_SRC",
             "finance": {"+schema": "FINANCE", "close": {"+certified": True}},
         },
@@ -122,8 +121,6 @@ def test_routed_models_meet_the_allowlist_and_every_publishing_block_takes_route
     assert _codes({"coco_desktop_profiles": {"analyst": {"+stage": 1}}}) == [
         ("SST-CFG004", "config:coco_desktop_profiles.analyst.+stage")
     ]
-    # Root-only keys may be set only at the root of their block.
-    assert _codes({"skills": {"finance": {"+threads": 2}}}) == [("SST-CFG055", "config:skills.finance.+threads")]
     assert _codes({"plugins": {"+threads": 2}}) == [("SST-CFG003", "config:plugins.+threads")]
     assert _codes({"semantic_views": {"+tags": [], "+max_staleness": 60}}) == [
         ("SST-CFG023", "config:semantic_views.+max_staleness"),
@@ -131,9 +128,13 @@ def test_routed_models_meet_the_allowlist_and_every_publishing_block_takes_route
 
 
 def test_0_3_blocks_are_removed_with_their_reasons_and_deploy_is_deprecated() -> None:
-    assert _codes({"generation": {"threads": 1, "publish_via": "ddl"}, "defer": {}}) == [
+    assert _codes({"generation": {"threads": 1, "view_timeout": 60, "publish_via": "ddl"}, "defer": {}}) == [
+        ("SST-CFG043", "config:generation.threads"),
+        ("SST-CFG043", "config:generation.view_timeout"),
         ("SST-CFG043", "config:generation.publish_via"),
     ]
+    assert _codes({"skills": {"+threads": 2}}) == [("SST-CFG043", "config:skills.+threads")]
+    assert _codes({"session": {"threads": 16, "statement_timeout": 60}}) == []
     assert _codes({"validation": {"exclude_dirs": []}}) == []
     assert _codes({"defer": {"auto_compile": "yes"}}) == [("SST-CFG004", "config:defer.auto_compile")]
     assert _codes({"deploy": {"agent_spec_stage": {"stage": "S"}}}) == [("SST-CFG200", "config:deploy")]
@@ -163,8 +164,8 @@ def test_types_domains_and_bounds() -> None:
         ("SST-CFG003", "config:coco_desktop_profiles.+flatten"),
     ]
     for threads in (0, 17):
-        assert _codes({"skills": {"+threads": threads}}) == [("SST-CFG008", "config:skills.+threads")]
-    assert "1..16" in validate_config({"skills": {"+threads": 0}})[0].message
+        assert _codes({"session": {"threads": threads}}) == [("SST-CFG008", "config:session.threads")]
+    assert "1..16" in validate_config({"session": {"threads": 0}})[0].message
 
 
 def test_no_key_is_required_and_an_extension_entry_takes_only_fqn() -> None:
@@ -253,10 +254,9 @@ def test_key_summaries_describe_what_the_renderer_and_the_publishing_blocks_do()
     # Tags render inline in the view's CREATE, not in a statement after it.
     tags = CONFIG_KEYS["semantic_views.+tags"].summary
     assert "WITH TAG" in tags and "after the CREATE" not in tags
-    # A profile publishes only where its stage resolves; `+threads` is set once, for the run.
+    # A profile publishes only where its stage resolves.
     profiles = CONFIG_KEYS["coco_desktop_profiles"].summary
     assert "`+stage` resolves" in profiles
-    assert CONFIG_KEYS["skills.+threads"].root_only and not CONFIG_KEYS["skills.+bundle_stage"].root_only
 
 
 def test_the_execute_as_default_accepts_exactly_what_a_procedure_member_does() -> None:

@@ -89,7 +89,7 @@ def load_agents(
         SST-PRS004: when a block SST models holds a key it does not model.
         SST-PRS022: when that key is within edit distance of one the block models.
         SST-PRS126: when the agent writes a setting where it is no longer read, outside `config:`.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the agent's `config:` block.
         SST-PRS018: when a `spec.tools` or `spec.skills` entry has the wrong shape.
         SST-PRS118: when a sample question is not a mapping with a string `question`.

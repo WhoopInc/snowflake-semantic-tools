@@ -205,9 +205,8 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
 - `+certified: true` on an extension that state records in another schema
   blocks the plan (`SST-VAL807`): moving it would change the name every pinned
   reference uses.
-- `+threads` caps concurrent catalog publishes (default 4, 1 to 16). It is
-  root-only: in a folder route or a skill's `config:` it is an error
-  (`SST-CFG055`). Profiles always publish one at a time.
+- `session.threads` caps concurrent catalog publishes, as it does every other
+  change apply makes (default 4, 1 to 16). Profiles always publish one at a time.
 - An unprefixed key of `skills:` is a folder route; one that names no folder
   under `skills_dir` is an error (`SST-CFG041`). `skills.catalog`,
   `skills.stage`, and `skills.extensions` moved to `skills:` itself,
@@ -281,7 +280,9 @@ include the skill too: with `--select agent:analyst` alone the agent is blocked
 plans the skill as NOOP when its version is already published.
 
 In a project that has agents, a skill that no agent references, no plugin
-contains, and no profile includes is a warning (`SST-VAL804`), and a skill that
+contains, and no profile includes is reported as information (`SST-VAL804`), since
+people may use it straight from the catalog; raise it with
+`diagnostics.severity_overrides` to make it a warning. A skill that
 ships scripts when none of the agents that pin it has a `code_execution` tool is
 a warning (`SST-VAL814`). See the [agents guide](agents.md#skills) for
 extensions other projects publish.

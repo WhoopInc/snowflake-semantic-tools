@@ -76,7 +76,9 @@ Global options:
                                   `$SST_LOG_LEVEL`, else `warn`. The libraries
                                   SST runs, such as the Snowflake connector, log
                                   each request at `info`, so `info` shows those.
-                                  Independent of `--verbose`.
+                                  Left unset, a library's warning, such as a
+                                  request it retried, is counted rather than
+                                  printed. Independent of `--verbose`.
   --no-color                      No ANSI color, else `$SST_NO_COLOR`; a non-
                                   empty `$NO_COLOR` does the same. Wins over
                                   `--color`.

@@ -286,6 +286,9 @@ class _WaveRun:
         """
         if self._interrupted or self._lost() is not None:
             return None
+        if passes_through(change):
+            # It writes nothing, so it needs no lock read to be written safely.
+            return self._apply_one(change, self._options)
         try:
             if not self._verify():
                 return None
@@ -351,6 +354,17 @@ class _WaveRun:
         self._outcomes.extend(
             _skipped(change, _rendered_ddl(change)) for change in self._changeset.changes if change.key not in done
         )
+
+
+def passes_through(change: Change) -> bool:
+    """Report whether a change is only reported: a no-op or blocked change with its rendered artifact.
+
+    It still runs in its wave, so what depends on it waits for it and a failure it descends
+    from still skips what follows; but it reads nothing and writes nothing, so it takes no lock
+    read, and the live progress neither counts nor shows it. A change without its rendered
+    artifact is not one: its handler decides, and may fail it.
+    """
+    return change.action in (Action.NOOP, Action.BLOCKED) and change.rendered is not None
 
 
 def lost_lock(holder: str = BROKEN_BY_ANOTHER_RUN) -> Diagnostic:

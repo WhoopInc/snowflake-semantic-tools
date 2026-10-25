@@ -33,7 +33,6 @@ def item_config_diagnostics(
         SST-CFG004: `config:` is not a mapping, or a value is not of its key's type.
         SST-CFG053: a key is not one of the block's settings, or is written with its `+`.
         SST-CFG054: a key is written with no value.
-        SST-CFG055: a key is one only the block root may set.
         SST-CFG008, SST-CFG023, and the other codes `value_problem` reports for a value outside
             its key's choices or bounds.
     """
@@ -43,7 +42,7 @@ def item_config_diagnostics(
         found = type(config).__name__
         return (D("SST-CFG004", origin=origin_of(""), subject=subject, key="config", expected="block", found=found),)
     settings = block_settings(block)
-    allowed = ", ".join(name for name, spec in settings.items() if not spec.root_only)
+    allowed = ", ".join(settings)
     diagnostics: list[Diagnostic] = []
     for raw_key, value in config.items():
         name = str(raw_key)
@@ -52,10 +51,6 @@ def item_config_diagnostics(
         spec = settings.get(name)
         if spec is None:
             diagnostics.append(D("SST-CFG053", origin=origin, subject=subject, key=key, block=block, expected=allowed))
-        elif spec.root_only:
-            diagnostics.append(
-                D("SST-CFG055", origin=origin, subject=subject, key=key, block=block, expected=spec.path)
-            )
         elif value is None:
             diagnostics.append(D("SST-CFG054", origin=origin, subject=subject, key=key))
         else:

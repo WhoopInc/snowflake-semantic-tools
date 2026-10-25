@@ -142,8 +142,7 @@ A skill (in its `SKILL.md` frontmatter), a plugin, and a profile set their own s
 A skill or plugin publishes as an extension only where `bundle_stage` resolves for it, and a
 profile only where `stage` does; `config: {certified: true}` certifies one skill alone. Folder
 routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `coco_desktop_profiles_dir`
-(`SST-CFG041` for one that names none). `skills.+threads` may be set only at the root
-(`SST-CFG055`).
+(`SST-CFG041` for one that names none).
 
 CoCo Desktop reads profiles only from `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, one per account,
 as the signed-in user's roles; that is `+registry_table`'s default, and SST grants nothing, so

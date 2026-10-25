@@ -184,24 +184,27 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "`sst validate`; false reads none, so only `pii_tags` and `meta.sst.governance_tags` mark a column.",
         default="false",
     ),
-    _key("generation", _BLOCK, "How the commands that reach Snowflake pace their work."),
+    _key("session", _BLOCK, "How the commands that reach Snowflake pace their sessions."),
     _key(
-        "generation.threads",
+        "session.threads",
         _I,
         "Sessions `plan`, `validate`, `diff`, `state recover`, `test` and `eval` work on at once, and changes "
-        "`apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes "
-        "`skills.+threads` first, and `test` and `eval` take 1.",
+        "`apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, `test` and `eval` take 1 "
+        "and every other command 4. Profiles always publish one at a time.",
         default=str(DEFAULT_THREADS),
         minimum=1,
         maximum=16,
     ),
     _key(
-        "generation.view_timeout",
+        "session.statement_timeout",
         _I,
         "Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`).",
         default="300",
         minimum=1,
     ),
+    _key("generation", _BLOCK, "Retired: its live keys moved to `session:`."),
+    _removed("generation.threads", "renamed to session.threads"),
+    _removed("generation.view_timeout", "renamed to session.statement_timeout"),
     _removed("generation.publish_via", "SST 1.0 renders DDL directly"),
     _removed("generation.filters_to_instructions", "standalone filter prose always renders into the view"),
     _removed("generation.use_create_or_alter", "SST 1.0 renders DDL directly"),
@@ -242,6 +245,13 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         _B,
         "Run dbt for the deferred target to write its manifest under `state_path` (dbt Core only).",
         default="false",
+    ),
+    _key(
+        "defer.reuse_manifest",
+        _B,
+        "With `auto_compile`, read the deferred manifest as it is when nothing its parse reads changed "
+        "since SST wrote it (SST-DBT035); false parses on every run.",
+        default="true",
     ),
     _key(
         "vars",
@@ -535,16 +545,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Prefix of every version alias; the rest is 12 hex characters of the digest.",
         default=DEFAULT_VERSION_PREFIX,
     ),
-    _key(
-        "skills.+threads",
-        _I,
-        "Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` "
-        "says. Profiles always publish one at a time.",
-        default=str(DEFAULT_THREADS),
-        minimum=1,
-        maximum=16,
-        root_only=True,
-    ),
+    _removed("skills.+threads", "use session.threads, which apply reads too"),
     _removed("skills.+grant_read_to", "access is managed outside SST; SST never issues grants"),
     _removed("skills.+enabled", "a skill publishes only where +bundle_stage resolves for it"),
     _removed(
@@ -638,6 +639,14 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         _B,
         "Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it.",
         default="false",
+    ),
+    _key(
+        "apply.reuse_plan_minutes",
+        _I,
+        "How old, in minutes, a plan `sst plan` saved may be for a bare `sst apply` to apply it rather "
+        "than plan again; 0 always plans again. `--replan` plans again for one run.",
+        default="30",
+        minimum=0,
     ),
     _key(
         "apply.create_schemas",

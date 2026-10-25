@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import replace
 from types import MappingProxyType
+from typing import Any
 
 import pytest
 
@@ -1236,3 +1237,29 @@ def test_each_change_is_a_unit_of_publish_that_says_how_it_ended() -> None:
         ("started", "publish", refused.key, "create"),
         ("finished", "publish", refused.key, False, "create failed"),
     ]
+
+
+def test_a_no_op_is_reported_but_never_counted_shown_or_lock_checked() -> None:
+    written, *unchanged = (rendered(name) for name in ("ALPHA", "BRAVO", "CHARLIE", "DELTA"))
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(True, ("q1",))]
+    reads: list[str] = []
+    verify = port.verify_run_lock
+
+    def counted(*args: Any, **kwargs: Any) -> bool:
+        reads.append("verify")
+        return verify(*args, **kwargs)
+
+    port.verify_run_lock = counted  # type: ignore[method-assign]
+    progress = RecordedProgress()
+    use_case = ApplyArtifacts(
+        port, InMemoryStateStore(), FixedClock(), state_table=rendered("STATE").target, progress=progress
+    )
+    changes = (change(written), *(change(item, Action.NOOP) for item in unchanged))
+    result = use_case.run(changeset(*changes), state(), ApplyOptions(parallelism=2))
+    assert ("expect", "publish", 1) in progress.events
+    assert [event[2] for event in progress.units()] == [written.key, written.key]
+    assert len(reads) == 1
+    assert sorted((item.key, item.status.value) for item in result.outcomes) == sorted(
+        [(written.key, "applied"), *((item.key, "skipped") for item in unchanged)]
+    )

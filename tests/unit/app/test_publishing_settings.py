@@ -141,11 +141,6 @@ def test_a_profile_no_stage_reaches_is_checked_and_does_not_publish() -> None:
     assert [item.artifact_key for item in result.compiled] == ["coco_desktop_profile:operator"]
 
 
-def test_a_root_only_setting_is_resolved_but_never_reported_by_an_item() -> None:
-    found = _extensions(_compiled({"skills": {"+bundle_stage": "B", "+threads": 2}}, skill("close")))
-    assert "threads" not in {item.key for item in found["skill:close"].settings}
-
-
 def _unnamed_warehouse() -> TargetIdentity:
     """A target whose warehouse is no unquoted identifier, so `{{ target.warehouse }}` renders to none."""
     return replace(dev_target(), warehouse="my wh")

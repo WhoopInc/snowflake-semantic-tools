@@ -68,7 +68,7 @@ from snowflake_semantic_tools.cli.globals import (
     GlobalOptions,
     command_global_options,
 )
-from snowflake_semantic_tools.cli.logs import configure_logging
+from snowflake_semantic_tools.cli.logs import configure_logging, hidden_warnings
 from snowflake_semantic_tools.cli.output import (
     RenderPolicy,
     first_next_step,
@@ -251,7 +251,7 @@ class _Run:
             self.refusals(**{key: value for key, value in {**self.given, **supplied}.items() if key in names})
         policy = _render_policy(options)
         use_render_policy(policy)
-        configure_logging(options.log_level)
+        configure_logging(options.log_level, given=options.log_level_given)
         files = self._files()
         resolve_invocation(
             project_dir=options.project_dir,
@@ -286,6 +286,7 @@ class _Run:
         result = dataclasses.replace(result, diagnostics=diagnostics, exit_code=exit_code)
         strict = run_is_strict(self.name, files, self.given.get("strict"))
         _report(self.name, options, _with_baseline(result, baseline, files, strict=strict))
+        _note_hidden_warnings(policy)
 
     def _files(self) -> ProjectPaths:
         """Resolve the project's files, the target its configuration resolves against, and its deferral.
@@ -322,6 +323,18 @@ class _Run:
         arguments = {key: value for key, value in self.given.items() if key in self.wanted}
         arguments.update({key: value for key, value in supplied.items() if key in self.wanted})
         return arguments
+
+
+def _note_hidden_warnings(policy: RenderPolicy) -> None:
+    """Say on stderr how many library warnings the run held back, when it held any back.
+
+    Only a run that shows progress says it: a JSON or agent envelope, or `--quiet`, prints
+    nothing beyond what it was asked for.
+    """
+    count = hidden_warnings()
+    if count and policy.progress:
+        noun = "warning" if count == 1 else "warnings"
+        click.echo(f"  {count} library {noun} hidden (--log-level warn shows them)", err=True)
 
 
 def _detected_output(options: GlobalOptions, params: Mapping[str, Any]) -> GlobalOptions:

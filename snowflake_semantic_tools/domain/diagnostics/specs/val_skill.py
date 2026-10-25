@@ -58,7 +58,7 @@ SPECS: tuple[ErrorSpec, ...] = (
     ),
     spec(
         "SST-VAL804",
-        Severity.WARNING,
+        Severity.INFO,
         "Extension version referenced by no agent",
         "{artifact}: version {value} is referenced by no agent",
         "reference it, or stop publishing it",
@@ -67,8 +67,9 @@ SPECS: tuple[ErrorSpec, ...] = (
             "and included in no plugin, CoCo Desktop profile or the shared layer"
         ),
         note=(
-            "A skill people use directly from the catalog has a consumer SST cannot see; baseline the "
-            "warning, or demote it with `diagnostics.severity_overrides`."
+            "A skill people use directly from the catalog has a consumer SST cannot see, so this is "
+            "information, not a fault; raise it with `diagnostics.severity_overrides` to make an "
+            "unconsumed extension a warning."
         ),
     ),
     spec(

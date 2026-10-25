@@ -146,7 +146,7 @@ def _parse_profile(
         SST-PRS118: a sample question is not a mapping with a string `question`.
         SST-PRS023, SST-PRS024: as `passthrough_diagnostics` reports `spec.passthrough`.
         SST-PRS004, SST-PRS022: as `unknown_block_keys` reports a key a block does not model.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the profile's `config:` block.
         SST-REF008: a field published as written holds a template: the `comment`,
             `display.display_name`, a subagent's `display_name` or `description`, or a sample

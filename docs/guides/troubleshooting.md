@@ -230,6 +230,19 @@ the skill. Check the validation output for the file:
 - A pointer in the row does not resolve. `apply` checks every pointer after the
   write and reports the one that failed.
 
+## A bare `apply` plans the whole project again
+
+A bare `sst apply`, with no `--plan`, applies the plan `sst plan` saved in
+`sst_target/plan.json` when it may: no flag shapes the plan, the saved plan was
+made without one, for this target, from the manifest `sst compile` wrote, at most
+`apply.reuse_plan_minutes` (30) ago. It then plans again only the changes the
+saved plan writes, and says `using the plan sst plan saved Nm ago`. Otherwise it
+says `planning (<reason>)` and plans everything, as it did before. A saved plan
+that applied is removed, so the next bare apply plans afresh. `--replan` always
+plans afresh; `apply.reuse_plan_minutes: 0` never reuses. An object the saved plan
+left unchanged is not read again, so one changed out of band in that window is
+found by the next plan, not this apply.
+
 ## `apply` refuses the plan
 
 `sst apply --plan <file>` plans afresh and applies the saved plan only if the two
@@ -413,7 +426,7 @@ a table exists with one `INFORMATION_SCHEMA` read per schema. Nothing is reused
 from one command to the next, and `apply` reads afresh before it writes.
 
 A plan reads on 4 sessions at once by default, as `apply` applies. `--threads`
-(else `$SST_THREADS`, else `generation.threads`) sets how many it runs the
+(else `$SST_THREADS`, else `session.threads`) sets how many it runs the
 validation checks, the listings and the reads of each listed object, and the
 preflight reads on; `--threads 1` reads on one session at a time. The plan, its
 diagnostics and the saved plan file are the same for any count.
@@ -429,7 +442,7 @@ naming the runs still in flight at most once a minute. What bounds it:
   partial status adds a wait of up to 3 minutes inside that bound.
 - **Per eval**, `1 + retry` attempts; `evals.+retry` defaults to 0.
 - **Per suite**, runs go `--threads` at a time (else `$SST_THREADS`, else
-  `generation.threads`, else 1), or `concurrency` at a time for evals that set
+  `session.threads`, else 1), or `concurrency` at a time for evals that set
   it, so a suite of ten evals at the defaults takes ten runs back to back.
 
 A run that reaches the 20-minute bound fails as `SST-APL023`, naming the last

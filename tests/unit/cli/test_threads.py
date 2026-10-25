@@ -166,7 +166,8 @@ def test_plan_threads_come_from_the_environment_then_the_config(monkeypatch: pyt
     one, default_sessions = _plan(monkeypatch, project)
     from_env, env_sessions = _plan(monkeypatch, project, env={"SST_THREADS": "3"})
     config = project / "sst_config.yml"
-    config.write_text(config.read_text(encoding="utf-8") + "generation:\n  threads: 2\n", encoding="utf-8")
+    text = config.read_text(encoding="utf-8")
+    config.write_text(text.replace("session:\n  threads: 4\n", "session:\n  threads: 2\n"), encoding="utf-8")
     compile_project(project)
     from_config, config_sessions = _plan(monkeypatch, project)
     flag_wins, flag_sessions = _plan(monkeypatch, project, "--threads", "1", env={"SST_THREADS": "4"})
@@ -242,7 +243,7 @@ def test_test_takes_threads_from_the_flag_or_the_environment_within_one_to_sixte
     assert [item["code"] for item in json.loads(refused.output)["diagnostics"]] == ["SST-CFG004"]
 
 
-def test_threads_resolve_from_the_flag_then_generation_threads(tmp_path: Path) -> None:
+def test_threads_resolve_from_the_flag_then_session_threads(tmp_path: Path) -> None:
     (tmp_path / "sst_config.yml").write_text("validation:\n  snowflake_syntax_check: false\n", encoding="utf-8")
     paths = project_paths(tmp_path)
     # Plan, validate and apply share one default; `test` asks for 1.
@@ -250,13 +251,7 @@ def test_threads_resolve_from_the_flag_then_generation_threads(tmp_path: Path) -
     assert threads_setting(paths, None, default=1) == 1
     assert (threads_setting(paths, 3), apply_parallelism(paths, 3)) == (3, 3)
     (tmp_path / "sst_config.yml").write_text(
-        "validation:\n  snowflake_syntax_check: false\nskills:\n  +threads: 6\n", encoding="utf-8"
-    )
-    paths = project_paths(tmp_path)
-    assert (threads_setting(paths, None), apply_parallelism(paths)) == (DEFAULT_THREADS, 6)
-    (tmp_path / "sst_config.yml").write_text(
-        "validation:\n  snowflake_syntax_check: false\ngeneration:\n  threads: 5\nskills:\n  +threads: 6\n",
-        encoding="utf-8",
+        "validation:\n  snowflake_syntax_check: false\nsession:\n  threads: 5\n", encoding="utf-8"
     )
     paths = project_paths(tmp_path)
     assert (threads_setting(paths, None), apply_parallelism(paths)) == (5, 5)

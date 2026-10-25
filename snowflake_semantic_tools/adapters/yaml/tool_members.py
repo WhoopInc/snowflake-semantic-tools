@@ -119,7 +119,7 @@ def parse_member(source: ToolSource, path: NodePath, value: object) -> tuple[Too
         SST-PRS003: `on:`, `relations`, `secrets`, `signature`, `columns` or `meta` has the wrong
             type.
         SST-PRS022, SST-PRS004, SST-PRS126: the entry writes a key a member does not model.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports its `config:` block.
         SST-LOD004, SST-REF033, SST-REF003: the template in `on:` does not parse.
         SST-VAL608: `on:` is not one single-argument `ref()` call.

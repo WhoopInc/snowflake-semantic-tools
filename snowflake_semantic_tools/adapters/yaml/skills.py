@@ -154,7 +154,7 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
         SST-LOD001: when the frontmatter of `SKILL.md` is not valid YAML.
         SST-LOD002: when the frontmatter is not a mapping.
         SST-PRS034: when the frontmatter has no `name` or no `description`, once for each.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the frontmatter's `config:` block.
     """
     name = folder.name
@@ -324,7 +324,7 @@ def _load_plugin(project_dir: Path, folder: Path, diagnostics: list[Diagnostic])
         Every code `member_names` lists, for a `skills` entry that is not one
             `{{ skill('<name>') }}` call.
         SST-PRS002: when there is no non-blank `description`.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports the manifest's `config:` block.
     """
     name = folder.name

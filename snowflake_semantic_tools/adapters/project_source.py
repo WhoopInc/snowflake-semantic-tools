@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, parse_project, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
+from snowflake_semantic_tools.adapters.dbt.parse_stamp import parse_digest, stamped_at, write_stamp
 from snowflake_semantic_tools.adapters.dbt.profiles import (
     declared_targets,
     load_profile_target,
@@ -31,7 +33,8 @@ from snowflake_semantic_tools.adapters.dbt.project import (
     stale_models,
     target_path,
 )
-from snowflake_semantic_tools.adapters.deferral import resolve_deferral
+from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
+from snowflake_semantic_tools.adapters.deferral import Deferral, resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.paths import walk_refusal
@@ -49,7 +52,7 @@ from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel
 from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import (
@@ -83,7 +86,8 @@ class YamlProjectSource:
     Satisfies `domain.ports.semantic_view_source.SemanticViewSource` structurally;
     it does not import the Protocol, which is what keeps the dependency pointing
     one way. `allow_stale_manifest` reports a stale manifest SST did not write (SST-DBT005) as a
-    warning instead of an error, as `--allow-stale-manifest` asks.
+    warning instead of an error, as `--allow-stale-manifest` asks. `dbt_cache` is shared by
+    every source of one run, so each `dbt parse` runs and each manifest is decoded once.
     """
 
     def __init__(
@@ -97,9 +101,11 @@ class YamlProjectSource:
         dbt_runner: DbtRunner = subprocess_runner,
         load_cache: LoadCache | None = None,
         allow_stale_manifest: bool = False,
+        dbt_cache: DbtCache | None = None,
     ) -> None:
         self._files = files
         self._database = database
+        self._dbt_cache = dbt_cache or DbtCache()
         self._project_dir = files.project_dir
         self._target_name = target_name
         self._manifest_path = manifest_path
@@ -111,6 +117,7 @@ class YamlProjectSource:
         self._parsed = False
         self._parse_warnings: tuple[Diagnostic, ...] = ()
         self._deferred: DbtCatalog | None = None
+        self._defer_notes: tuple[Diagnostic, ...] = ()
 
     @property
     def project_dir(self) -> Path:
@@ -140,15 +147,20 @@ class YamlProjectSource:
         settings = dbt_settings(self._config_tree())
         if self._manifest_path is None and self._invoke_dbt and settings.invoke and not self._parsed:
             check_model_paths(self._project_dir, read_plain_yaml)
-            self._parse_warnings = parse_project(
-                self._project_dir,
-                self._target_name,
-                path,
-                runner=self._runner,
-                auto_compile=self._auto_compile(),
-                profiles_dir=self._files.profiles_directory(),
-                command=settings.command,
-                installation_cache=self._installation_cache(),
+            profiles_dir = self._files.profiles_directory()
+            key = (self._project_dir.resolve(), self._target_name, path.resolve(), None, settings.command)
+            self._parse_warnings = self._dbt_cache.parse(
+                (*key, profiles_dir, id(self._runner)),
+                lambda: parse_project(
+                    self._project_dir,
+                    self._target_name,
+                    path,
+                    runner=self._runner,
+                    auto_compile=self._auto_compile(),
+                    profiles_dir=profiles_dir,
+                    command=settings.command,
+                    installation_cache=self._installation_cache(),
+                ),
             )
             self._parsed = True
         return path
@@ -176,7 +188,7 @@ class YamlProjectSource:
             ProjectError: dbt fails, or a manifest is absent, unreadable, or of another schema;
                 or the deferred target is not declared (SST-CFG010).
         """
-        return self.deferred(self._read_catalog(self._parsed_manifest()))
+        return self.deferred(self.read_catalog(self._parsed_manifest()))
 
     def deferred(self, catalog: DbtCatalog) -> DbtCatalog:
         """Return `catalog` with its relations resolved to the deferred target's; itself without a deferral.
@@ -192,26 +204,61 @@ class YamlProjectSource:
         if deferral is None:
             return catalog
         if self._deferred is None:
-            if deferral.produce and self._invoke_dbt and dbt_settings(self._config_tree()).invoke:
-                parse_project(
-                    self._project_dir,
-                    deferral.target,
-                    deferral.manifest,
-                    runner=self._runner,
-                    auto_compile=True,
-                    profiles_dir=self._files.profiles_directory(),
-                    target_path=deferral.state_dir,
-                    command=dbt_settings(self._config_tree()).command,
-                    installation_cache=self._installation_cache(),
+            settings = dbt_settings(self._config_tree())
+            if deferral.produce and self._invoke_dbt and settings.invoke:
+                profiles_dir = self._files.profiles_directory()
+                key = (self._project_dir.resolve(), deferral.target, deferral.manifest.resolve())
+                self._dbt_cache.parse(
+                    (*key, deferral.state_dir, settings.command, profiles_dir, id(self._runner)),
+                    lambda: self._produce_deferred(deferral, profiles_dir, settings.command),
                 )
-            self._deferred = self._read_catalog(deferral.manifest)
+                self._defer_notes = self._dbt_cache.notes(key)
+            self._deferred = self.read_catalog(deferral.manifest)
         return defer_relations(catalog, self._deferred)
 
-    def _read_catalog(self, path: Path) -> DbtCatalog:
-        return load_manifest_catalog(
+    def _produce_deferred(self, deferral: Deferral, profiles_dir: Path, command: str) -> tuple[Diagnostic, ...]:
+        """Write the deferred target's manifest, or reuse it when nothing its parse reads changed.
+
+        A reused manifest is noted in the run cache under the deferral's key, so every source
+        of the run reports it once. `defer.reuse_manifest: false` parses every time.
+
+        Diagnostics:
+            SST-DBT035: the manifest was reused; noted, not returned.
+        """
+        digest = parse_digest(self._project_dir, profiles_dir, deferral.target, command)
+        reuse = config_bool(config_block(self._config_tree().get("defer")).get("reuse_manifest")) is not False
+        written = stamped_at(deferral.state_dir, digest) if reuse else None
+        key = (self._project_dir.resolve(), deferral.target, deferral.manifest.resolve())
+        if written is not None:
+            note = D("SST-DBT035", target=deferral.target, detail=_ago(written))
+            self._dbt_cache.note(key, note)
+            return ()
+        warnings = parse_project(
+            self._project_dir,
+            deferral.target,
+            deferral.manifest,
+            runner=self._runner,
+            auto_compile=True,
+            profiles_dir=profiles_dir,
+            target_path=deferral.state_dir,
+            command=command,
+            installation_cache=self._installation_cache(),
+        )
+        write_stamp(deferral.state_dir, digest)
+        return warnings
+
+    def read_catalog(self, path: Path) -> DbtCatalog:
+        """Decode the manifest at `path`, once per run while it is unchanged.
+
+        Raises:
+            ProjectError: as `load_manifest_catalog` raises.
+        """
+        allow = self._files.allow_unsupported_manifest_schema
+        versions = dbt_settings(self._config_tree()).manifest_schema_versions
+        return self._dbt_cache.catalog(
             path,
-            allow_unsupported_schema=self._files.allow_unsupported_manifest_schema,
-            supported_versions=dbt_settings(self._config_tree()).manifest_schema_versions,
+            (allow, versions),
+            lambda: load_manifest_catalog(path, allow_unsupported_schema=allow, supported_versions=versions),
         )
 
     def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
@@ -229,7 +276,7 @@ class YamlProjectSource:
             SST-DBT005: SST did not write the manifest and a model file changed after it was
                 written; a warning under `--allow-stale-manifest`.
         """
-        found = [*self._parse_warnings, *catalog.diagnostics, *empty_catalog(catalog)]
+        found = [*self._parse_warnings, *self._defer_notes, *catalog.diagnostics, *empty_catalog(catalog)]
         if not self._parsed and (self._project_dir / "dbt_project.yml").is_file():
             paths, unreadable = model_paths(self._project_dir, read_plain_yaml)
             if self._files.model_paths is not None:
@@ -382,6 +429,7 @@ class YamlProjectInputs(ProjectInputs):
         dbt_runner: DbtRunner = subprocess_runner,
         load_cache: LoadCache | None = None,
         allow_stale_manifest: bool = False,
+        dbt_cache: DbtCache | None = None,
     ) -> None:
         self._files = files
         self._project_dir = files.project_dir
@@ -397,6 +445,7 @@ class YamlProjectInputs(ProjectInputs):
             dbt_runner=dbt_runner,
             load_cache=self._load_cache,
             allow_stale_manifest=allow_stale_manifest,
+            dbt_cache=dbt_cache,
         )
         self._git_sha = git_sha
         self._git_dirty = git_dirty
@@ -486,6 +535,19 @@ class YamlProjectInputs(ProjectInputs):
             dbt_graph=catalog.nodes,
         )
 
+    def recorded_inputs(self) -> tuple[str, dict[str, str]]:
+        """Return the `sst_config.yml` checksum and the file checksums the manifest records, without dbt.
+
+        They are what `manifest_sources` records of the project's own files, read as it reads
+        them, so a run can tell a stale compiled manifest before dbt parses the project.
+        """
+        config = self.config()
+        checksum, _ = self._config_sources()
+        files = _file_checksums(
+            self._files, config.tree, self._load_cache, refused=directory_refused(config.diagnostics)
+        )
+        return checksum, files
+
     def _selected_target(self) -> str:
         """Return the `profiles.yml` target this source compiles for, by name; empty when none resolves."""
         try:
@@ -502,13 +564,7 @@ class YamlProjectInputs(ProjectInputs):
             return "", DbtCatalog(schema_version="", dbt_version=None, project_name=None, models=()), ""
         dbt_path = self._source.manifest_file()
         name = dbt_project_name(self._project_dir)
-        catalog = self._source.deferred(
-            load_manifest_catalog(
-                dbt_path,
-                allow_unsupported_schema=self._files.allow_unsupported_manifest_schema,
-                supported_versions=dbt_settings(self.config().tree).manifest_schema_versions,
-            )
-        )
+        catalog = self._source.deferred(self._source.read_catalog(dbt_path))
         try:
             recorded = dbt_path.resolve().relative_to(self._project_dir.resolve()).as_posix()
         except ValueError:
@@ -526,6 +582,14 @@ class YamlProjectInputs(ProjectInputs):
             return "", "semantic_models"
         semantic_path = configured_dir(self.config().tree, "semantic_models_dir", "semantic_models")
         return sha256(canonical_json(config_value)).hexdigest(), semantic_path
+
+
+def _ago(when: datetime) -> str:
+    """Say how long ago `when` was, to the minute: `just now`, `12m ago`, or `3h ago`."""
+    minutes = int((datetime.now(UTC) - when).total_seconds() // 60)
+    if minutes < 1:
+        return "just now"
+    return f"{minutes}m ago" if minutes < 120 else f"{minutes // 60}h ago"
 
 
 def _dbt_projection(catalog: DbtCatalog) -> list[dict[str, object]]:

@@ -72,11 +72,13 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-MAN009",
         Severity.ERROR,
         "Compiled manifest is stale",
-        "compiled SST manifest is stale; run sst compile before {command}",
+        "compiled SST manifest is stale ({reason}); run sst compile before {command}",
         "run sst compile, then re-run the command",
         condition=(
             "the project no longer compiles to the manifest `sst compile` wrote, so plan, apply, "
-            "`sst test`, or a published `sst eval` refuses to start from it; the command exits 4"
+            "`sst test`, or a published `sst eval` refuses to start from it; the command exits 4. "
+            "A changed SST file, `sst_config.yml` or SST version is found before dbt runs, and "
+            "named; any other change is found once the project compiles"
         ),
     ),
     spec(

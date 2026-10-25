@@ -495,8 +495,6 @@ def _type(key: ConfigKey) -> str:
         label += f", at least {key.minimum}"
     elif key.maximum is not None:
         label += f", at most {key.maximum}"
-    if key.root_only:
-        label += ", root only"
     return label
 
 

@@ -100,3 +100,25 @@ def type_family(value: str) -> str:
     match = _BASE.match(text)
     assert match is not None
     return _FAMILIES.get(" ".join(match.group().split()), "other")
+
+
+# The length Snowflake gives a text column declared without one, which DESCRIBE reports.
+MAX_TEXT_LENGTH = 16_777_216
+_LENGTH = re.compile(r"\(\s*(\d{1,9})\s*\)\s*$")
+
+
+def text_length(value: str) -> int | None:
+    """Return the length a text type bounds its values to; None when it bounds them to none.
+
+    A text type written without a length, or with Snowflake's maximum, bounds nothing that a
+    sample value could exceed; any other type has no text length.
+
+    Raises:
+        TypeError: `value` is not a `str`.
+        ValueError: `value` is not a Snowflake data type.
+    """
+    if type_family(value) != "text":
+        return None
+    match = _LENGTH.search(value.strip())
+    length = int(match.group(1)) if match is not None else None
+    return None if length is None or length >= MAX_TEXT_LENGTH else length

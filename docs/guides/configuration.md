@@ -270,16 +270,11 @@ nothing sets takes the default.
 - A key written with no value, `null` or nothing after the colon, is an error
   wherever it is written, under `config:` or as a `+` key in this file
   (`SST-CFG054`). To inherit, delete the key.
-- A key the schema marks root-only may be set only at the root of its block;
-  in a folder route or under `config:` it is an error (`SST-CFG055`). Only
-  `skills.+threads`, which paces the whole apply, is root-only; the
-  configuration reference marks it.
 - A setting's `{{ target.* }}` templates are rendered after it resolves.
 
 `sst list --long` prints each artifact's settings with where each came from:
 `config`, `route:<folder>`, `root`, or `default`. With `--output json`, each
-listed item carries them under `settings`. A root-only key is the run's, not an
-artifact's, so no artifact lists it.
+listed item carries them under `settings`.
 
 ## Blocks
 
@@ -372,16 +367,16 @@ when it is set, it must match `dbt_project.yml`'s `profile:`.
 | `SST_ASK_THEME` | `sst ask --theme` |
 
 A flag on the command line wins over its variable, and the variable over the
-configuration key it stands for, such as `generation.threads` or
+configuration key it stands for, such as `session.threads` or
 `validation.strict`. A boolean variable takes `1`, `true`, `yes`, or `on`, or
 `0`, `false`, `no`, or `off`, in any case; any other value, like a value of the
 wrong type in any variable, stops the run before it starts with exit code 4
 (`SST-CFG004`), never a silent default. The same value given as a flag is a
 usage error, exit code 3.
 
-`--threads` (else `$SST_THREADS`, else `generation.threads`) is how many Snowflake
+`--threads` (else `$SST_THREADS`, else `session.threads`) is how many Snowflake
 sessions `plan`, `validate` and `apply` work on at once. Unset, all three take the
-same default, 4; apply's changes take `skills.+threads` first. `--threads 1` works
+same default, 4. `--threads 1` works
 on one session at a time. The plan, its diagnostics and the saved plan file are
 the same for any count. `sst test` and `sst eval` default to 1.
 

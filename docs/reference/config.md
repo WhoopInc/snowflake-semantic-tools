@@ -77,14 +77,18 @@ Which Snowflake column tags make a column sensitive, read only when `read_column
 | `governance.sensitive_tags` | list | `[]` | Tags that make a column sensitive, each `<database>.<schema>.<tag>`, or `<database>.<schema>.*` for every tag in that schema (SST-CFG057); an unquoted part matches without case. A column carrying one, set on it or inherited, by any apply method, is never sampled and its values reach no prompt. |
 | `governance.read_column_tags` | boolean | `false` | Read each relation's column tags (`TAG_REFERENCES_ALL_COLUMNS`) in `sst enrich` and the connected `sst validate`; false reads none, so only `pii_tags` and `meta.sst.governance_tags` mark a column. |
 
-## generation
+## session
 
-How the commands that reach Snowflake pace their work.
+How the commands that reach Snowflake pace their sessions.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `generation.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate`, `diff`, `state recover`, `test` and `eval` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, applying takes `skills.+threads` first, and `test` and `eval` take 1. |
-| `generation.view_timeout` | integer, at least 1 | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
+| `session.threads` | integer, 1 to 16 | `4` | Sessions `plan`, `validate`, `diff`, `state recover`, `test` and `eval` work on at once, and changes `apply` applies at once, unless `--threads` or `$SST_THREADS` says. Unset, `test` and `eval` take 1 and every other command 4. Profiles always publish one at a time. |
+| `session.statement_timeout` | integer, at least 1 | `300` | Seconds one statement of a plan or apply session may run (`STATEMENT_TIMEOUT_IN_SECONDS`). |
+
+## generation
+
+Retired: its live keys moved to `session:`.
 
 ## dbt
 
@@ -105,6 +109,7 @@ Resolve dbt objects to another target's relations while publishing to `--target`
 | `defer.target` | string |  | The `profiles.yml` target relations resolve to; `--defer-target` overrides it. |
 | `defer.state_path` | string | `sst_target/defer/<target>` | Directory holding that target's dbt `manifest.json`. |
 | `defer.auto_compile` | boolean | `false` | Run dbt for the deferred target to write its manifest under `state_path` (dbt Core only). |
+| `defer.reuse_manifest` | boolean | `true` | With `auto_compile`, read the deferred manifest as it is when nothing its parse reads changed since SST wrote it (SST-DBT035); false parses on every run. |
 
 ## vars
 
@@ -233,7 +238,6 @@ Defaults for skills, overridable per folder and by a skill's own `config:`. A sk
 | `skills.+bundle_stage` | identifier or three-part name |  | Internal stage that `ADD VERSION` reads from; created when absent. Unset, the skill does not publish. |
 | `skills.+certified` | boolean | `false` | Tag each new skill version `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'`. |
 | `skills.+version_prefix` | string | `SST_` | Prefix of every version alias; the rest is 12 hex characters of the digest. |
-| `skills.+threads` | integer, 1 to 16, root only | `4` | Changes `apply` applies at once when neither `--threads`, `$SST_THREADS`, nor `generation.threads` says. Profiles always publish one at a time. |
 | `skills.<route>` | block |  | Folder route: overrides for the skills under that directory. |
 
 ## plugins
@@ -285,6 +289,7 @@ Stages apply uploads through.
 | `apply.eval_config_stage` | block |  | Stage for eval run configs, in each agent's schema. |
 | `apply.eval_config_stage.stage` | string | `EVAL_CONFIGS` | Stage name. |
 | `apply.fail_fast` | boolean | `false` | Stop at the first failure instead of continuing; `--fail-fast` and `--no-fail-fast` override it. |
+| `apply.reuse_plan_minutes` | integer, at least 0 | `30` | How old, in minutes, a plan `sst plan` saved may be for a bare `sst apply` to apply it rather than plan again; 0 always plans again. `--replan` plans again for one run. |
 | `apply.create_schemas` | boolean | `true` | Create each absent schema the plan publishes into, as dbt does, `CREATE SCHEMA IF NOT EXISTS`, before anything else; false makes an absent schema SST-PLN010. Plan reads nothing in one it creates, so everything published there, skills, profiles and evals among them, plans as a create. Never a database, and never dropped. |
 
 ## ask
@@ -336,6 +341,8 @@ as though it still does.
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.threads` | renamed to session.threads | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `generation.view_timeout` | renamed to session.statement_timeout | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.publish_via` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.filters_to_instructions` | standalone filter prose always renders into the view | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `generation.use_create_or_alter` | SST 1.0 renders DDL directly | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -349,6 +356,7 @@ as though it still does.
 | `evals.+enabled` | omit the evals instead | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `evals.+database` | eval objects resolve to the agent's schema | [`SST-CFG015`](error-codes.md#sst-cfg015) |
 | `evals.+schema` | eval objects resolve to the agent's schema | [`SST-CFG015`](error-codes.md#sst-cfg015) |
+| `skills.+threads` | use session.threads, which apply reads too | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.+grant_read_to` | access is managed outside SST; SST never issues grants | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.+enabled` | a skill publishes only where +bundle_stage resolves for it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.catalog` | set +bundle_stage, +database and +schema on skills: and plugins: themselves | [`SST-CFG042`](error-codes.md#sst-cfg042) |

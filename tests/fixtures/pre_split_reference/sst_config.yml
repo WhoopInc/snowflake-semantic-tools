@@ -247,7 +247,6 @@ skills:
   # reference a skill with skill() or plugin() are pinned to its current alias.
   +version_prefix: "SST_"
 
-  +threads: 4
 
   # Extensions this project consumes but does not publish. `{{ extension('<name>') }}`
   # resolves an entry's `fqn:`, or default_prefix plus the UPPER_SNAKE name.
@@ -299,3 +298,7 @@ apply:
     stage: AGENT_SPECS_SSE
   eval_config_stage:
     stage: EVAL_CONFIGS
+
+# How the commands that reach Snowflake pace their sessions.
+session:
+  threads: 4

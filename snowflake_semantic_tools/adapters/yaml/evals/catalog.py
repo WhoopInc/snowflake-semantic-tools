@@ -124,7 +124,7 @@ def load_eval_catalog(
         SST-PRS004: a custom metric sets a key SST does not read.
         SST-PRS013: a config's accepted status, or a `config.metrics` name, is not an accepted value.
         SST-PRS126: a config writes `agent_version`, or a `run:` setting, outside `config:`.
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008: as `item_config_diagnostics`
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008: as `item_config_diagnostics`
             reports a config's `config:` block.
         SST-PRS018: a question, an expected invocation, or a metric entry has the wrong type.
         SST-PRS019: a boolean field is not a boolean.

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.config_schema import (
-    CONFIG_SCHEMA,
     KeyKind,
     Setting,
     block_settings,
@@ -17,7 +14,6 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     with_defaults,
 )
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
-from snowflake_semantic_tools.domain.render.reference_docs import render_config
 from snowflake_semantic_tools.domain.state.manifest import ArtifactEntry
 from snowflake_semantic_tools.domain.validate.config import validate_config
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import view_config_diagnostics
@@ -107,16 +103,6 @@ def test_a_config_block_is_checked_key_by_key_with_the_plus_keys_rules() -> None
     assert _item({"max_staleness": 600, "enabled": False, "tags": []}, "semantic_views") == []
 
 
-def test_a_root_only_key_is_refused_below_the_root_and_left_out_of_the_allowed_keys() -> None:
-    assert [item.code for item in validate_config({"skills": {"+threads": 2, "ops": {"+threads": 3}}})] == [
-        "SST-CFG055"
-    ]
-    [found] = item_config_diagnostics("skills", {"threads": 2}, subject="skill:a", origin_of=lambda key: ORIGIN)
-    assert found.code == "SST-CFG055"
-    [unknown] = item_config_diagnostics("skills", {"nope": 1}, subject="skill:a", origin_of=lambda key: ORIGIN)
-    assert "threads" not in str(unknown.suggestion) and "bundle_stage" in str(unknown.suggestion)
-
-
 def test_a_null_plus_key_is_an_error_wherever_it_is_written() -> None:
     found = validate_config(
         {"semantic_views": {"+enabled": None, "core": {"+schema": None}}, "state": {"+table": None}}
@@ -153,13 +139,6 @@ def test_a_views_config_keys_are_placed_where_they_are_written_else_at_the_view(
         ("SST-CFG004", "semantic_view:unplaced", Origin("views.yml", 9, 1)),
         ("SST-CFG054", "semantic_view:4", Origin("views.yml", None, None)),
     ]
-
-
-def test_the_reference_marks_a_root_only_key() -> None:
-    [threads] = [key for key in CONFIG_SCHEMA if key.path == "skills.+threads"]
-    assert threads.root_only
-    assert "root only" in render_config((threads,))
-    assert "root only" not in render_config((replace(threads, root_only=False),))
 
 
 def test_the_manifest_records_an_artifacts_settings_and_refuses_a_malformed_block() -> None:
@@ -207,7 +186,7 @@ def test_the_chain_is_checked_for_every_routed_type_and_every_kind_of_key() -> N
 
 @pytest.mark.parametrize(
     ("block", "key"),
-    [(block, key) for block in ROUTED_BLOCKS for key, spec in block_settings(block).items() if not spec.root_only],
+    [(block, key) for block in ROUTED_BLOCKS for key in block_settings(block)],
 )
 def test_every_routed_key_resolves_item_then_closest_route_then_root_then_built_in(block: str, key: str) -> None:
     root, outer, inner, own = _SAMPLES[block_settings(block)[key].kind]
@@ -234,27 +213,6 @@ def test_every_routed_key_resolves_item_then_closest_route_then_root_then_built_
     ]
     assert [item.code for item in validate_config({block: {f"+{key}": None}})] == ["SST-CFG054"]
     assert [item.code for item in validate_config({block: {"outer": {f"+{key}": None}}})] == ["SST-CFG054"]
-
-
-@pytest.mark.parametrize(
-    ("block", "key"),
-    [(block, key) for block in ROUTED_BLOCKS for key, spec in block_settings(block).items() if spec.root_only],
-)
-def test_every_root_only_key_is_refused_in_a_route_and_in_an_items_config(block: str, key: str) -> None:
-    root, _, _, own = _SAMPLES[block_settings(block)[key].kind]
-    assert [item.code for item in validate_config({block: {"outer": {f"+{key}": root}}})] == ["SST-CFG055"]
-    assert [item.code for item in validate_config({block: {"outer": {"inner": {f"+{key}": root}}}})] == ["SST-CFG055"]
-    assert [item.code for item in item_config_diagnostics(block, {key: own}, subject="x", origin_of=_at)] == [
-        "SST-CFG055"
-    ]
-    assert validate_config({block: {f"+{key}": root}}) == ()
-
-
-def test_the_root_only_keys_are_exactly_the_run_wide_ones() -> None:
-    root_only = [
-        f"{block}.+{key}" for block in ROUTED_BLOCKS for key, spec in block_settings(block).items() if spec.root_only
-    ]
-    assert root_only == ["skills.+threads"]
 
 
 def _at(key: str) -> Origin:

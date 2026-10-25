@@ -33,7 +33,7 @@ from snowflake_semantic_tools.cli.render.progress import active_display
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.settings import threads_setting
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, current_manifest
+from snowflake_semantic_tools.cli.wiring.manifest import compiled_manifest, current_manifest, refuse_stale_inputs
 from snowflake_semantic_tools.cli.wiring.project import connect, open_connector, project_inputs, state_store
 from snowflake_semantic_tools.cli.wiring.selection import narrowed, noted
 from snowflake_semantic_tools.domain.diagnostics import D
@@ -67,6 +67,7 @@ def test_command(
     probe fails; 4 when the selection compiles nothing to probe, or the compiled manifest is
     missing or stale; and 5 when Snowflake cannot be reached.
     """
+    refuse_stale_inputs(paths, target_name, manifest_path, before="test")
     compiled = compiling.compile_result(paths, target_name, manifest_path)
     if not compiled.success:
         return CommandResult(ERROR, compiled.diagnostics)

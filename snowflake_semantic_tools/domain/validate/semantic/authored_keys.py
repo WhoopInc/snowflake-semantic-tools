@@ -162,7 +162,7 @@ def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, .
     checked too. Each key is placed where it is written, else at the view.
 
     Diagnostics:
-        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG055, SST-CFG008, SST-CFG023: as
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008, SST-CFG023: as
             `item_config_diagnostics` reports them.
     """
     root_key = node_root("semantic_view")

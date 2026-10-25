@@ -455,17 +455,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
-        "SST-CFG055",
-        Severity.ERROR,
-        "Root-only setting set below the block root",
-        "'{key}' can be set only at the root of {block}",
-        "set {expected} once, at the root of {block}, and remove it here",
-        condition=(
-            "a `+` key the configuration schema marks root-only, such as `skills.+threads`, is set in a folder "
-            "route, or in an artifact's `config:` block"
-        ),
-    ),
-    spec(
         "SST-CFG056",
         Severity.ERROR,
         "Project names no profiles.yml profile",

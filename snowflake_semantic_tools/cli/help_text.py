@@ -51,6 +51,7 @@ _OPTION_HELP: Mapping[str, str] = {
     "--log-level": (
         "Threshold for log records on stderr, else `$SST_LOG_LEVEL`, else `warn`. The libraries SST "
         "runs, such as the Snowflake connector, log each request at `info`, so `info` shows those. "
+        "Left unset, a library's warning, such as a request it retried, is counted rather than printed. "
         "Independent of `--verbose`."
     ),
     "--no-color": ("No ANSI color, else `$SST_NO_COLOR`; a non-empty `$NO_COLOR` does the same. Wins over `--color`."),
@@ -92,7 +93,7 @@ _OPTION_HELP: Mapping[str, str] = {
     ),
     "--no-defer": "Defer to no target, whatever `--defer-target`, `$SST_DEFER_TARGET` or `defer.target` say.",
     "--threads": (
-        "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
+        "Snowflake sessions to work on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, "
         "else 4; 1 works serially. Output is the same for any count."
     ),
     "--database": "Read from this database instead of the target's; never where an artifact is published.",
@@ -140,19 +141,18 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "skipping it. Defaults to `apply.fail_fast`."
     ),
     ("sst apply", "--threads"): (
-        "Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`. "
-        "Planning defaults to 4; applying to `skills.+threads`, else 4."
+        "Sessions to plan and apply on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 4."
     ),
     ("sst plan", "--threads"): (
-        "Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, "
+        "Sessions to validate and observe on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, "
         "else 4; 1 reads serially. The plan is the same for any count."
     ),
     ("sst test", "--threads"): (
-        "Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
+        "Sessions smoke probes run on at once, 1 to 16, else `$SST_THREADS`, else `session.threads`, else 1."
     ),
     ("sst eval", "--threads"): (
         "Eval runs at once when neither `evals.+concurrency` nor an eval's `concurrency` setting paces them, "
-        "1 to 16, else `$SST_THREADS`, else `generation.threads`, else 1."
+        "1 to 16, else `$SST_THREADS`, else `session.threads`, else 1."
     ),
     ("sst compile", "--database"): "Resolve refs against this database instead of the target's.",
     ("sst compile", "--emit-agent-spec"): (
@@ -171,6 +171,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "recorded it); `json`, `yaml` and `csv` also carry its source files."
     ),
     ("sst apply", "--plan"): "Apply this saved plan. It must still match the compiled project.",
+    ("sst apply", "--replan"): (
+        "Plan afresh even when `sst plan` saved a plan in `sst_target/plan.json` that a bare apply would "
+        "apply; see `apply.reuse_plan_minutes`."
+    ),
     ("sst apply", "--yes"): "Apply without asking for confirmation.",
     ("sst apply", "--temporary"): (
         "Publish agents as temporary agents, dropped when the apply's session ends, and skip their "
@@ -385,7 +389,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ),
     ("sst diff", "--threads"): (
         "Read a target's definitions on up to this many sessions at once, 1 to 16; else `$SST_THREADS`, "
-        "else `generation.threads`, else 4."
+        "else `session.threads`, else 4."
     ),
     ("sst diff", "--names-only"): "Print the name of each differing artifact, one per line, and nothing else.",
     ("sst diff", "--no-detailed-exitcode"): "Exit 0 when the states differ, instead of 2.",

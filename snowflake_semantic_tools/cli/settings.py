@@ -41,30 +41,21 @@ def threads_setting(paths: ProjectPaths, threads: int | None, *, default: int = 
     """Return how many sessions a command reads on at once: the flag, else the config, else `default`.
 
     That is `--threads`, which already stands for `$SST_THREADS` when the flag is not given, else
-    `generation.threads`, else `default`. `plan`, `validate` and apply's plan take
-    `DEFAULT_THREADS`, the default apply applies with; `--threads 1` reads serially. `test`
-    and `eval` pass 1.
+    `session.threads`, else `default`. `plan`, `validate` and apply take `DEFAULT_THREADS`;
+    `--threads 1` reads serially. `test` and `eval` pass 1.
     """
     if threads is not None:
         return threads
-    return _generation_threads(project_config(paths)) or default
+    return _session_threads(project_config(paths)) or default
 
 
 def apply_parallelism(paths: ProjectPaths, threads: int | None = None) -> int:
-    """Return how many changes of one wave apply runs at once.
-
-    `--threads` (else `$SST_THREADS`), else `generation.threads`, else `skills.+threads`, else
-    `DEFAULT_THREADS`.
-    """
-    if threads is not None:
-        return threads
-    tree = project_config(paths)
-    skills = _bounded("skills.+threads", config_block(tree.get("skills")).get("+threads"))
-    return _generation_threads(tree) or skills or DEFAULT_THREADS
+    """Return how many changes of one wave apply runs at once, as `threads_setting` reads it."""
+    return threads_setting(paths, threads)
 
 
-def _generation_threads(tree: dict[str, object]) -> int | None:
-    return _bounded("generation.threads", config_block(tree.get("generation")).get("threads"))
+def _session_threads(tree: dict[str, object]) -> int | None:
+    return _bounded("session.threads", config_block(tree.get("session")).get("threads"))
 
 
 def _bounded(key: str, value: object) -> int | None:
