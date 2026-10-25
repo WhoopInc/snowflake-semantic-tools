@@ -37,7 +37,8 @@ envelope on stdout and nothing else.
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
-| [`sst state`](#sst-state) | Repair a target's state table: recover entries it lost, convert its kind, or release a lock. |
+| [`sst state`](#sst-state) | Repair a target's state table: recover or adopt entries, convert its kind, or release a lock. |
+| [`sst state adopt`](#sst-state-adopt) | Hand SST objects it did not publish, once the project compiles each to what is live. |
 | [`sst state convert`](#sst-state-convert) | Rebuild the state and lock tables as hybrid or standard tables, keeping the old ones. |
 | [`sst state recover`](#sst-state-recover) | Record what state lost, from ownership markers and content digests on the target's live objects. |
 | [`sst state unlock`](#sst-state-unlock) | Release the target's run lock held by a run that will never end, live or expired. |
@@ -47,6 +48,7 @@ envelope on stdout and nothing else.
 | [`sst agent-kit status`](#sst-agent-kit-status) | Show each skill's state against the kit of the SST now installed; change nothing. |
 | [`sst agent-kit upgrade`](#sst-agent-kit-upgrade) | Bring every installed skill to the kit of the SST now installed. |
 | [`sst ask`](#sst-ask) | Talk to AGENT as it compiles now, publishing nothing; with QUESTION, ask it once. `-` reads stdin. |
+| [`sst import`](#sst-import) | Write live Snowflake objects as project files: one object, a schema's, or a database's. |
 
 ## Global options
 
@@ -80,7 +82,7 @@ These go before the command name.
 |---:|---|---|
 | 0 | `OK` | Success. For `sst plan`, nothing to change: every live object carries the marker state records, and the properties plan compares are as apply read them back. |
 | 1 | `ERROR` | Errors were reported, an apply, a smoke probe, an eval gate, or a check failed, or an apply skipped a blocked change. |
-| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite. |
+| 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite, or `sst import` found files to write without --write. |
 | 3 | `USAGE` | The command line is invalid. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
 | 5 | `CONNECTION` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time; the diagnostic code says which, so a retry fixes only some of them. |
@@ -892,12 +894,52 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 
 ## sst state
 
-Repair a target's state table: recover entries it lost, convert its kind, or release a lock.
+Repair a target's state table: recover or adopt entries, convert its kind, or release a lock.
 
 State records what apply published to each target, in the state table `state:` names. These
 commands write that table and its lock table, and never a published object.
 
-Subcommands: [`sst state convert`](#sst-state-convert), [`sst state recover`](#sst-state-recover), [`sst state unlock`](#sst-state-unlock).
+Subcommands: [`sst state adopt`](#sst-state-adopt), [`sst state convert`](#sst-state-convert), [`sst state recover`](#sst-state-recover), [`sst state unlock`](#sst-state-unlock).
+
+## sst state adopt
+
+Hand SST objects it did not publish, once the project compiles each to what is live.
+
+Plans the selected artifacts, as `sst plan --select` does, and for each one the plan
+blocks as an existing object SST does not manage (SST-PLN024), compares the live object
+with the compiled artifact member by member, as `sst plan` shows an update. Each that
+matches is recorded in state as adopted, under the run lock and without writing any
+object; the next `sst apply` publishes it, writing SST's ownership marker, unless it
+changed after it was adopted (SST-PLN014). One that differs is refused, naming what
+differs, unless --accept-differences records it anyway, so the next apply publishes the
+project's definition over the live one. Semantic views, tools, agents and CoWork profiles
+are adopted; `sst import` writes the files for one. --select is required.
+
+Exit 0 when every selected artifact was recorded; 1 when one differs, cannot be adopted,
+or another run holds the lock; 3 when there is no --select, or it would ask and there is no
+terminal without --yes.
+
+Diagnostics:
+    SST-PRT100: no --select was given; raised.
+    SST-PRT109: there is no terminal to ask on, and --yes was not given; raised.
+    SST-IMP020: the live object differs from the compiled artifact.
+    SST-IMP021: an artifact was recorded as adopted.
+    SST-IMP022: a selected artifact is not an unmanaged object adopt can compare.
+    SST-APL011: another run holds the lock.
+    SST-APL010: an expired lock was taken over, with --break-stale-lock.
+
+```text
+sst state adopt [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--select` | TEXT, repeatable |  | Only these artifacts: a name (`*` and `?` globs), `type:<type>`, `path:<glob>`, `<type>:<name>`, or, where the command takes `--state`, `state:new`, `modified`, `unmodified` or `orphaned`. dbt's graph operators add lineage: `model:orders+` is every artifact `orders` feeds, `+agent:a` all an agent reads, and `2+x` or `x+1` bound the steps; dbt nodes (`model:`, `seed:`, `source:`), members such as `metric:<name>` and `tool_ref:<name>` work inside them. |
+| `--exclude` | TEXT, repeatable |  | Leave these artifacts out; same forms as `--select`. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--accept-differences` | flag |  | Record an object whose live definition differs, so the next apply publishes the project's over it. |
+| `--yes / -y` | flag |  | Record without asking for confirmation; required off a terminal. |
+| `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst state convert
 
@@ -1145,3 +1187,58 @@ sst ask [OPTIONS] [AGENT] [QUESTION]
 | `--timeout` | INTEGER RANGE | `600` | Seconds one turn may take before it is canceled, 1 to 900; default 600. |
 | `--transcript / --no-transcript` | flag |  | Keep a transcript in `sst_target/ask/`: each turn whole, rows included, and each specification the agent ran on, replaced after every turn; `--no-transcript` keeps none. Else `ask.transcripts`, else none. `sst clean` removes them. |
 | `--theme` | TEXT |  | The conversation's color theme, else `$SST_ASK_THEME`, else `ask.theme`, else `sst-dark`; Textual's own themes are named too, and Ctrl-P changes it for the session. |
+
+## sst import
+
+Write live Snowflake objects as project files: one object, a schema's, or a database's.
+
+&lt;TYPE&gt; is semantic_view, tool, skill, plugin, agent or cowork_profile. A three-part name
+imports one object; a two-part name every object of the type in that schema; one part, every
+one in the database.
+--like and --not-like narrow a schema or database by Snowflake LIKE patterns; a skill can
+also be read from a stage folder, `@DB.SCHEMA.STAGE/path/`, as a STAGE skill source names it.
+Each object
+goes in the folder whose routes publish it where it is now on --target, so its files
+compile back to the same name; --to names the folder below the type's directory
+instead. What the objects name is mapped to what the project publishes, and anything
+the project does not compile is reported; --with-dependencies imports it too. A tool member
+references its object, which SST then calls and never changes; --define makes it define the
+object instead, which SST then publishes. Without
+--write, import only reports; it never replaces a file, never writes to Snowflake, and
+records nothing in state. Leave out the type or the name on a terminal and import asks for
+each, then offers to write what it found. Grants are yours: a read the role is refused is
+reported, and the other objects still import.
+
+Exit 0 when every object was imported or there was nothing to import; 2 when files are
+pending and --write was not given; 1 when an object could not be read, mapped, or
+written; 3 when the command line is refused; 4 when the project or the target cannot be
+read; 5 when Snowflake cannot be reached.
+
+Diagnostics:
+    SST-PRT100: the command line is refused; raised.
+    SST-IMP001: the object or scope is not found, or the role cannot see it.
+    SST-IMP002: one object named alone is of the other agent kind.
+    SST-IMP003: the object carries SST's ownership marker; it is not imported.
+    SST-IMP004: a file the import would write already exists.
+    SST-IMP005: the role is refused a read of the object.
+    SST-IMP006: the scope holds no object of the type.
+    SST-IMP007: the project publishes the object already; it is not imported.
+    SST-IMP012: an object names one the project does not compile.
+    SST-IMP013: what the files publish differs from the live object.
+    SST-IMP014: no folder routes to the object's location; its file names it.
+
+```text
+sst import [OPTIONS] <TYPE> <DB>[.<SCHEMA>[.<NAME>]]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--like` | TEXT |  | Import only objects whose name matches this Snowflake LIKE pattern. |
+| `--not-like` | TEXT |  | Leave out objects whose name matches this Snowflake LIKE pattern. |
+| `--to` | TEXT |  | Folder below the type's directory to write every object in; else each goes where its routes publish it now. |
+| `--agent-version` | TEXT |  | Agent version to read, such as VERSION$3; else the one the agent serves. |
+| `--with-dependencies` | flag |  | Also import what the objects name that the project does not compile. |
+| `--define` | flag |  | A tool member defines its object, which SST publishes from then on; else it references it. |
+| `--write` | flag |  | Create the files; without it, only report. A file that exists is never replaced. |
+| `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
+| `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. |

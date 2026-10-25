@@ -115,6 +115,7 @@ result on stdout.
 - [Getting started](docs/getting-started.md) and [concepts](docs/concepts.md)
 - Guides: [semantic views](docs/guides/semantic-views.md),
   [enriching models](docs/guides/enrich.md),
+  [importing live objects](docs/guides/importing.md),
   [agents](docs/guides/agents.md), [CoWork profiles](docs/guides/cowork-profiles.md),
   [evals](docs/guides/evals.md), [asking an agent](docs/guides/ask.md),
   [skills](docs/guides/skills.md),

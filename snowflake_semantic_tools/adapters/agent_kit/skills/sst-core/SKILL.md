@@ -70,6 +70,7 @@ and explain each SST term the first time you use it.
 | `sst debug` | reads Snowflake | Offline with `--no-connect`: shows the config, profile, and target SST resolved. |
 | `sst diff` | reads Snowflake | Offline only when `--from` and `--to` are both `local` or saved plans. |
 | `sst plan` | reads Snowflake | Never writes; exits 2 when there are changes. Saves `sst_target/plan.json`. |
+| `sst import` | reads Snowflake, edits files | Writes live objects as project files; reports only without `--write`, and never replaces a file. Only when asked. |
 | `sst enrich` | reads Snowflake, edits files | Reads the warehouse into model YAML; `--include synonyms` calls Cortex, which costs credits. |
 | `sst test` | reads Snowflake | Smoke-probes what `sst apply` published; never writes and runs no agent. |
 | `sst eval` | billed | Runs agents against their evals; `--capture-baseline` writes the eval baseline. Only when asked. |
@@ -77,6 +78,7 @@ and explain each SST term the first time you use it.
 | `sst apply` | writes Snowflake | Publishes. Only when asked, and from a reviewed plan. |
 | `sst drop` | writes Snowflake | Break-glass: drops one object SST owns. Only when asked. |
 | `sst state recover` | writes Snowflake | Records lost state entries from ownership markers; writes no object. Only when asked. |
+| `sst state adopt` | writes Snowflake | Records objects SST did not publish whose live definition matches the files, so the next apply takes them over; writes no object. Only when asked. |
 | `sst state convert` | writes Snowflake | Rebuilds the state and lock tables as hybrid or standard tables. Only when asked. |
 | `sst state unlock` | writes Snowflake | Releases the run lock of one named run that will never end. Only when asked, once the user confirmed that run is gone. |
 

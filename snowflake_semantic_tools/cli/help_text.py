@@ -405,7 +405,23 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "--profile",
     ): "Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project.",
     ("sst drop", "--yes"): "Required on every invocation: it is the confirmation, and there is no prompt.",
+    ("sst import", "--like"): "Import only objects whose name matches this Snowflake LIKE pattern.",
+    ("sst import", "--not-like"): "Leave out objects whose name matches this Snowflake LIKE pattern.",
+    ("sst import", "--to"): (
+        "Folder below the type's directory to write every object in; else each goes where its routes publish it now."
+    ),
+    ("sst import", "--agent-version"): "Agent version to read, such as VERSION$3; else the one the agent serves.",
+    ("sst import", "--with-dependencies"): "Also import what the objects name that the project does not compile.",
+    ("sst import", "--define"): (
+        "A tool member defines its object, which SST publishes from then on; else it references it."
+    ),
+    ("sst import", "--write"): "Create the files; without it, only report. A file that exists is never replaced.",
+    ("sst import", "--profile"): "Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`.",
     ("sst state recover", "--yes"): "Record without asking for confirmation; required off a terminal.",
+    ("sst state adopt", "--yes"): "Record without asking for confirmation; required off a terminal.",
+    ("sst state adopt", "--accept-differences"): (
+        "Record an object whose live definition differs, so the next apply publishes the project's over it."
+    ),
     ("sst state convert", "--yes"): "Convert without asking for confirmation; required off a terminal.",
     ("sst state convert", "--to"): "Required. The kind of table to rebuild the state and lock tables as.",
     ("sst state unlock", "--run"): "Required. The run id whose lock to release, as SST-APL011 names the holder.",

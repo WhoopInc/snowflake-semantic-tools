@@ -10,7 +10,9 @@
 6. the first row of `_STATE_RULES` whose condition holds, comparing the object -- its marker,
    and the digest of the properties the marker does not prove -- with the entry apply
    recorded for it; an object no row matches is unchanged. With `overwrite`, a row that would
-   block the object as changed out of band (SST-PLN014) updates it instead (SST-PLN043).
+   block the object as changed out of band (SST-PLN014) updates it instead (SST-PLN043). An
+   entry `sst state adopt` recorded is updated, writing SST's marker, unless the object's
+   properties changed since it was adopted, which is SST-PLN014 too.
 
 Each artifact is decided by its own entry alone. The fingerprint digests everything its
 rendered form carries, resolved dependencies included, and the entry and the live marker
@@ -50,7 +52,7 @@ from snowflake_semantic_tools.domain.model.lifecycle import (
     version_drift,
 )
 from snowflake_semantic_tools.domain.model.registry import Registry
-from snowflake_semantic_tools.domain.state import PARTIAL_WRITE, AppliedEntry
+from snowflake_semantic_tools.domain.state import ADOPTED, PARTIAL_WRITE, AppliedEntry
 from snowflake_semantic_tools.domain.validate.shared import is_digest
 
 
@@ -258,6 +260,27 @@ def _changed_out_of_band(evidence: _Evidence) -> bool:
     )
 
 
+def _adopted(evidence: _Evidence) -> bool:
+    # `sst state adopt` recorded an object SST did not publish, which carries no marker. Its
+    # first publish writes the marker, unless the object changed since it was adopted.
+    observed, recorded = evidence.observed, evidence.recorded
+    return (
+        recorded.outcome == ADOPTED
+        and observed.marker is None
+        and QualifiedName.parse(recorded.qualified_name).folded == observed.qualified_name.folded
+    )
+
+
+def _adopted_then_changed(evidence: _Evidence) -> bool:
+    return _adopted(evidence) and _properties_drifted(evidence)
+
+
+def _changed_since_adopted(evidence: _Evidence) -> Diagnostic:
+    changed = drifted_properties(evidence.recorded.live_digest, evidence.observed.live_digest)
+    detail = f"its {', '.join(changed)} changed since `sst state adopt` recorded it"
+    return D("SST-PLN014", subject=evidence.key, artifact=evidence.key, detail=detail)
+
+
 def _published_unrecorded(evidence: _Evidence) -> bool:
     # An apply stopped between publishing an object and recording it -- killed outright, or its
     # machine lost -- leaves SST's marker for exactly the definition being planned on an object
@@ -350,6 +373,8 @@ def _hand_version(evidence: _Evidence, changed: tuple[str, ...]) -> str:
 _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_unnormalized, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _raw_comparison),
     _StateRule(_recorded_elsewhere, Action.BLOCKED, ChangeReason.TARGET_MOVED, _target_moved),
+    _StateRule(_adopted_then_changed, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _changed_since_adopted),
+    _StateRule(_adopted, Action.UPDATE, ChangeReason.ADOPTED),
     _StateRule(_published_unrecorded, Action.UPDATE, ChangeReason.UNRECORDED_PUBLISH),
     _StateRule(_changed_out_of_band, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _out_of_band),
     _StateRule(_properties_drifted, Action.BLOCKED, ChangeReason.VALIDATION_ERRORS, _drifted),
@@ -359,7 +384,7 @@ _STATE_RULES: tuple[_StateRule, ...] = (
     _StateRule(_default_unpinned, Action.UPDATE, ChangeReason.DEFAULT_UNPINNED),
 )
 # The reports of the rows that block an object as changed out of band, which `--overwrite` updates.
-_OVERWRITTEN = (_out_of_band, _drifted)
+_OVERWRITTEN = (_out_of_band, _drifted, _changed_since_adopted)
 
 
 def _state_verdict(

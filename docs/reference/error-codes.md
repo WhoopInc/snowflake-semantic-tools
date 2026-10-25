@@ -29,6 +29,7 @@ cannot be downgraded by any setting.
 - [Planning (PLN)](#planning-pln) -- 50 codes
 - [Apply (APL)](#apply-apl) -- 49 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
+- [Import (IMP)](#import-imp) -- 16 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 30 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
@@ -6930,7 +6931,7 @@ Fix: normalize the declaration to the rendered case
 
 Raised when an object holds the target name and state records no SST entry for it; `sst drop` also reports it for an object with no trusted SST ownership marker.
 
-Fix: drop or rename the object by hand, or give the artifact another name; SST never takes over an object state does not record; if state was lost and the object carries SST's marker, `sst state recover` records it
+Fix: drop or rename the object by hand, or give the artifact another name; plan never takes over an object state does not record: `sst state adopt` records one whose definition the files match, as `sst import` writes them, and `sst state recover` one carrying SST's marker
 
 ### SST-PLN025
 
@@ -7907,6 +7908,170 @@ Raised when `sst eval --unpublished` selects the eval of a CoWork profile; nothi
 Fix: run it published with `sst eval`, or leave it out with `--exclude {selector}`
 
 Note: Snowflake private preview: CoWork profiles. An unpublished run would need a temporary CoWork profile, which has not been measured on Snowflake (see SST-APL106).
+
+## Import (IMP)
+
+### SST-IMP001
+
+**Object to import is not found** (error)
+
+`<type> <value> is not found, or role <name> cannot see it`
+
+Raised when the object named to import is not listed, or SHOW refuses the schema or database.
+
+Fix: check the name; Snowflake answers alike for an object that is absent and one the role may not see, so check the role's privileges too
+
+### SST-IMP002
+
+**Object is of another type** (error)
+
+`<value> is a <found>, not a <expected>`
+
+Raised when an agent imported as a CoWork profile, or a CoWork profile, whose spec has an agent_router tool, imported as an agent.
+
+Fix: import it as what it is: `sst import {found} {value}`
+
+### SST-IMP003
+
+**Object is already published by SST** (info)
+
+`<value> carries SST's ownership marker; it was not imported`
+
+Raised when the object's comment carries an `[sst:...]` ownership marker.
+
+Fix: if this project published it, `sst state recover` records it; an object another project publishes is that project's
+
+### SST-IMP004
+
+**Import destination already exists** (error)
+
+`<path> already exists; <value> was not imported`
+
+Raised when a file the import would write is already in the project, or two imported objects would write one path.
+
+Fix: move or remove the file, or choose another folder with --to; import never overwrites
+
+### SST-IMP005
+
+**Role cannot read the object** (error)
+
+`role <name> cannot read <type> <value> (<step>): <detail>`
+
+Raised when Snowflake refuses one of the reads an import of the object makes.
+
+Fix: grant the role what reading it needs, or run as a role that has it; SST never grants privileges itself
+
+Note: The importing guide lists the reads each type makes. In a run over a schema or database, the other objects are still imported.
+
+### SST-IMP006
+
+**Nothing to import** (info)
+
+`no <type> in <value><detail>`
+
+Raised when listing the scope finds no object of the type, after the patterns are applied.
+
+Fix: check the database and schema, and any --like or --exclude pattern
+
+### SST-IMP007
+
+**Object is the project's already** (info)
+
+`<value> is what the project's <artifact> publishes; it was not imported`
+
+Raised when the project compiles an artifact to the object, or a tool member references it; an extension carries no ownership marker, so this is how one SST publishes is known.
+
+Fix: when state does not record it, `sst state adopt --select {artifact}` takes it over
+
+### SST-IMP010
+
+**Table is no model of the dbt manifest** (error)
+
+`<artifact>: table <value> is no model of the dbt manifest for target <target>; the view was not imported`
+
+Raised when a semantic view's base table resolves to no dbt model's relation in the manifest.
+
+Fix: build the table as a dbt model, parse the manifest for that target, then import the view
+
+### SST-IMP011
+
+**Column metadata disagrees; the project's is kept** (warning)
+
+`<artifact>: <model>.<column> <key> is <found> in the project and <expected> live; the project's is kept`
+
+Raised when an imported dimension or fact sets a key the dbt model's column already sets to another value.
+
+Fix: reconcile it by hand if the live value is the right one
+
+### SST-IMP012
+
+**Reference the project does not compile** (warning)
+
+`<artifact> names <type> <value>, which this project does not compile; written as <found>`
+
+Raised when an imported object names a semantic view, tool, skill or agent no compiled artifact of the project publishes at that name for the target.
+
+Fix: import it as well (`sst import {type} {value}`, or --with-dependencies), or declare it, before you compile
+
+### SST-IMP013
+
+**Imported definition differs from the live one** (warning)
+
+`<artifact>: <detail>`
+
+Raised when a live property SST cannot write as it is, such as a Cortex Analyst tool named other than its view, a STAGE skill source, or a setting SST does not model.
+
+Fix: review the file before `sst state adopt`, which shows each difference that remains
+
+### SST-IMP014
+
+**No folder routes to the live location** (info)
+
+``<artifact>: no <block> folder places it in <value> for target <target>; its `config:` names the location``
+
+Raised when no folder of the type's directory, nor its root, resolves to the object's database and schema for the target, so the file sets its own.
+
+Fix: add a folder route for that location, move the file under it, and remove the `config:` override
+
+### SST-IMP015
+
+**Sample values of PII-tagged columns dropped** (info)
+
+`<artifact>: dropped the sample values of <count> PII-tagged column(s)`
+
+Raised when an imported column carries a PII tag and live sample values.
+
+Fix: nothing to do; a PII-tagged column publishes no sample values
+
+### SST-IMP020
+
+**Live object differs from the compiled artifact** (error)
+
+`<artifact>: <value> differs from what the project compiles: <detail>`
+
+Raised when `sst state adopt` compares the live object with the compiled artifact, member by member, and they differ.
+
+Fix: edit the files until adopt shows no difference, or pass --accept-differences to publish the project's definition over the live one at the next apply
+
+### SST-IMP021
+
+**Object adopted** (info)
+
+`<artifact>: recorded <value> in state as adopted; the next apply stamps SST's ownership marker`
+
+Raised when `sst state adopt` recorded a state entry for an object SST did not publish.
+
+Fix: run `sst plan` to see the stamp, then `sst apply`
+
+### SST-IMP022
+
+**Artifact cannot be adopted** (error)
+
+`<artifact>: <reason>`
+
+Raised when an artifact selected for adopt is not blocked as unmanaged: it is absent, already recorded, or its live object could not be read.
+
+Fix: adopt only an artifact the plan blocks as an existing object SST does not manage (SST-PLN024)
 
 ## Snowflake (SNO)
 

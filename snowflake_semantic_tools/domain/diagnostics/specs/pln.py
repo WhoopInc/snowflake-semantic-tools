@@ -297,9 +297,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         Severity.ERROR,
         "Existing object is not managed by SST",
         "{artifact}: {value} exists without trusted SST ownership",
-        "drop or rename the object by hand, or give the artifact another name; SST never takes over "
-        "an object state does not record; if state was lost and the object carries SST's marker, "
-        "`sst state recover` records it",
+        "drop or rename the object by hand, or give the artifact another name; plan never takes over "
+        "an object state does not record: `sst state adopt` records one whose definition the files "
+        "match, as `sst import` writes them, and `sst state recover` one carrying SST's marker",
         demotable=False,
         condition=(
             "an object holds the target name and state records no SST entry for it; `sst drop` "

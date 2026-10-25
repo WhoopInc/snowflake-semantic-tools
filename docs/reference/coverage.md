@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 814
+- Codes: 830
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -170,6 +170,22 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DIS013`](error-codes.md#sst-dis013) | DIS | error | local | `snowflake_semantic_tools.cli.commands.enrich` | `tests/codes/dis/test_sst_dis013.py` |
 | [`SST-DIS200`](error-codes.md#sst-dis200) | DIS | info | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis200.py` |
 | [`SST-DIS201`](error-codes.md#sst-dis201) | DIS | info | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis201.py` |
+| [`SST-IMP001`](error-codes.md#sst-imp001) | IMP | error | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp001.py` |
+| [`SST-IMP002`](error-codes.md#sst-imp002) | IMP | error | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp002.py` |
+| [`SST-IMP003`](error-codes.md#sst-imp003) | IMP | info | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp003.py` |
+| [`SST-IMP004`](error-codes.md#sst-imp004) | IMP | error | local | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp004.py` |
+| [`SST-IMP005`](error-codes.md#sst-imp005) | IMP | error | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp005.py` |
+| [`SST-IMP006`](error-codes.md#sst-imp006) | IMP | info | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp006.py` |
+| [`SST-IMP007`](error-codes.md#sst-imp007) | IMP | info | local | `snowflake_semantic_tools.app.importing`<br>`snowflake_semantic_tools.domain.importing.skill` | `tests/codes/imp/test_sst_imp007.py` |
+| [`SST-IMP010`](error-codes.md#sst-imp010) | IMP | error | local | `snowflake_semantic_tools.domain.importing.semantic_view` | `tests/codes/imp/test_sst_imp010.py` |
+| [`SST-IMP011`](error-codes.md#sst-imp011) | IMP | warning | local | `snowflake_semantic_tools.domain.importing.semantic_view` | `tests/codes/imp/test_sst_imp011.py` |
+| [`SST-IMP012`](error-codes.md#sst-imp012) | IMP | warning | local | `snowflake_semantic_tools.app.importing`<br>`snowflake_semantic_tools.domain.importing.agent` | `tests/codes/imp/test_sst_imp012.py` |
+| [`SST-IMP013`](error-codes.md#sst-imp013) | IMP | warning | local | `snowflake_semantic_tools.domain.importing.agent`<br>`snowflake_semantic_tools.domain.importing.evals`<br>`snowflake_semantic_tools.domain.importing.semantic_view`<br>`snowflake_semantic_tools.domain.importing.skill`<br>`snowflake_semantic_tools.domain.importing.tool` | `tests/codes/imp/test_sst_imp013.py` |
+| [`SST-IMP014`](error-codes.md#sst-imp014) | IMP | info | local | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp014.py` |
+| [`SST-IMP015`](error-codes.md#sst-imp015) | IMP | info | local | `snowflake_semantic_tools.domain.importing.semantic_view` | `tests/codes/imp/test_sst_imp015.py` |
+| [`SST-IMP020`](error-codes.md#sst-imp020) | IMP | error | observe | `snowflake_semantic_tools.app.adopt` | `tests/codes/imp/test_sst_imp020.py` |
+| [`SST-IMP021`](error-codes.md#sst-imp021) | IMP | info | observe | `snowflake_semantic_tools.app.adopt` | `tests/codes/imp/test_sst_imp021.py` |
+| [`SST-IMP022`](error-codes.md#sst-imp022) | IMP | error | observe | `snowflake_semantic_tools.app.adopt` | `tests/codes/imp/test_sst_imp022.py` |
 | [`SST-INT001`](error-codes.md#sst-int001) | INT | error | local | `snowflake_semantic_tools.cli.runner` | `tests/codes/int/test_sst_int001.py` |
 | [`SST-INT002`](error-codes.md#sst-int002) | INT | error | local | `snowflake_semantic_tools.app.compile.base` | `tests/codes/int/test_sst_int002.py` |
 | [`SST-INT003`](error-codes.md#sst-int003) | INT | error | local | `snowflake_semantic_tools.adapters.yaml.format`<br>`snowflake_semantic_tools.app.compile.__init__` | `tests/codes/int/test_sst_int003.py` |
@@ -369,7 +385,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRT012`](error-codes.md#sst-prt012) | PRT | error | local | `snowflake_semantic_tools.cli.output` | `tests/codes/prt/test_sst_prt012.py` |
 | [`SST-PRT013`](error-codes.md#sst-prt013) | PRT | error | local | `snowflake_semantic_tools.domain.agent_kit` | `tests/codes/prt/test_sst_prt013.py` |
 | [`SST-PRT014`](error-codes.md#sst-prt014) | PRT | warning | local | `snowflake_semantic_tools.domain.agent_kit` | `tests/codes/prt/test_sst_prt014.py` |
-| [`SST-PRT100`](error-codes.md#sst-prt100) | PRT | error | local | `snowflake_semantic_tools.cli.commands.baseline`<br>`snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.commands.explain`<br>`snowflake_semantic_tools.cli.commands.format`<br>`snowflake_semantic_tools.cli.group`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/prt/test_sst_prt100.py` |
+| [`SST-PRT100`](error-codes.md#sst-prt100) | PRT | error | local | `snowflake_semantic_tools.cli.commands.baseline`<br>`snowflake_semantic_tools.cli.commands.drop`<br>`snowflake_semantic_tools.cli.commands.explain`<br>`snowflake_semantic_tools.cli.commands.format`<br>`snowflake_semantic_tools.cli.commands.import_`<br>`snowflake_semantic_tools.cli.commands.state`<br>`snowflake_semantic_tools.cli.group`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/prt/test_sst_prt100.py` |
 | [`SST-PRT101`](error-codes.md#sst-prt101) | PRT | error | local | `snowflake_semantic_tools.cli.wiring.enrich`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/prt/test_sst_prt101.py` |
 | [`SST-PRT102`](error-codes.md#sst-prt102) | PRT | error | local | `snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/prt/test_sst_prt102.py` |
 | [`SST-PRT103`](error-codes.md#sst-prt103) | PRT | error | local | `snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/prt/test_sst_prt103.py` |

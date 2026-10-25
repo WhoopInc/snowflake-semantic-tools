@@ -28,6 +28,7 @@ from snowflake_semantic_tools.adapters.roundtrip import (
 )
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.enrich import WRITTEN_KEYS, ColumnUpdate
+from snowflake_semantic_tools.domain.importing.model import ModelEdit
 
 # The order of the model-level `meta.sst` keys, so the table synonyms enrich adds sit after keys.
 MODEL_KEYS = ("primary_key", "unique_keys", "synonyms", "distinct_range")
@@ -169,3 +170,64 @@ def write_model_updates(
         entry = _model_entry(root, model, path, sections.get(model, "models"))
         _apply(entry, updates.get(model), synonyms.get(model, ()), path)
     return WrittenFile(document.dump(), document.reformats())
+
+
+# The order of a column's `meta.sst` keys an import writes, as enrich orders its own.
+_IMPORT_COLUMN_KEYS = ("column_type", *WRITTEN_KEYS[1:])
+
+
+def write_import_edits(text: str | None, path: str, edits: Sequence[ModelEdit]) -> WrittenFile:
+    """Apply what `sst import` sets on each model a file describes: model keys, column keys, descriptions.
+
+    An edit sets only keys the project leaves unset (`domain.importing.semantic_view`), each where
+    enrich would put it; a description is the node's own `description:`, beside its `name`.
+
+    Raises:
+        ProjectError: The file is not YAML (SST-LOD001), or a part an import must edit has
+            another shape (SST-DBT034).
+    """
+    document = _document(text, path)
+    root = document.root
+    assert isinstance(root, CommentedMap)
+    for edit in edits:
+        entry = _model_entry(root, edit.model, path, edit.section)
+        if edit.description is not None and not entry.get("description"):
+            entry.insert(1, "description", scalar(edit.description))
+        sst = _sst_block(entry, path) if edit.meta else None
+        for key, value in edit.meta:
+            assert sst is not None
+            insert_key(sst, key, _import_value(value), MODEL_KEYS)
+        if not edit.columns:
+            continue
+        columns = _list(entry, "columns", path)
+        for meta in edit.columns:
+            column = _named(columns, meta.column)
+            if column is None:
+                column = CommentedMap(name=scalar(meta.column))
+                columns.append(column)
+            if meta.description is not None and not column.get("description"):
+                column.insert(1, "description", scalar(meta.description))
+            if meta.meta:
+                block = _sst_block(column, path)
+                for key, value in meta.meta:
+                    insert_key(block, key, _import_value(value), _IMPORT_COLUMN_KEYS)
+    return WrittenFile(document.dump(), document.reformats())
+
+
+def _import_value(value: object) -> object:
+    """A value as an import writes it: lists of text one item a line, a mapping as a mapping."""
+    if isinstance(value, tuple) and value and all(isinstance(item, tuple) for item in value):
+        keys = []
+        for item in value:
+            key = CommentedSeq(scalar(str(part)) for part in item)
+            key.fa.set_flow_style()
+            keys.append(key)
+        sequence = CommentedSeq(keys)
+        sequence.fa.set_block_style()
+        return sequence
+    if isinstance(value, Mapping):
+        mapping = CommentedMap()
+        for key, item in value.items():
+            mapping[str(key)] = _value(item)
+        return mapping
+    return _value(value)

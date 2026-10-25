@@ -65,9 +65,13 @@ A commit that changes nothing SST renders plans as no change.
 
 ## `plan` stops at an object SST does not manage
 
-`SST-PLN024` means the object already exists and SST did not publish it. SST
-will not change it, and has no command to take it over. Drop it by hand, or
-rename the artifact, before applying. For a
+`SST-PLN024` means the object already exists and SST did not publish it. Plan
+never changes it on its own. To hand it to SST, make the project's files match it
+(`sst import` writes them from the live object) and record it with
+`sst state adopt --select <artifact>`, which compares the two member by member
+first; the next apply then writes SST's marker on it (see
+[Importing](importing.md)). Otherwise drop it by hand, or rename the artifact,
+before applying. For a
 profile registry row, the same code protects rows another tool wrote.
 `SST-PLN028` means a profile's registry row changed since SST last wrote it:
 another writer is active on that row.

@@ -22,6 +22,7 @@ from snowflake_semantic_tools.cli.commands import (
     eval,
     explain,
     format,
+    import_,
     init,
     lineage,
     list,
@@ -57,6 +58,7 @@ for _command in (
     baseline.baseline,
     diff.diff,
     drop.drop,
+    import_.import_,
     agent_kit.agent_kit,
     state.state,
 ):

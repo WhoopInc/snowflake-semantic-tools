@@ -32,6 +32,13 @@ EXEMPT: dict[tuple[str, str], str] = {
         "the dataset version METADATA SST rendered with json.dumps itself"
     ),
     ("app/prior.py", "_specification"): "the specification text SHOW VERSIONS IN AGENT returned",
+    ("app/importing.py", "_read_agent"): "the specification text SHOW VERSIONS IN AGENT returned",
+    ("app/importing_text.py", "parse_profile"): (
+        "the profile column SHOW AGENTS returned, which Snowflake bounds to 1,000 bytes"
+    ),
+    ("app/importing_text.py", "parse_manifest"): (
+        "a plugin version's .cortex-plugin/plugin.json, within Snowflake's 2 MB scan limit per file"
+    ),
     ("adapters/snowflake/connector/agent_stream.py", "_answer"): (
         "a Cortex REST call's answer, which Snowflake sends as one small JSON object"
     ),

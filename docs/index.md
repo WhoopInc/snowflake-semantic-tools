@@ -21,6 +21,7 @@ publishes them with a reviewed plan.
 |---|---|
 | [Semantic views](guides/semantic-views.md) | views, columns, metrics, relationships, filters, verified queries, custom instructions |
 | [Enriching models](guides/enrich.md) | `sst enrich`: column types, data types, sample values, enums, and synonyms from the warehouse |
+| [Importing live objects](guides/importing.md) | `sst import`: write live views, tools, skills, agents and evals as project files; `sst state adopt` hands them to SST |
 | [Agents](guides/agents.md) | agent specs, tool members, and skills an agent loads |
 | [Evals](guides/evals.md) | question sets, run configuration, custom judges, running, and baselines |
 | [Skills](guides/skills.md) | `SKILL.md` folders, nested skills, bundled files, limits, and versions |

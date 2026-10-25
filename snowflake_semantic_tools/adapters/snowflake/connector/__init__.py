@@ -7,7 +7,7 @@ session, as `profiler` and `cortex` implement the ones `sst enrich` reads throug
 `cortex_models` the one connected validation checks orchestration models through,
 `agent_run` the one unpublished evals run an agent through, `agent_stream` the REST one
 `sst ask` holds a conversation through, `usage` the one a model comparison reads its cost
-through, and
+through, `importing` the one `sst import` lists and reads objects through, and
 `SnowflakeConnector` assembles them into the one class importers construct. `pool` lends
 parallel workers sibling connectors.
 """
@@ -19,6 +19,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.agent_stream import A
 from snowflake_semantic_tools.adapters.snowflake.connector.convert import StateConvertMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.cortex import CortexMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.cortex_models import CortexModelsMethods
+from snowflake_semantic_tools.adapters.snowflake.connector.importing import ImportMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.pool import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.connector.preflight import PreflightMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.profile_registry import ProfileRegistryMethods
@@ -31,6 +32,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.usage import UsageMet
 
 class SnowflakeConnector(
     PreflightMethods,
+    ImportMethods,
     StageMethods,
     ProfileRegistryMethods,
     StateConvertMethods,

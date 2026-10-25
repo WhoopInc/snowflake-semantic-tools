@@ -3,7 +3,9 @@
 `sst state recover` plans the target as `sst plan` does, then records, under the run lock and
 without writing any object, each object state does not record that its ownership marker, or
 for a composite artifact its content, proves holds the compiled definition (`app/recover.py`).
-`sst state convert` rebuilds the state and
+`sst state adopt` records, the same way, each selected object SST did not publish whose live
+definition matches the compiled one, member by member (`app/adopt.py`), so the next apply
+writes SST's marker on it. `sst state convert` rebuilds the state and
 lock tables as hybrid or standard tables, keeping the old ones as backups
 (`adapters/snowflake/connector/convert.py`). Both ask before they write, and off a terminal
 refuse without `--yes`. `sst state unlock` releases the run lock of one named run that will
@@ -19,6 +21,7 @@ import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.app.adopt import AdoptedArtifact, AdoptObjects
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan_values import PlanRefused
 from snowflake_semantic_tools.app.recover import RecoverResult, RecoverState
@@ -27,7 +30,7 @@ from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.help_form import SstSubGroup
-from snowflake_semantic_tools.cli.options import break_stale_lock_option, target_option
+from snowflake_semantic_tools.cli.options import break_stale_lock_option, selection_options, target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body, run_baseline
 from snowflake_semantic_tools.cli.settings import drift_check_setting, threads_setting
 from snowflake_semantic_tools.cli.wiring.plan import PlanRequest, plan_runtime
@@ -37,13 +40,13 @@ from snowflake_semantic_tools.domain.model.lifecycle import RECORDED
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state.lock import TABLE_KINDS, lock_table_for
 
-_SUBCOMMANDS = ("recover", "convert", "unlock")
+_SUBCOMMANDS = ("recover", "adopt", "convert", "unlock")
 
 
 @click.group(cls=SstSubGroup, name="state")
 @click.pass_context
 def state(ctx: click.Context) -> None:
-    """Repair a target's state table: recover entries it lost, convert its kind, or release a lock.
+    """Repair a target's state table: recover or adopt entries, convert its kind, or release a lock.
 
     State records what apply published to each target, in the state table `state:` names. These
     commands write that table and its lock table, and never a published object.
@@ -151,6 +154,124 @@ def _print_recovered(result: RecoverResult) -> None:
     for item in result.artifacts:
         then = "" if item.found == RECORDED else f"  (next apply: {item.next_apply})"
         click.echo(f"{item.key:<{width}}  {item.found}{then}")
+
+
+@state.command(cls=SstCommand, name="adopt")
+@selection_options()
+@target_option()
+@click.option("--accept-differences", is_flag=True)
+@click.option("--yes", "-y", "assume_yes", is_flag=True)
+@break_stale_lock_option()
+@command_body("state adopt")
+def adopt(
+    paths: ProjectPaths,
+    target_name: str | None,
+    manifest_path: Path | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    accept_differences: bool,
+    assume_yes: bool,
+    break_stale_lock: bool,
+    options: GlobalOptions,
+) -> CommandResult:
+    """Hand SST objects it did not publish, once the project compiles each to what is live.
+
+    Plans the selected artifacts, as `sst plan --select` does, and for each one the plan
+    blocks as an existing object SST does not manage (SST-PLN024), compares the live object
+    with the compiled artifact member by member, as `sst plan` shows an update. Each that
+    matches is recorded in state as adopted, under the run lock and without writing any
+    object; the next `sst apply` publishes it, writing SST's ownership marker, unless it
+    changed after it was adopted (SST-PLN014). One that differs is refused, naming what
+    differs, unless --accept-differences records it anyway, so the next apply publishes the
+    project's definition over the live one. Semantic views, tools, agents and CoWork profiles
+    are adopted; `sst import` writes the files for one. --select is required.
+
+    Exit 0 when every selected artifact was recorded; 1 when one differs, cannot be adopted,
+    or another run holds the lock; 3 when there is no --select, or it would ask and there is no
+    terminal without --yes.
+
+    Diagnostics:
+        SST-PRT100: no --select was given; raised.
+        SST-PRT109: there is no terminal to ask on, and --yes was not given; raised.
+        SST-IMP020: the live object differs from the compiled artifact.
+        SST-IMP021: an artifact was recorded as adopted.
+        SST-IMP022: a selected artifact is not an unmanaged object adopt can compare.
+        SST-APL011: another run holds the lock.
+        SST-APL010: an expired lock was taken over, with --break-stale-lock.
+    """
+    if not selected:
+        detail = "sst state adopt requires --select, naming each artifact to adopt"
+        raise SstUsageError(detail, diagnostic=D("SST-PRT100", subject="cli", detail=detail))
+    if not assume_yes:
+        require_answerable("sst state adopt")
+    request = PlanRequest(
+        paths,
+        target_name,
+        manifest_path,
+        selected,
+        excluded,
+        prune=False,
+        partial=False,
+        strict=False,
+        connected=False,
+        threads=threads_setting(paths, None),
+        observe_options=ObserveOptions(grants=False, drift_check=drift_check_setting(paths)),
+        baseline=run_baseline(options),
+    )
+    session = plan_runtime(request)
+    if isinstance(session, PlanRefused):
+        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+    try:
+        adopter = AdoptObjects(
+            session.port,
+            session.state_store,
+            SystemClock(),
+            state_table=session.profile.state_table,
+            actor=session.profile.identity.role or "",
+            host=socket.gethostname(),
+            git_sha=git_sha(paths.project_dir),
+        )
+        changeset = session.ready.changeset
+        artifacts, problems = adopter.compare(changeset, session.ready.result, accept_differences=accept_differences)
+        pending = [item for item in artifacts if item.recorded]
+        if pending and not assume_yes:
+            confirm(
+                f"Record {len(pending)} object(s) on target {session.profile.target_name} as adopted, "
+                "so the next apply writes SST's marker on them?"
+            )
+        result = adopter.record(artifacts, changeset, session.profile.target_name, break_stale=break_stale_lock)
+    finally:
+        session.port.close()
+    diagnostics = DiagnosticBag((*problems, *result.diagnostics))
+    data = {
+        "target": session.profile.target_name,
+        "state_table": session.profile.state_table.sql,
+        "adopted": list(result.wrote),
+        "artifacts": [
+            {
+                "key": item.key,
+                "object": item.qualified_name,
+                "found": item.found,
+                "differences": list(item.differences),
+                "recorded": item.key in result.wrote,
+            }
+            for item in result.artifacts
+        ],
+    }
+    exit_code = ERROR if result.refused or diagnostics.has_errors else OK
+    return CommandResult(exit_code, diagnostics, data, human=lambda: _print_adopted(result.artifacts, result.wrote))
+
+
+def _print_adopted(artifacts: tuple[AdoptedArtifact, ...], wrote: tuple[str, ...]) -> None:
+    if not artifacts:
+        click.echo("the selection plans no artifact; nothing to adopt")
+        return
+    width = max(len(item.key) for item in artifacts)
+    for item in artifacts:
+        status = "adopted" if item.key in wrote else item.found
+        click.echo(f"{item.key:<{width}}  {status}")
+        for difference in item.differences:
+            click.echo(f"{'':<{width}}    {difference}")
 
 
 @state.command(cls=SstCommand, name="convert")

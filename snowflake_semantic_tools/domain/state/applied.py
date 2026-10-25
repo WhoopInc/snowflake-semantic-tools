@@ -113,6 +113,10 @@ FAILED_AFTER_WRITE = "failed_after_write"
 # A publish whose statements stopped part way: some ran and a later one failed, so what is
 # live is not what the entry's fingerprint describes, and the next plan updates it.
 PARTIAL_WRITE = "partial_write"
+# An object SST did not publish, which `sst state adopt` recorded once its live definition
+# matched the compiled one, or was accepted as differing: the next plan updates it, writing
+# SST's ownership marker, unless it changed since it was adopted.
+ADOPTED = "adopted"
 
 
 @dataclass(frozen=True, slots=True)

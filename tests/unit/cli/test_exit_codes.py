@@ -55,6 +55,7 @@ _DECLARED = {
     "migrate": {0, 1, 2, 3, 4},
     "explain": {0, 3},
     "drop": {0, 1, 3, 4, 5},
+    "import": {0, 1, 2, 3, 4, 5},
     "diff": {0, 1, 2, 3, 4, 5},
     "baseline": {0, 1, 3, 4},
     "format": {0, 1, 2, 3, 4},
@@ -529,6 +530,8 @@ def test_every_command_is_in_the_exit_code_table() -> None:
 _INVOCATIONS = {
     "explain": ("SST-VAL009",),
     "drop": DROP,
+    "import": ("agent", "DB.S.A"),
+    "adopt": ("--select", "agent:a", "--yes"),
     "convert": ("--to", "hybrid"),
     "unlock": ("--run", "run-1", "--yes"),
     "ask": ("agent", "q"),

@@ -30,7 +30,7 @@ EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
         "CHANGES",
         "Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states "
         "differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` "
-        "found something to rewrite.",
+        "found something to rewrite, or `sst import` found files to write without --write.",
     ),
     (USAGE, "USAGE", "The command line is invalid."),
     (CONFIG, "CONFIG", "The project, its configuration, or a saved plan cannot be used."),

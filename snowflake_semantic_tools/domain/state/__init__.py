@@ -10,6 +10,7 @@ submodules.
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.state.applied import (
+    ADOPTED,
     APPLIED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,
@@ -52,6 +53,7 @@ from snowflake_semantic_tools.domain.state.saved_plan import (
 )
 
 __all__ = [
+    "ADOPTED",
     "APPLIED",
     "AppliedEntry",
     "AppliedResource",

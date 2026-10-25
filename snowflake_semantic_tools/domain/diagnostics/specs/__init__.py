@@ -46,6 +46,7 @@ SUBSYSTEMS: Mapping[str, str] = {
     "PLN": "Planning",
     "APL": "Apply",
     "ASK": "Unpublished runs",
+    "IMP": "Import",
     "SNO": "Snowflake",
     "PRT": "External systems",
     "INT": "Internal",

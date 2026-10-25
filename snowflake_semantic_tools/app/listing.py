@@ -10,6 +10,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.state import (
+    ADOPTED,
     DEACTIVATED,
     FAILED_AFTER_WRITE,
     PARTIAL_WRITE,
@@ -74,6 +75,9 @@ def _status(recorded: AppliedEntry | None, fingerprint: str) -> str:
         return "pending"
     if recorded.outcome == DEACTIVATED:
         return DEACTIVATED
+    if recorded.outcome == ADOPTED:
+        # Recorded, but not yet published with SST's marker.
+        return ADOPTED
     if recorded.outcome in (FAILED_AFTER_WRITE, PARTIAL_WRITE):
         # Something was written, but the publish did not complete.
         return "failed"
