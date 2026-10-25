@@ -139,7 +139,7 @@ def test_the_required_gate_parses_the_reference_project_with_every_admitted_dbt_
     assert goldens["env"]["SST_GOLDEN_PROJECT"] == "${{ env.REFERENCE_PROJECT }}"
     assert "--manifest" not in goldens["run"], "SST must run dbt itself here, not read a manifest"
     # The contract step reads the manifest that `dbt parse` wrote while the goldens rendered.
-    assert runs.index("poetry run pytest tests/unit/test_goldens.py") < next(
+    assert runs.index('poetry run pytest -m "not live" tests/unit/test_goldens.py') < next(
         index for index, run in enumerate(runs) if "test_dbt_manifest_contract.py" in run
     )
     assert any(

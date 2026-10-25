@@ -12,6 +12,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
+# Each starts a process of its own; deselected locally, run in CI (`-m "not live"`).
+pytestmark = pytest.mark.slow
+
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -34,13 +40,14 @@ def test_a_profiles_dir_in_the_shell_does_not_reach_module_scoped_fixtures(tmp_p
             "no:cacheprovider",
             "-o",
             "addopts=",
-            "tests/unit/test_golden_ddl.py",
+            # One test loads the module-scoped fixture, and it is the one a leaked profile breaks.
+            "tests/unit/test_golden_ddl.py::test_target_is_resolved_from_the_profile",
         ],
         cwd=REPO_ROOT,
         env=environment,
         capture_output=True,
         text=True,
-        timeout=110,
+        timeout=60,
         check=False,
     )
     assert finished.returncode == 0, finished.stdout[-2000:]

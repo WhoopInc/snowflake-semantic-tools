@@ -37,6 +37,10 @@ from tests.helpers.goldens import (
 from tests.helpers.reference_project import project_copy
 from tests.helpers.seam_projects import FakeDbt
 
+# Each starts a process of its own; deselected locally, run in CI (`-m "not live"`).
+pytestmark = pytest.mark.slow
+
+
 # Every artifact type has a golden route, and the reference project declares each one.
 _TYPES = {"agent", "cowork_profile", "eval", "plugin", "coco_desktop_profile", "semantic_view", "skill", "tool"}
 

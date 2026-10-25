@@ -11,12 +11,16 @@ import pytest
 
 from tests.helpers.network_guard import guarded_environment
 
+# Each starts a process of its own; deselected locally, run in CI (`-m "not live"`).
+pytestmark = pytest.mark.slow
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 # Runs `sst <args>` in-process, then reports whether the driver was ever imported.
 _PROBE = """
 import sys
 from snowflake_semantic_tools.cli.main import cli
+
 try:
     cli(sys.argv[1:], standalone_mode=True)
 except SystemExit:

@@ -197,7 +197,7 @@ saying why.
 versions `poetry.lock` pins; the whitespace, end-of-file, YAML, and large-file hooks come from
 `pre-commit-hooks` v5.0.0): ruff format
 `--check` and ruff check on the staged files, mypy, `lint-imports`, `sst docs --check`, and
-`pytest -q -n auto tests/unit/domain tests/codes`, plus whitespace, end-of-file, YAML, and
+`pytest -q -n 6 tests/unit/domain tests/codes`, plus whitespace, end-of-file, YAML, and
 large-file checks. It is not the gate: run the whole list above before you open a pull request.
 `poetry run pre-commit run --all-files` runs every hook over the tree.
 
@@ -221,7 +221,11 @@ thread it started is still running two seconds after it returns.
 
 ### Testing
 
-The offline suite is every test the gate requires: `poetry run pytest tests/ -n auto` runs it with no
+Locally, `poetry run pytest tests/` runs on six workers (`-n 6` in `pyproject.toml`; `-n auto`
+takes every core and leaves the machine unusable) and leaves out the tests marked `slow`, which
+start processes of their own or compile whole projects; `-m slow` runs those alone. While
+iterating, run only the test paths you touched. The offline suite is every test the gate requires:
+`poetry run pytest tests/ -m "not live"` runs it, the slow tests included, with no
 account and no secrets, and no test in it can reach the network or read your own Snowflake or dbt
 configuration. Goldens are rewritten with `python -m tests.helpers.update_goldens`, never by hand;
 [tests/README.md](tests/README.md#goldens) gives the exact command, and a pull request that changes a

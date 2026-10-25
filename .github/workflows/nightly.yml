@@ -92,4 +92,4 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Run the suite under the nightly Hypothesis profile
-        run: poetry run pytest -q -n auto tests/
+        run: poetry run pytest -q -n auto -m "not live" tests/

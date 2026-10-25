@@ -92,7 +92,7 @@ jobs:
       # the job run until GitHub kills it.
       - name: Run tests with coverage
         run: >-
-          poetry run pytest tests/ -v -n auto
+          poetry run pytest tests/ -v -n auto -m "not live"
           --cov=snowflake_semantic_tools --cov-branch
           --cov-report=term --cov-report=json:coverage.json
 
@@ -126,7 +126,7 @@ jobs:
       - name: Check CLI coverage
         if: matrix.python == '3.11'
         run: >-
-          poetry run pytest -q --cov=snowflake_semantic_tools.cli --cov-branch
+          poetry run pytest -q -m "not live" --cov=snowflake_semantic_tools.cli --cov-branch
           --cov-report=term --cov-fail-under=90
           tests/unit/cli
 
@@ -250,7 +250,7 @@ jobs:
       - name: Render the goldens from the manifest SST has dbt parse
         env:
           SST_GOLDEN_PROJECT: ${{ env.REFERENCE_PROJECT }}
-        run: poetry run pytest tests/unit/test_goldens.py
+        run: poetry run pytest -m "not live" tests/unit/test_goldens.py
 
       # The same contract the committed manifests are held to: the schema version is accepted,
       # every path SST reads is present with its type, and the views render as the goldens'.

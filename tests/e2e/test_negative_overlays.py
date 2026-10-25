@@ -18,7 +18,8 @@ import pytest
 from tests.helpers.e2e_cli import Key, expected_cases, overlaid, overlay_files, overlay_paths, strict_validate
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
 
-pytestmark = pytest.mark.e2e
+# Each copies and compiles the reference project; deselected locally, run in CI.
+pytestmark = [pytest.mark.e2e, pytest.mark.slow]
 
 
 @pytest.fixture(scope="module")

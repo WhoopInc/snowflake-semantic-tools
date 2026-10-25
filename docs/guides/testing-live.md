@@ -30,7 +30,7 @@ raise` locks a rise in; lowering a number is an edit to the baseline file, in re
 ## Offline tests
 
 ```bash
-poetry run pytest tests/ -n auto
+poetry run pytest tests/ -m "not live"
 ```
 
 `pyproject.toml` deselects the `live` marker by default, so this runs everything else. Every

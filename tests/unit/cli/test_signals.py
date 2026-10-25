@@ -23,6 +23,9 @@ from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.network_guard import guarded_environment
 from tests.helpers.reference_project import REPO_ROOT, project_copy
 
+# Each starts a process of its own; deselected locally, run in CI (`-m "not live"`).
+pytestmark = pytest.mark.slow
+
 posix_only = pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="needs POSIX signals")
 
 # The child: `sst plan`, whose connection never opens; it writes `ready` where it would connect.
@@ -30,6 +33,7 @@ _HELD_AT_CONNECT = """
 import sys, time
 from pathlib import Path
 import snowflake_semantic_tools.cli.main as main
+
 
 def held(params):
     Path(sys.argv[1]).write_text("ready")

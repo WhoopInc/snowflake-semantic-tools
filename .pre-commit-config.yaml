@@ -38,7 +38,7 @@ repos:
       # commit. The whole suite runs in CI.
       - id: pytest-fast
         name: pytest (domain and diagnostic-code guards)
-        entry: pytest -q -n auto tests/unit/domain tests/codes
+        entry: pytest -q -n 6 tests/unit/domain tests/codes
         language: system
         pass_filenames: false
         types_or: [python, json]

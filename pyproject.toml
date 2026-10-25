@@ -141,10 +141,15 @@ python_functions = ["test_*"]
 # `-m "not live"`: the tests that connect to Snowflake run only when asked for, with `-m live`
 # (the slow workflow does; a later `-m` replaces this one). Without credentials they skip, and
 # with `--require-snowflake` they fail instead, so a gate that cannot connect is never green.
-addopts = "-v --tb=short --strict-markers --color=yes --durations=10 -m 'not live'"
+# `slow` (tests that start a nested pytest, a subprocess `sst`, or a fresh interpreter, or copy
+# and compile whole projects) is left out of a local run too; CI passes `-m "not live"` to run it.
+# `-n 6`: six workers leave a laptop's other cores free (`-n auto` takes every core); CI's
+# own `-n auto` comes later on its command line and wins, and `-n 0` runs serially.
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10 -n 6 -m 'not live and not slow'"
 markers = [
     "live: connects to a real Snowflake account; deselected by default, run with -m live",
     "e2e: drives the sst CLI over a whole project, as a user runs it",
+    "slow: starts processes or compiles whole projects; deselected locally, run with -m slow or in CI",
 ]
 # No test may run longer than this. The thread method dumps every thread's stack and ends the
 # worker, which a deadlocked lock wait cannot ignore the way it can ignore a signal.
