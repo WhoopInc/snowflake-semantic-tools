@@ -101,3 +101,10 @@ def test_the_index_maps_source_relations_and_skips_names_that_do_not_parse() -> 
     assert dict(index.models) == {("DB", "MARTS", "ORDERS"): "orders"}
     assert [(item.name, item.relation.sql) for item in index.tools.values()] == [("faq", "DB.T.FAQ")]
     assert set(index.dbt_models) == {"orders", "broken"}
+
+
+def test_a_table_argument_is_one_argument_and_an_optional_one_is_its_type() -> None:
+    # As SHOW USER FUNCTIONS writes a data metric function and an optional argument.
+    assert argument_types("ACCURACY(TABLE(BOOLEAN, BOOLEAN)) RETURN FLOAT") == ("TABLE(BOOLEAN, BOOLEAN)",)
+    shown = "AI_CLASSIFY(VARCHAR, ARRAY, DEFAULT BOOLEAN) RETURN OBJECT(value OBJECT, error VARCHAR)"
+    assert argument_types(shown) == ("VARCHAR", "ARRAY", "BOOLEAN")

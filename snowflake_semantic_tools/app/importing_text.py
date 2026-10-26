@@ -11,9 +11,30 @@ from collections.abc import Mapping
 
 
 def argument_types(arguments: str) -> tuple[str, ...]:
-    """Return a routine's argument types from SHOW's `arguments`: `F(VARCHAR, NUMBER) RETURN VARCHAR`."""
+    """Return a routine's argument types from SHOW's `arguments`: `F(VARCHAR, NUMBER) RETURN VARCHAR`.
+
+    A type holding its own commas, such as a data metric function's `TABLE(NUMBER, NUMBER)`, is
+    one argument: only a comma outside parentheses separates two. An optional argument, which
+    SHOW writes `DEFAULT BOOLEAN`, is its type alone.
+    """
     inside = arguments.partition(" RETURN ")[0].partition("(")[2].rpartition(")")[0]
-    return tuple(part.split()[0].upper() for part in inside.split(",") if part.split())
+    return tuple(_argument_type(part) for part in _top_level(inside) if part.strip())
+
+
+def _argument_type(part: str) -> str:
+    words = part.split()
+    return " ".join(words[1:] if words[0].upper() == "DEFAULT" and len(words) > 1 else words).upper()
+
+
+def _top_level(text: str) -> list[str]:
+    """Split `text` at each comma outside parentheses."""
+    parts, depth, start = [], 0, 0
+    for at, char in enumerate(text):
+        depth += (char == "(") - (char == ")")
+        if char == "," and depth == 0:
+            parts.append(text[start:at])
+            start = at + 1
+    return [*parts, text[start:]]
 
 
 def parse_signature(described: str, types: tuple[str, ...]) -> tuple[tuple[str, str], ...]:
