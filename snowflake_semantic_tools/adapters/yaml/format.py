@@ -27,6 +27,12 @@ The canonical form is a re-layout that never changes what the file means:
   anything else, such as a column's `data_tests` or a question's `ground_truth_invocations`, is
   left as written, and a blank line already there is kept whether or not `spaced` is set.
 
+A file that is not YAML only because a `{{ ... }}` template is written unquoted, which
+`sst validate` reads, has each template swapped for a placeholder before parsing (the
+validate loader's own masking, `adapters.yaml.parse`) and restored as written after; a result
+whose templates would no longer read back as the same scalars is refused (SST-INT003)
+rather than written.
+
 Comments, quoting, and the order of everything else survive the round trip. `canonical_yaml`
 checks the result against the original before returning it: both must load to the same value,
 and formatting the result again must return it unchanged, or the file is refused rather than
@@ -40,7 +46,7 @@ from __future__ import annotations
 
 import io
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap, CommentedSeq
@@ -57,6 +63,7 @@ from ruamel.yaml.util import load_yaml_guess_indent
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.roundtrip import check_depth
 from snowflake_semantic_tools.adapters.yaml.documents import SINGULAR_ROOTS
+from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates
 from snowflake_semantic_tools.adapters.yaml.styles import PROSE_KEYS, YamlStyle, styled
 from snowflake_semantic_tools.domain.diagnostics import D, Origin
 
@@ -133,11 +140,50 @@ def canonical_yaml(
             with the same `sanitize`, would change it; raised.
     """
     options = _Options(sanitize, spaced, wrap_width, unwrap_prose)
+    try:
+        return _laid_out(text, path, options)
+    except ProjectError as exc:
+        if "{{" not in text or [item.code for item in exc.diagnostics] != ["SST-LOD001"]:
+            raise
+        unparsed = exc
+    masked, templates = _masked(text, path)
+    if not templates:
+        raise unparsed
+    result = _restored_templates(_laid_out(masked, path, options), templates)
+    again, kept = _masked(result, path)
+    if kept != templates or _laid_out(again, path, options) != again:
+        found = f"a form of {path} whose templates would not read back as written, so it was left as it is"
+        diagnostic = D("SST-INT003", subject="format", value="sst format", found=found, expected="the same value")
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return result
+
+
+def _masked(text: str, path: str) -> tuple[str, dict[str, str]]:
+    """Return `text` with each template validate reads in a scalar swapped for a placeholder.
+
+    A template in a comment or a block scalar is text to YAML, so it is left in place.
+
+    Raises:
+        ProjectError: a template is unterminated or nested (SST-LOD004), as validate refuses it.
+    """
+    if "{{" not in text:
+        return text, {}
+    masked, sources = _neutralize_templates(text.replace("\r\n", "\n"), path)
+    return masked, {placeholder: source.raw for placeholder, source in sources.items()}
+
+
+def _restored_templates(text: str, templates: dict[str, str]) -> str:
+    for placeholder, raw in templates.items():
+        text = text.replace(placeholder, raw)
+    return text
+
+
+def _laid_out(text: str, path: str, options: _Options) -> str:
     own = _file_indent(text)
     if own is not None and own != _INDENT:
         # The file's own list indentation is kept, unless that layout is not a fixed point.
         try:
-            return _fixed_point(text, path, _Options(sanitize, spaced, wrap_width, unwrap_prose, own))
+            return _fixed_point(text, path, replace(options, indent=own))
         except ProjectError:
             pass
     return _fixed_point(text, path, options)

@@ -294,3 +294,46 @@ def test_a_folded_description_ending_lines_in_spaces_becomes_a_literal_block_not
     # A value that is not prose keeps its trailing whitespace, double-quoted, as before.
     sql = "models:\n  - name: m\n    meta:\n      sql: |\n        select 1 \n        from t\n"
     assert '"select 1 \\nfrom t\\n"' in canonical_yaml(sql, "m.yml")
+
+
+def test_unquoted_templates_are_read_as_validate_reads_them_and_restored_as_written() -> None:
+    text = (
+        "metrics:\n"
+        "  - name: avg_runs\n"
+        "    expr: {{ metric('runs') }} / NULLIF({{ metric('tests') }}, 0)\n"
+        "semantic_views:\n"
+        "  - name: sales\n"
+        "    tables:\n"
+        "    - {{ ref('accessory_sales') }}\n"
+        "filters:\n"
+        "  - name: f\n"
+        "    meta: {expr: {{ ref('x') }}.flag = TRUE}\n"
+    )
+    formatted = canonical_yaml(text, "t.yml")
+    # Laid out canonically around the templates, each kept exactly as written.
+    assert formatted == text.replace("    - {{ ref('accessory_sales') }}", "      - {{ ref('accessory_sales') }}")
+    assert canonical_yaml(formatted, "t.yml") == formatted
+    with pytest.raises(ProjectError) as raised:
+        canonical_yaml("a: {{ ref('x')\n", "t.yml")
+    assert [item.code for item in raised.value.diagnostics] == ["SST-LOD004"]
+
+
+def test_a_result_whose_templates_would_not_read_back_is_refused_for_its_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    from snowflake_semantic_tools.adapters.yaml import format as formatting
+
+    monkeypatch.setattr(formatting, "_restored_templates", lambda text, templates: text)
+    with pytest.raises(ProjectError) as raised:
+        canonical_yaml("a: {{ ref('x') }}\n", "t.yml")
+    [diagnostic] = raised.value.diagnostics
+    assert diagnostic.code == "SST-INT003" and "t.yml" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    "value", ["a\\n\\rb", "\\tx\\ty", "<a/href=\\\\j\\n\\ravascript:{v}\\\\", "mixed \\r\\n\\t\\x07 end"]
+)
+def test_a_double_quoted_value_with_control_escapes_round_trips(value: str) -> None:
+    text = f'models:\n  - name: m\n    meta:\n      sample_values:\n        - "{value}"\n'
+    expected = YAML(typ="safe", pure=True).load(text)
+    formatted = canonical_yaml(text, "m.yml")
+    assert YAML(typ="safe", pure=True).load(formatted) == expected
+    assert canonical_yaml(formatted, "m.yml") == formatted
