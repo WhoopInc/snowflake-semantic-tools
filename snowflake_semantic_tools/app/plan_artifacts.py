@@ -590,15 +590,21 @@ def targets_by_kind(rendered: Iterable[RenderedArtifact], state: State) -> Mappi
     """Return the objects of each artifact type: each rendered target, then each state records.
 
     State's objects count too, so an object whose source was deleted is still observed under
-    the kind that published it. An entry whose key names no kind is left out.
+    the kind that published it. An entry whose key names no kind, or whose name does not parse,
+    is left out, as `adopted_names` leaves one out.
     """
     found: dict[str, dict[QualifiedName, None]] = {}
     for artifact in rendered:
         found.setdefault(artifact.artifact_type, {})[artifact.target] = None
     for key, entry in state.applied.items():
         kind, separator, _ = key.partition(":")
-        if separator and entry.qualified_name:
-            found.setdefault(kind, {})[QualifiedName.parse(entry.qualified_name)] = None
+        if not (separator and entry.qualified_name):
+            continue
+        try:
+            name = QualifiedName.parse(entry.qualified_name)
+        except ValueError:
+            continue
+        found.setdefault(kind, {})[name] = None
     return MappingProxyType({kind: tuple(targets) for kind, targets in found.items()})
 
 
