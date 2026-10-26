@@ -346,7 +346,7 @@ def _validated(paths: ProjectPaths, compiled: CompileResult, target_name: str | 
         return tuple(result.diagnostics)
     profile, port = connect(paths, target_name)
     try:
-        models = model_check(project_config(paths), Fanout(port))
+        models = model_check(project_config(paths), Fanout(port), profile.identity)
         result = ValidateArtifacts(
             port,
             catalog=port,

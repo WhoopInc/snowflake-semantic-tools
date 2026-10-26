@@ -379,7 +379,7 @@ class PreparePlan:
         """Validate the selection as `run` says; return it, what publishes, and how many warnings it promoted."""
         tree = self._inputs.config().tree
         overrides = severity_overrides(tree)
-        check = model_check(tree, models) if models is not None else None
+        check = model_check(tree, models, target) if models is not None else None
         with self._phases.phase("validate"):
             diagnostics, promoted = (
                 _validation(candidates, port, target, readers, overrides, check)

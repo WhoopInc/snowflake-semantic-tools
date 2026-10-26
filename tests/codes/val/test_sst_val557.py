@@ -9,13 +9,14 @@ from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexBaseModel
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from tests.helpers.cortex_models import FakeCortexModels, agent_compile
+from tests.helpers.project_inputs import dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
 def _validated(config: dict[str, object], port: FakeCortexModels) -> list[Diagnostic]:
-    result = ValidateArtifacts(FakeSnowflake(), target="prod", models=model_check(config, Fanout(port))).run(
-        agent_compile("sales"), strict=False, connected=True
-    )
+    result = ValidateArtifacts(
+        FakeSnowflake(), target="prod", models=model_check(config, Fanout(port), dev_target())
+    ).run(agent_compile("sales"), strict=False, connected=True)
     return [item for item in result.diagnostics if item.code == "SST-VAL557"]
 
 

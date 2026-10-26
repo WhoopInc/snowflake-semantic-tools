@@ -6,6 +6,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.fanout import Fanout
 from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.plan import PreparePlan
 from snowflake_semantic_tools.app.plan_values import PlanCandidates, PlanReady, PlanRefused, PlanScope
@@ -18,6 +19,7 @@ from snowflake_semantic_tools.domain.state import AppliedEntry, State
 from tests.helpers.app_ports import InMemoryStateStore
 from tests.helpers.clocks import FixedClock
 from tests.helpers.compile_builders import compiled, with_diagnostics
+from tests.helpers.cortex_models import FakeCortexModels
 from tests.helpers.cowork_profiles import LISTED, compile_profiles, cowork_profile, described_agent
 from tests.helpers.project_inputs import EMPTY_SOURCES, InMemoryProjectInputs, dev_target
 from tests.helpers.snowflake_fake import FakeSnowflake
@@ -388,3 +390,25 @@ def test_run_reports_a_state_table_of_the_other_kind_than_configured() -> None:
     [refused] = [item for item in hybrid.changeset.diagnostics if item.code == "SST-APL031"]
     assert refused.message == "DB.SCH.SST_STATE is a standard table, and state.+table_kind says hybrid"
     assert "SST-APL031" not in [item.code for item in standard.changeset.diagnostics]
+
+
+def test_a_connected_plan_probes_models_in_the_agents_scratch_schema_as_validate_does() -> None:
+    tree: dict[str, object] = {
+        "agents": {"+scratch_schema": "{{ target.database }}.SCRATCH"},
+        "snowflake": {"orchestration_models": ["auto", "m"]},
+    }
+    inputs = InMemoryProjectInputs(tree=tree)
+    candidates, use_case, _ = select(compiled(tree=tree, agents=("helper",)), inputs=inputs, connected=True)
+    assert isinstance(candidates, PlanCandidates)
+    probes = FakeCortexModels()
+
+    use_case.run(
+        candidates,
+        FakeSnowflake(),
+        InMemoryStateStore(),
+        target=dev_target(),
+        state_table=STATE_TABLE,
+        models=Fanout(probes),
+    )
+
+    assert probes.probed == [(SchemaScope.parse("DB.SCRATCH"), "m")]

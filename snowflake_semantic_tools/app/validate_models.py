@@ -58,10 +58,11 @@ class ModelCheck:
     identity: TargetIdentity | None = None
 
 
-def model_check(
-    config: Mapping[str, object], probes: Fanout[CortexModelsPort], identity: TargetIdentity | None = None
-) -> ModelCheck:
-    """Return the check of the models the config tree names, run on `probes`, for `identity`."""
+def model_check(config: Mapping[str, object], probes: Fanout[CortexModelsPort], identity: TargetIdentity) -> ModelCheck:
+    """Return the check of the models the config tree names, run on `probes`, for `identity`.
+
+    Every command that probes passes its target, so `agents.+scratch_schema` is honored alike.
+    """
     return ModelCheck(configured_models(config), probes, enrichment_config(config).synonym_model, identity)
 
 
