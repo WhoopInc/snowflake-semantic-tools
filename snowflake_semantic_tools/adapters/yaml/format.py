@@ -460,11 +460,11 @@ def _canonical_value(value: object, *, sanitize: bool, key: str) -> object:
 def _trimmed_prose(value: object, key: str | None) -> object:
     """Return a multi-line prose value without the whitespace that ends its lines, or `value`.
 
-    Only a value a block scalar could otherwise hold is trimmed: one with no control character
-    and no tab in a line's indentation. Its final newline goes too, so it is written as `|-`.
-    `value` itself is returned when nothing applies.
+    Only a value a block scalar could otherwise hold is trimmed: one with text that is not all
+    whitespace, no control character, and no tab in a line's indentation. Its final newline goes
+    too, so it is written as `|-`. `value` itself is returned when nothing applies.
     """
-    if key not in PROSE_KEYS or not isinstance(value, str) or _CONTROL.search(value):
+    if key not in PROSE_KEYS or not isinstance(value, str) or not value.strip() or _CONTROL.search(value):
         return value
     lines = value.split("\n")
     if len(value.rstrip("\n").split("\n")) < 2 or all(line == line.rstrip() for line in lines):

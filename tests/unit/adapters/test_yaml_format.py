@@ -8,7 +8,7 @@ from hypothesis import strategies as st
 from ruamel.yaml import YAML
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
+from snowflake_semantic_tools.adapters.yaml.format import _trimmed_tree, canonical_yaml
 from snowflake_semantic_tools.domain.validate.semantic.files import formatting_problem
 
 _KEYS = st.sampled_from(("name", "description", "expr", "synonyms", "tables", "sample_values", "x"))
@@ -24,6 +24,11 @@ _TREES = st.recursive(
 
 def _value(text: str) -> object:
     return YAML(typ="safe", pure=True).load(text)
+
+
+def _formatted_value(text: str) -> object:
+    """The value format keeps: the loaded value, with the one whitespace repair it always makes."""
+    return _trimmed_tree(_value(text))
 
 
 def _dumped(tree: object, *, style: str | None) -> str:
@@ -46,7 +51,7 @@ def test_format_is_idempotent_and_never_changes_a_value(tree: object, style: str
     if crlf:
         text = text.replace("\n", "\r\n")
     try:
-        expected = _value(text)
+        expected = _formatted_value(text)
     except Exception:  # whitespace that made the text unparseable is not this test's input
         return
     once = canonical_yaml(text, "f.yml")
@@ -89,7 +94,7 @@ def test_format_keeps_every_block_scalar_style_and_value(
     text += "".join(f"      {line}\n" if line else "\n" for line in body)
     text += "    loader: x\n" if followed else ""
     try:
-        expected = _value(text)
+        expected = _formatted_value(text)
     except Exception:  # a line the YAML scanner reads as structure is not this test's input
         return
     once = canonical_yaml(text, "f.yml")
@@ -244,7 +249,7 @@ def test_spaced_is_a_fixed_point_and_unspaced_keeps_its_blank_lines() -> None:
 def test_spaced_never_adds_a_blank_line_a_keep_chomped_block_would_hold() -> None:
     text = "items:\n  - name: a\n    v: |+\n      kept\n\n\n  - name: b\n"
     once = canonical_yaml(text, "f.yml", spaced=True)
-    assert _value(once) == _value(text)
+    assert _value(once) == _formatted_value(text)
     assert once.count("\n\n") == text.count("\n\n")
 
 
@@ -261,14 +266,14 @@ def test_spaced_never_changes_a_value(items: list[dict[str, object]]) -> None:
     text = _dumped({"root": [{"name": "n", **item} for item in items]}, style=None)
     once = canonical_yaml(text, "f.yml", spaced=True)
     assert canonical_yaml(once, "f.yml", spaced=True) == once
-    assert _value(once) == _value(text)
+    assert _value(once) == _formatted_value(text)
     assert formatting_problem(once) is None
 
 
 def test_a_carriage_return_stays_escaped_in_a_double_quoted_string() -> None:
     text = 'samples:\n  - "<a/href=\\\\j\\n\\ravascript:x>"\n'
     once = canonical_yaml(text, "f.yml")
-    assert _value(once) == _value(text)
+    assert _value(once) == _formatted_value(text)
     assert canonical_yaml(once, "f.yml") == once
 
 
