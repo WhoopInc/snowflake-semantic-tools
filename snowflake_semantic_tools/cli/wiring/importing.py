@@ -19,6 +19,8 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.paths import create_within, write_within
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.emit import emit_document
+from snowflake_semantic_tools.adapters.yaml.format import keep_canonical
+from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
 from snowflake_semantic_tools.app.importing import ImportSetup, artifact_directories, project_index
 from snowflake_semantic_tools.cli.runner import WriteFailure
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
@@ -52,17 +54,24 @@ def import_setup(
     )
 
 
-def file_bytes(file: ImportedFile) -> bytes:
-    """Return the bytes a file holds: its document as canonical YAML, its text, or its data."""
+def file_bytes(file: ImportedFile, *, style: YamlStyle | None = None) -> bytes:
+    """Return the bytes a file holds: its document as canonical YAML, its text, or its data.
+
+    `style` is the project's `format:` settings, which a document is written in.
+    """
     if file.document is not None:
-        return emit_document(file.document, file.path).encode("utf-8")
+        return emit_document(file.document, file.path, style=style).encode("utf-8")
     if file.text is not None:
         return file.text.encode("utf-8")
     return file.data or b""
 
 
-def write_imported(project_dir: Path, files: Sequence[ImportedFile]) -> tuple[str, ...]:
+def write_imported(
+    project_dir: Path, files: Sequence[ImportedFile], *, style: YamlStyle | None = None
+) -> tuple[str, ...]:
     """Create each file in the project, never replacing one; return the paths written.
+
+    `style` is the project's `format:` settings, as `file_bytes` takes them.
 
     Raises:
         WriteFailure: a file cannot be created, or something is already at its path.
@@ -71,18 +80,21 @@ def write_imported(project_dir: Path, files: Sequence[ImportedFile]) -> tuple[st
     for file in files:
         path = project_dir / file.path
         try:
-            create_within(project_dir, path, file_bytes(file), mode=0o644)
+            create_within(project_dir, path, file_bytes(file, style=style), mode=0o644)
         except OSError as exc:
             raise WriteFailure(path, exc) from exc
         written.append(file.path)
     return tuple(written)
 
 
-def write_model_edits(project_dir: Path, edits: Sequence[ModelEdit]) -> tuple[str, ...]:
+def write_model_edits(
+    project_dir: Path, edits: Sequence[ModelEdit], *, style: YamlStyle | None = None
+) -> tuple[str, ...]:
     """Make each dbt model edit in its YAML file, in place; return the files edited.
 
     A file is edited as `sst enrich` edits one: comments, order and layout kept wherever nothing
-    is set; a model's file that does not exist yet is created.
+    is set; a model's file that does not exist yet is created. A file already canonical under
+    `style` stays so (`adapters.yaml.format.keep_canonical`).
 
     Raises:
         ProjectError: a file is not YAML, or a part an edit sets has another shape.
@@ -95,7 +107,8 @@ def write_model_edits(project_dir: Path, edits: Sequence[ModelEdit]) -> tuple[st
         path = project_dir / patch_file
         try:
             text = path.read_text(encoding="utf-8") if path.exists() else None
-            write_within(project_dir, path, write_import_edits(text, patch_file, file_edits).text)
+            edited = write_import_edits(text, patch_file, file_edits).text
+            write_within(project_dir, path, keep_canonical(text, edited, patch_file, style or YamlStyle()))
         except OSError as exc:
             raise WriteFailure(path, exc) from exc
     return tuple(by_file)

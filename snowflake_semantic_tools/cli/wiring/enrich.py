@@ -16,6 +16,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
 from snowflake_semantic_tools.app.enrich import EnrichProject
 from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.settings import yaml_style
 from snowflake_semantic_tools.cli.wiring.project import connect, project_inputs
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich import WarehouseColumn
@@ -68,7 +69,11 @@ def enrich_project(
     paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, port: EnrichPort
 ) -> EnrichProject:
     """Bind the use case to the project's files and inputs, reading the warehouse through `port`."""
-    return EnrichProject(project_inputs(paths, target_name, manifest_path), port, ProjectFiles(paths.project_dir))
+    return EnrichProject(
+        project_inputs(paths, target_name, manifest_path),
+        port,
+        ProjectFiles(paths.project_dir, style=yaml_style(paths)),
+    )
 
 
 def refuse_non_production(paths: ProjectPaths, target_name: str | None, manifest_path: Path | None) -> None:

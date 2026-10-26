@@ -224,3 +224,27 @@ def test_governance_tags_are_written_last_and_an_empty_list_removes_them() -> No
     assert written.endswith(
         "              column_type: dimension\n              governance_tags:\n                - SEC.GOV.PHONE\n"
     )
+
+
+def test_an_edited_file_already_canonical_stays_canonical_under_the_projects_style(tmp_path: Path) -> None:
+    from snowflake_semantic_tools.adapters.enrich_files import ProjectFiles
+    from snowflake_semantic_tools.adapters.yaml.format import styled_yaml
+    from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
+
+    style = YamlStyle(spaced=True, wrap_width=60, unwrap_prose=True)
+    canonical = styled_yaml(DBT, "models/orders.yml", style)
+    files = ProjectFiles(tmp_path, style=style)
+    edited = files.edit_models(
+        canonical, "models/orders.yml", {"orders": (ColumnUpdate("note", (("column_type", "dimension"),)),)}, {}
+    )
+    assert styled_yaml(edited.text, "models/orders.yml", style) == edited.text
+    # A file the project never formatted keeps its own layout around the edit.
+    untouched = ProjectFiles(tmp_path, style=style).edit_models(
+        DBT, "models/orders.yml", {"orders": (ColumnUpdate("note", (("column_type", "dimension"),)),)}, {}
+    )
+    assert (
+        untouched.text
+        == write_model_updates(
+            DBT, "models/orders.yml", {"orders": (ColumnUpdate("note", (("column_type", "dimension"),)),)}, {}
+        ).text
+    )

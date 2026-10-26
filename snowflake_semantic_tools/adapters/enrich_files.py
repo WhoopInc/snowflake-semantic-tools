@@ -7,21 +7,29 @@ atomic file write, which is why it sits beside the adapter subpackages rather th
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.yaml_writer import write_model_updates
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import write_within
+from snowflake_semantic_tools.adapters.yaml.format import keep_canonical
+from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.enrich import ColumnUpdate
 from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, WrittenFile
 
 
 class ProjectFiles(EnrichFilesPort):
-    """Read and edit YAML files under one project directory."""
+    """Read and edit YAML files under one project directory.
 
-    def __init__(self, project_dir: Path) -> None:
+    A file already canonical under `style`, the project's `format:` settings, stays canonical
+    after an edit (`adapters.yaml.format.keep_canonical`); any other keeps its own layout.
+    """
+
+    def __init__(self, project_dir: Path, *, style: YamlStyle | None = None) -> None:
         self._project_dir = project_dir
+        self._style = style or YamlStyle()
 
     def read(self, path: str) -> str | None:
         """Return the text of the file at `path` in the project; None when there is none.
@@ -49,7 +57,9 @@ class ProjectFiles(EnrichFilesPort):
         synonyms: Mapping[str, Sequence[str]],
         sections: Mapping[str, str] | None = None,
     ) -> WrittenFile:
-        return write_model_updates(text, path, updates, synonyms, sections)
+        written = write_model_updates(text, path, updates, synonyms, sections)
+        kept = keep_canonical(text, written.text, path, self._style)
+        return written if kept == written.text else replace(written, text=kept)
 
     def write(self, path: str, text: str) -> None:
         write_within(self._project_dir, self._project_dir / path, text)

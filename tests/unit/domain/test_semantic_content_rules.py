@@ -79,7 +79,8 @@ def test_a_file_is_canonical_with_lf_no_tabs_or_trailing_space_and_one_final_new
     assert formatting_problem(text) == problem
 
 
-def test_each_folded_scalar_of_a_node_is_reported_with_its_field() -> None:
+def test_each_folded_structural_field_of_a_node_is_reported_with_its_field() -> None:
+    # A prose field may fold; only SQL, an expression or an instruction is reported.
     text = "\n".join(
         (
             f"{METRICS}:",  # 1
@@ -119,18 +120,15 @@ def test_each_folded_scalar_of_a_node_is_reported_with_its_field() -> None:
     unread = document("unread.yml", {})
     found = file_diagnostics(documents(file, unread), {"m.yml": text})
     assert [(item.code, item.context["name"], item.context["field"]) for item in found] == [
-        ("SST-VAL008", "m", "description"),
-        ("SST-VAL008", "m", "window.order_by[0].ref"),
         ("SST-VAL008", "1", "expr"),
-        ("SST-VAL008", "9", "note"),
     ]
     beside = Document("m.yml", {METRICS: "not a list"}, file.line_index)
     assert [
         item.context["name"] for item in file_diagnostics(documents(beside), {"m.yml": "    description: >-\n"})
     ] == []
     assert [
-        item.context["name"] for item in file_diagnostics(documents(beside), {"m.yml": "\n\n    description: >-\n"})
-    ] == ["0"]
+        item.context["name"] for item in file_diagnostics(documents(beside), {"m.yml": "\n\n\n\n\n    expr: >-\n"})
+    ] == ["1"]
     assert [item.code for item in file_diagnostics(documents(unread), {"unread.yml": "a: 1"})] == ["SST-VAL009"]
 
 

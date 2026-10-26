@@ -327,6 +327,56 @@ they never block a plan or an apply; `sst format --check` is their gate. The
 [error codes](../reference/error-codes.md) list each code's severity and
 whether it can be demoted.
 
+## Layout of the YAML SST writes
+
+`sst format`, `sst enrich` and `sst import` write one layout. One setting changes it:
+
+```yaml
+format:
+  blank_line_between_items: true
+```
+
+It puts a blank line before every item but the first of a list of named items:
+mappings holding `name` or `question`, such as dbt models and columns, metrics,
+verified queries and eval questions. A list of anything else, such as a column's
+`data_tests` or a question's `ground_truth_invocations`, is left as written. The
+blank line goes above any comment written over the item. A blank line already
+there is kept whether or not the setting is on, so turning it off reformats
+nothing. Turn it on, then run `sst format` once to space the existing files;
+`sst format --check` expects the spacing from then on.
+
+### Long lines and line breaks
+
+A string's YAML style is chosen from its text, not from its field:
+
+```yaml
+format:
+  wrap_width: 100      # fold single-line strings longer than this
+  unwrap_prose: true   # join the soft wraps of prose values
+```
+
+- A string with no line break that would run past `wrap_width` is written as a
+  folded block, `>-`, broken at single spaces. Loading joins each break back into
+  that space, so Snowflake, and dbt's `persist_docs`, receive the same one line.
+  A string with a double space, leading or trailing space, a tab, or a template
+  (`{{ ... }}`) cannot fold exactly and is left as written; so is a single word
+  longer than the width.
+- A string with a line break keeps its literal block, `|-`: the break is
+  content.
+- With `unwrap_prose`, a prose value -- `description`, `comment`, and an eval's
+  `question`, `ground_truth_output`, `tool_input`, `tool_output` and
+  `immutable_reason` -- first has its soft wraps joined: a line break inside a
+  paragraph becomes a space, and a run of blank lines between paragraphs becomes
+  one paragraph break. A paragraph holding a list item, heading, table row, code
+  fence or indented line keeps its line breaks and stays `|-`. This changes the
+  value, its whitespace only, and the formatter refuses any other change
+  (`SST-INT003`). The next publish then updates those comments.
+- SQL, `expr`, agent instructions, custom instructions and prompts are never
+  joined or folded (`SST-VAL008` refuses a folded block there).
+
+`sst enrich` styles the values it writes the same way and leaves the rest of a
+file alone; an import writes its new files in this form.
+
 ## Projects without dbt
 
 A project that publishes only skills, plugins, and profiles does not need dbt.

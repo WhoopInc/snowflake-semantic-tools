@@ -673,6 +673,32 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "`$SST_ASK_THEME` override it, and an unknown one is SST-ASK011.",
         default="sst-dark",
     ),
+    _key("format", _BLOCK, "How SST lays out the YAML it writes: `sst format`, `sst enrich` and `sst import`."),
+    _key(
+        "format.blank_line_between_items",
+        _B,
+        "Put a blank line before every item but the first of a list of named items -- mappings holding "
+        "`name` or `question`, such as models, columns, metrics and eval questions -- in every YAML file "
+        "SST writes, and have `sst format --check` expect it. A blank line already there is kept either way.",
+        default="false",
+    ),
+    _key(
+        "format.wrap_width",
+        _I,
+        "Fold a single-line string that would run past this many columns into `>-`, broken at single "
+        "spaces, so it loads back as the same one line; SQL, expressions and instructions are never folded. "
+        "Unset folds nothing.",
+        minimum=40,
+        maximum=400,
+    ),
+    _key(
+        "format.unwrap_prose",
+        _B,
+        "Join the soft wraps of prose values -- descriptions, comments, eval questions and expectations -- "
+        "so Snowflake and dbt `persist_docs` receive one line per paragraph; a list, heading, table row, code "
+        "fence or indented line keeps its line break. This changes values: their whitespace only.",
+        default="false",
+    ),
     _key("plan", _BLOCK, "What plan compares beyond each object's ownership marker."),
     _key(
         "plan.drift_check",

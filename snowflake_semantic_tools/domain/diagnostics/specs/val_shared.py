@@ -97,10 +97,13 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL008",
         Severity.ERROR,
-        "Multi-line string uses a folded scalar",
+        "Structural field uses a folded scalar",
         "{type} '{name}': '{field}' uses a folded scalar",
         "use |- so line breaks survive",
-        condition="a multi-line value uses > or >-, which reflows prose the model reads",
+        condition=(
+            "SQL, an expression or an instruction uses > or >-, which joins its lines; a prose field "
+            "such as a description may fold"
+        ),
     ),
     spec(
         "SST-VAL009",

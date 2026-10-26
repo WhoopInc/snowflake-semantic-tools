@@ -178,3 +178,19 @@ def test_model_edits_set_keys_where_enrich_would_and_keep_the_file_otherwise() -
     assert "      - name: id\n        description: Id.\n" in written
     assert "          primary_key:\n            - id\n          unique_keys:\n            - [a, b]\n" in written
     assert "              column_type: dimension\n" in written
+
+
+def test_an_imported_document_is_written_in_the_projects_style() -> None:
+    from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
+
+    long = "Every order a customer placed, with its state, total and the store it was placed at today."
+    document = {
+        "name": "d",
+        "questions": [{"question": "a?", "ground_truth": {"ground_truth_output": long}}, {"question": "b?"}],
+    }
+    text = emit_document(document, "agents/a/evals/d.yml", style=YamlStyle(spaced=True, wrap_width=60))
+    assert "ground_truth_output: >-" in text
+    assert "\n\n  - question: b?" in text
+    assert emit_document(document, "agents/a/evals/d.yml") == emit_document(
+        document, "agents/a/evals/d.yml", style=YamlStyle()
+    )

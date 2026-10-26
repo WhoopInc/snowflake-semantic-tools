@@ -16,17 +16,19 @@ from ruamel.yaml.comments import CommentedMap, CommentedSeq
 from ruamel.yaml.scalarstring import DoubleQuotedScalarString, LiteralScalarString
 
 from snowflake_semantic_tools.adapters.roundtrip import scalar
-from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
+from snowflake_semantic_tools.adapters.yaml.format import styled_yaml
+from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
 
 # Wide enough that no value is ever folded across lines.
 _WIDTH = 4096
 
 
-def emit_document(document: Mapping[str, object], path: str) -> str:
+def emit_document(document: Mapping[str, object], path: str, *, style: YamlStyle | None = None) -> str:
     """Return `document` as canonical YAML text, ending in one newline.
 
     Args:
         path: How a diagnostic names the file, should formatting refuse it.
+        style: The project's `format:` settings; None writes the default form.
 
     Raises:
         ProjectError: the canonical form would change the document's value (SST-INT003).
@@ -36,7 +38,7 @@ def emit_document(document: Mapping[str, object], path: str) -> str:
     yaml.indent(mapping=2, sequence=4, offset=2)
     stream = io.StringIO()
     yaml.dump(_node(document), stream)
-    return canonical_yaml(stream.getvalue(), path)
+    return styled_yaml(stream.getvalue(), path, style or YamlStyle())
 
 
 def _node(value: object) -> object:

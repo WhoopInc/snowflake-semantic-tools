@@ -31,6 +31,7 @@ from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.import_wizard import Wizard
 from snowflake_semantic_tools.cli.options import target_option
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
+from snowflake_semantic_tools.cli.settings import yaml_style
 from snowflake_semantic_tools.cli.wiring.importing import import_setup, write_imported, write_model_edits
 from snowflake_semantic_tools.cli.wiring.project import closed_on_error, connect
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
@@ -203,8 +204,9 @@ def _result(
         count = len(report.files) + len({edit.patch_file for edit in report.model_edits})
         answer = asking.ask(f"Write {count} file(s)? [y/N]", "n")
         write = answer.strip().casefold() in ("y", "yes")
-    written = write_imported(paths.project_dir, report.files) if write else ()
-    edited = write_model_edits(paths.project_dir, report.model_edits) if write else ()
+    style = yaml_style(paths) if write else None
+    written = write_imported(paths.project_dir, report.files, style=style) if write else ()
+    edited = write_model_edits(paths.project_dir, report.model_edits, style=style) if write else ()
     diagnostics = DiagnosticBag(
         (*warnings, *report.diagnostics, *(item for obj in report.objects for item in obj.diagnostics))
     )

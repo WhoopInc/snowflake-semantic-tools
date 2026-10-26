@@ -1645,11 +1645,11 @@ Fix: indent with spaces
 
 ### SST-LOD011
 
-**Folded scalar used for a multi-line value** (warning)
+**Folded scalar used for a structural value** (warning)
 
 `<file>:<line>: '<key>' uses a folded scalar`
 
-Raised when a value is a folded scalar (`>` or `>-`), which joins its lines.
+Raised when SQL, an expression or an instruction is a folded scalar (`>` or `>-`), which joins its lines; a prose value such as a description may fold.
 
 Fix: use |- so line breaks survive
 
@@ -2445,11 +2445,11 @@ Fix: add its tables to a view (a custom instruction: list it in a view's `custom
 
 ### SST-VAL008
 
-**Multi-line string uses a folded scalar** (error)
+**Structural field uses a folded scalar** (error)
 
 `<type> '<name>': '<field>' uses a folded scalar`
 
-Raised when a multi-line value uses &gt; or &gt;-, which reflows prose the model reads.
+Raised when SQL, an expression or an instruction uses &gt; or &gt;-, which joins its lines; a prose field such as a description may fold.
 
 Fix: use |- so line breaks survive
 

@@ -101,8 +101,9 @@ def test_format_keeps_every_block_scalar_style_and_value(
 
 def test_layout_name_order_comments_quotes_and_nulls_survive() -> None:
     text = "# head\nitems:\n- expr: x\n  name: n\n- name: m  # kept\n  expr: y\nq: 'quoted'\nz: null\nw: ~\n"
+    # The file writes its dashes at the parent's column, as dbt does; that layout is kept.
     assert canonical_yaml(text, "f.yml") == (
-        "# head\nitems:\n  - name: n\n    expr: x\n  - name: m # kept\n    expr: y\nq: 'quoted'\nz: null\nw: null\n"
+        "# head\nitems:\n- name: n\n  expr: x\n- name: m  # kept\n  expr: y\nq: 'quoted'\nz: null\nw: null\n"
     )
 
 
@@ -125,7 +126,8 @@ def test_a_single_item_file_is_laid_out_as_its_list_item_would_be() -> None:
     commented = "filter:\n  expr: x\n  # about the name\n  name: m\n"
     assert canonical_yaml(commented, "f.yml") == commented
     assert canonical_yaml("metric: 1\n", "f.yml") == "metric: 1\n"
-    assert canonical_yaml("- metric\n", "f.yml") == "  - metric\n"
+    # A root list keeps its dashes at column 0, the only column a root list has.
+    assert canonical_yaml("- metric\n", "f.yml") == "- metric\n"
 
 
 def test_whitespace_a_block_scalar_holds_becomes_a_quoted_scalar() -> None:
@@ -184,9 +186,87 @@ def test_a_canonical_form_a_second_pass_would_change_is_refused(monkeypatch: pyt
     from snowflake_semantic_tools.adapters.yaml import format as module
 
     passes = iter(("a: 1\n", "a:  1\n"))
-    monkeypatch.setattr(module, "_canonical", lambda text, path, sanitize: next(passes))
+    monkeypatch.setattr(module, "_canonical", lambda text, path, sanitize, spaced=False: next(passes))
     with pytest.raises(ProjectError) as raised:
         canonical_yaml("a: 1\n", "f.yml")
     [diagnostic] = raised.value.diagnostics
     assert diagnostic.code == "SST-INT003"
     assert "a second format would change" in diagnostic.message
+
+
+_DBT = """version: 2
+models:
+  - name: orders
+    description: |-
+      One row per order.
+      Cancelled orders included.
+    columns:
+      - name: order_id
+        data_tests:
+          - not_null
+          - relationships:
+              to: ref('customers')
+              field: id
+      # the customer who placed it
+      - name: customer_id
+  - name: customers
+    columns:
+      - name: id
+"""
+
+
+def test_spaced_separates_named_items_above_their_comments_and_nothing_else() -> None:
+    assert canonical_yaml(_DBT, "f.yml", spaced=True) == (
+        "version: 2\nmodels:\n  - name: orders\n    description: |-\n      One row per order.\n"
+        "      Cancelled orders included.\n    columns:\n      - name: order_id\n        data_tests:\n"
+        "          - not_null\n          - relationships:\n              to: ref('customers')\n"
+        "              field: id\n\n      # the customer who placed it\n      - name: customer_id\n\n"
+        "  - name: customers\n    columns:\n      - name: id\n"
+    )
+
+
+def test_spaced_separates_eval_questions_but_not_their_invocations() -> None:
+    text = (
+        "name: d\nquestions:\n  - question: a?\n    ground_truth:\n      ground_truth_invocations:\n"
+        "        - tool_name: X\n        - tool_name: Y\n  - question: b?\n"
+    )
+    assert canonical_yaml(text, "f.yml", spaced=True) == text.replace("  - question: b?", "\n  - question: b?")
+
+
+def test_spaced_is_a_fixed_point_and_unspaced_keeps_its_blank_lines() -> None:
+    once = canonical_yaml(_DBT, "f.yml", spaced=True)
+    assert canonical_yaml(once, "f.yml", spaced=True) == once
+    assert canonical_yaml(once, "f.yml") == once
+    assert canonical_yaml(_DBT, "f.yml") == _DBT
+    assert _value(once) == _value(_DBT)
+
+
+def test_spaced_never_adds_a_blank_line_a_keep_chomped_block_would_hold() -> None:
+    text = "items:\n  - name: a\n    v: |+\n      kept\n\n\n  - name: b\n"
+    once = canonical_yaml(text, "f.yml", spaced=True)
+    assert _value(once) == _value(text)
+    assert once.count("\n\n") == text.count("\n\n")
+
+
+def test_spaced_items_returns_text_whose_value_a_blank_line_would_change() -> None:
+    from snowflake_semantic_tools.adapters.yaml.format import spaced_items
+
+    text = "items:\n  - name: a\n    v: |+\n      kept\n  - name: b\n"
+    assert spaced_items(text) == text
+
+
+@settings(max_examples=150)
+@given(st.lists(st.dictionaries(_KEYS, _SCALARS, max_size=3), min_size=1, max_size=4))
+def test_spaced_never_changes_a_value(items: list[dict[str, object]]) -> None:
+    text = _dumped({"root": [{"name": "n", **item} for item in items]}, style=None)
+    once = canonical_yaml(text, "f.yml", spaced=True)
+    assert canonical_yaml(once, "f.yml", spaced=True) == once
+    assert _value(once) == _value(text)
+    assert formatting_problem(once) is None
+
+
+def test_a_carriage_return_stays_escaped_in_a_double_quoted_string() -> None:
+    text = 'samples:\n  - "<a/href=\\\\j\\n\\ravascript:x>"\n'
+    once = canonical_yaml(text, "f.yml")
+    assert _value(once) == _value(text)
+    assert canonical_yaml(once, "f.yml") == once

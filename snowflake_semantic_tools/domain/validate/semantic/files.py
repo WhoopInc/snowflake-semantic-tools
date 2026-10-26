@@ -12,6 +12,7 @@ from collections.abc import Iterator, Mapping
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
+from snowflake_semantic_tools.domain.model.text_fields import STRUCTURAL_KEYS
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import AUTHORED_KEYS
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
@@ -27,7 +28,8 @@ def file_diagnostics(documents: AuthoredDocuments, texts: Mapping[str, str]) -> 
             not checked.
 
     Diagnostics:
-        SST-VAL008: a multi-line string of a semantic-model node uses `>` or `>-`.
+        SST-VAL008: a structural field of a semantic-model node (SQL, an expression, an
+            instruction) uses `>` or `>-`, which would join its lines.
         SST-VAL009: a tab indents a line, or the file does not end in exactly one newline.
     """
     diagnostics: list[Diagnostic] = []
@@ -68,7 +70,12 @@ def formatting_problem(text: str) -> str | None:
 
 
 def folded_scalars(document: AuthoredDocument, text: str) -> Iterator[Diagnostic]:
-    """Report each folded block scalar that is a field of a semantic-model node."""
+    """Report each folded block scalar that is a structural field of a semantic-model node.
+
+    A prose field such as `description` may fold: `sst format` writes a long line that way, and
+    loading it gives back the one line. A structural field (`STRUCTURAL_KEYS`) may not, as its
+    line breaks are code; a field is named by the last key on its path.
+    """
     roots = {node_root(node_type): node_type for node_type in AUTHORED_KEYS}
     by_line = _paths_by_line(document.line_index)
     for number, line in enumerate(text.split("\n"), start=1):
@@ -76,6 +83,9 @@ def folded_scalars(document: AuthoredDocument, text: str) -> Iterator[Diagnostic
             continue
         path = by_line.get(number)
         if path is None or len(path) < 3 or path[0] not in roots or not isinstance(path[1], int):
+            continue
+        keys = [part for part in path[2:] if isinstance(part, str)]
+        if not keys or keys[-1] not in STRUCTURAL_KEYS:
             continue
         node_type = roots[str(path[0])]
         nodes = document.tree.get(str(path[0]))

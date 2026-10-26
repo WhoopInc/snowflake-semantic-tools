@@ -104,10 +104,13 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-LOD011",
         Severity.WARNING,
-        "Folded scalar used for a multi-line value",
+        "Folded scalar used for a structural value",
         "{file}:{line}: '{key}' uses a folded scalar",
         "use |- so line breaks survive",
-        condition="a value is a folded scalar (`>` or `>-`), which joins its lines",
+        condition=(
+            "SQL, an expression or an instruction is a folded scalar (`>` or `>-`), which joins its lines; "
+            "a prose value such as a description may fold"
+        ),
     ),
     spec(
         "SST-LOD012",

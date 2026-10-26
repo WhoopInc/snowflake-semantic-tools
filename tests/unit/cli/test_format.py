@@ -10,7 +10,8 @@ from click.testing import CliRunner, Result
 from snowflake_semantic_tools.cli.main import cli
 
 _MESSY = 'semantic_views:\n- description: "one\\ntwo"   \n  name: sales\n'
-_CANONICAL = "semantic_views:\n  - name: sales\n    description: |-\n      one\n      two\n"
+# The file writes its dashes at the parent key's column, as dbt does, and keeps that layout.
+_CANONICAL = "semantic_views:\n- name: sales\n  description: |-\n    one\n    two\n"
 
 
 def _project(tmp_path: Path) -> Path:
@@ -21,7 +22,7 @@ def _project(tmp_path: Path) -> Path:
     (views / "views.yml").write_text(_MESSY, encoding="utf-8")
     (views / "done.yml").write_text("a: 1\n", encoding="utf-8")
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "schema.yml").write_text("models:\n- name: m\n", encoding="utf-8")
+    (tmp_path / "models" / "schema.yml").write_text("models:\n- description: d\n  name: m\n", encoding="utf-8")
     hidden = tmp_path / "models" / "target"
     hidden.mkdir()
     (hidden / "skip.yml").write_text("x:   1\n", encoding="utf-8")

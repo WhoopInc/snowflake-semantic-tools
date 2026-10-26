@@ -27,11 +27,13 @@ from snowflake_semantic_tools.adapters.paths import output_root, walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.discover import YAML_SUFFIXES, registry_roots
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml
+from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, ERROR, OK
 from snowflake_semantic_tools.cli.globals import SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import no_detailed_exitcode_option
 from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, project_path, write_text
+from snowflake_semantic_tools.cli.settings import yaml_style
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 
 # Directories a walk never enters: build output, installed packages, and anything hidden.
@@ -60,7 +62,10 @@ def format_command(
     With no PATH, every artifact type's directory in the configuration and dbt's
     `model-paths` are formatted. A PATH is a file, a directory, or a glob, taken from the
     project directory when relative; a directory's build, package, and hidden folders are
-    skipped. --check, --dry-run, --force, and --sanitize compose.
+    skipped. --check, --dry-run, --force, and --sanitize compose. With
+    `format.blank_line_between_items`, named list items are also separated by a blank line;
+    `format.wrap_width` folds long single-line strings into `>-`, and `format.unwrap_prose` joins
+    the soft wraps of prose values.
 
     Exit 0 when every file is formatted or already canonical, 1 when a file cannot be read,
     parsed, or written, 2 with --check when a file would change, 3 when a PATH names no YAML
@@ -79,9 +84,10 @@ def format_command(
         missing = D("SST-CFG001", subject="config:discovery", path=str(paths.project_dir))
         return CommandResult(CONFIG, DiagnosticBag((missing,)))
     files, diagnostics = _files(paths, targets)
+    style = yaml_style(paths)
     report = _FormatReport()
     for path in files:
-        diagnostics.extend(report.format_file(paths.project_dir, path, sanitize=sanitize))
+        diagnostics.extend(report.format_file(paths.project_dir, path, sanitize=sanitize, style=style))
     if not (check or dry_run):
         for path in report.would_change if not force else (*report.would_change, *report.unchanged_paths):
             write_text(output_root(paths.project_dir, path.parent), path, report.canonical[path])
@@ -115,7 +121,9 @@ class _FormatReport:
     def unchanged_paths(self) -> tuple[Path, ...]:
         return tuple(path for path in self.canonical if self.canonical[path] == self.original[path])
 
-    def format_file(self, project_dir: Path, path: Path, *, sanitize: bool) -> tuple[Diagnostic, ...]:
+    def format_file(
+        self, project_dir: Path, path: Path, *, sanitize: bool, style: YamlStyle | None = None
+    ) -> tuple[Diagnostic, ...]:
         """Compute one file's canonical text; a file that cannot be read or parsed is reported.
 
         A file that is a symbolic link, or that a link inside the project leads to, is refused:
@@ -130,7 +138,15 @@ class _FormatReport:
         except (OSError, UnicodeDecodeError) as exc:
             return (D("SST-PRT009", subject="cli", path=name, detail=str(exc)),)
         try:
-            canonical = canonical_yaml(text, name, sanitize=sanitize)
+            style = style or YamlStyle()
+            canonical = canonical_yaml(
+                text,
+                name,
+                sanitize=sanitize,
+                spaced=style.spaced,
+                wrap_width=style.wrap_width,
+                unwrap_prose=style.unwrap_prose,
+            )
         except ProjectError as exc:
             return tuple(exc.diagnostics)
         self.original[path] = text

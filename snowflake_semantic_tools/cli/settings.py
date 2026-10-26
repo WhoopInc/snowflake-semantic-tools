@@ -12,6 +12,7 @@ from collections.abc import Mapping
 
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
 from snowflake_semantic_tools.app import policy
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity, resolve_severities
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
@@ -89,6 +90,28 @@ def ask_transcripts(paths: ProjectPaths, flag: bool | None) -> bool:
     if flag is not None:
         return flag
     return config_bool(config_block(project_config(paths).get("ask")).get("transcripts")) or False
+
+
+def spaced_items_setting(paths: ProjectPaths) -> bool:
+    """Return `format.blank_line_between_items`: whether written YAML separates named list items."""
+    return config_bool(config_block(project_config(paths).get("format")).get("blank_line_between_items")) or False
+
+
+def wrap_width_setting(paths: ProjectPaths) -> int | None:
+    """Return `format.wrap_width`, the column long strings fold at; None when unset or out of bounds."""
+    return _bounded("format.wrap_width", config_block(project_config(paths).get("format")).get("wrap_width"))
+
+
+def unwrap_prose_setting(paths: ProjectPaths) -> bool:
+    """Return `format.unwrap_prose`: whether written YAML joins the soft wraps of prose values."""
+    return config_bool(config_block(project_config(paths).get("format")).get("unwrap_prose")) or False
+
+
+def yaml_style(paths: ProjectPaths) -> YamlStyle:
+    """Return the project's `format:` settings; the defaults when there is no configuration file."""
+    if paths.config_file is None:
+        return YamlStyle()
+    return YamlStyle(spaced_items_setting(paths), wrap_width_setting(paths), unwrap_prose_setting(paths))
 
 
 def ask_theme(paths: ProjectPaths) -> str | None:

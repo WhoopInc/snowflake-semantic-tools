@@ -18,6 +18,7 @@ from snowflake_semantic_tools.adapters.bounded_yaml import BoundedSafeLoader
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.yaml.text_checks import unquoted_colon
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.text_fields import STRUCTURAL_KEYS
 
 _MERGE_TAG = "tag:yaml.org,2002:merge"
 _BOOL_TAG = "tag:yaml.org,2002:bool"
@@ -184,7 +185,8 @@ def formatting_findings(
             what it is: such a value is not reported. None gives no path that meaning.
 
     Diagnostics:
-        SST-LOD011: a value is a folded scalar (`>` or `>-`), which joins its lines.
+        SST-LOD011: a structural value (SQL, an expression, an instruction) is a folded scalar
+            (`>` or `>-`), which joins its lines; a folded prose value is what `sst format` writes.
         SST-LOD016: a plain `yes`, `no`, `on`, `off`, `y` or `n` loads as a boolean, or a
             `~` or empty value as null where null means nothing documented.
     """
@@ -196,7 +198,7 @@ def formatting_findings(
         # baseline, so moving a value down keeps its fingerprint; a list item it names by its
         # `name`, so inserting an item above keeps it too.
         located: dict[str, Any] = {"file": path, "line": line, "key": key, "key_path": shown.removeprefix(".")}
-        if value_node.style == ">":
+        if value_node.style == ">" and key in STRUCTURAL_KEYS:
             findings.append(D("SST-LOD011", origin=Origin(path, line), **located))
             continue
         coerced = _coercion(value_node)

@@ -244,7 +244,10 @@ Rewrite YAML into canonical form: indentation, key order, and `|-` block scalars
 With no PATH, every artifact type's directory in the configuration and dbt's
 `model-paths` are formatted. A PATH is a file, a directory, or a glob, taken from the
 project directory when relative; a directory's build, package, and hidden folders are
-skipped. --check, --dry-run, --force, and --sanitize compose.
+skipped. --check, --dry-run, --force, and --sanitize compose. With
+`format.blank_line_between_items`, named list items are also separated by a blank line;
+`format.wrap_width` folds long single-line strings into `>-`, and `format.unwrap_prose` joins
+the soft wraps of prose values.
 
 Exit 0 when every file is formatted or already canonical, 1 when a file cannot be read,
 parsed, or written, 2 with --check when a file would change, 3 when a PATH names no YAML
