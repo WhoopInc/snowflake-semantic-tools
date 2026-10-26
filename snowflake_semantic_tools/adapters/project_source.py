@@ -18,7 +18,7 @@ from pathlib import Path
 
 from snowflake_semantic_tools.adapters.dbt.invoke import DbtRunner, parse_project, subprocess_runner
 from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
-from snowflake_semantic_tools.adapters.dbt.parse_stamp import parse_digest, stamped_at, write_stamp
+from snowflake_semantic_tools.adapters.dbt.parse_stamp import clear_stamp, parse_digest, stamped_at, write_stamp
 from snowflake_semantic_tools.adapters.dbt.profiles import (
     declared_targets,
     load_profile_target,
@@ -233,6 +233,9 @@ class YamlProjectSource:
             note = D("SST-DBT035", target=deferral.target, detail=_ago(written))
             self._dbt_cache.note(key, note)
             return ()
+        # The old stamp goes before dbt rewrites the manifest, which a run may interrupt; one
+        # that cannot be removed is not replaced, so it never vouches for the new manifest.
+        cleared = clear_stamp(deferral.state_dir)
         warnings = parse_project(
             self._project_dir,
             deferral.target,
@@ -244,7 +247,8 @@ class YamlProjectSource:
             command=command,
             installation_cache=self._installation_cache(),
         )
-        write_stamp(deferral.state_dir, digest)
+        if cleared:
+            write_stamp(deferral.state_dir, digest)
         return warnings
 
     def read_catalog(self, path: Path) -> DbtCatalog:

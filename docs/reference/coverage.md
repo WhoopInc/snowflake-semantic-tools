@@ -157,7 +157,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DBT032`](error-codes.md#sst-dbt032) | DBT | error | local | `snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/dbt/test_sst_dbt032.py` |
 | [`SST-DBT033`](error-codes.md#sst-dbt033) | DBT | error | local | `snowflake_semantic_tools.adapters.dbt.manifest` | `tests/codes/dbt/test_sst_dbt033.py` |
 | [`SST-DBT034`](error-codes.md#sst-dbt034) | DBT | error | local | `snowflake_semantic_tools.adapters.dbt.yaml_writer` | `tests/codes/dbt/test_sst_dbt034.py` |
-| [`SST-DBT035`](error-codes.md#sst-dbt035) | DBT | info | local | `snowflake_semantic_tools.adapters.project_source` | `tests/codes/dbt/test_sst_dbt035.py` |
+| [`SST-DBT035`](error-codes.md#sst-dbt035) | DBT | info | local | `snowflake_semantic_tools.adapters.project_source`<br>`snowflake_semantic_tools.app.manifest` | `tests/codes/dbt/test_sst_dbt035.py` |
 | [`SST-DIS001`](error-codes.md#sst-dis001) | DIS | error | local | `snowflake_semantic_tools.adapters.yaml.discover`<br>`snowflake_semantic_tools.adapters.yaml.migrate` | `tests/codes/dis/test_sst_dis001.py` |
 | [`SST-DIS002`](error-codes.md#sst-dis002) | DIS | error | local | `snowflake_semantic_tools.adapters.yaml.discover` | `tests/codes/dis/test_sst_dis002.py` |
 | [`SST-DIS003`](error-codes.md#sst-dis003) | DIS | warning | local | `snowflake_semantic_tools.adapters.yaml.discover` | `tests/codes/dis/test_sst_dis003.py` |

@@ -34,7 +34,7 @@ from pathlib import Path
 from snowflake_semantic_tools.adapters.dbt.invoke import executable_key
 from snowflake_semantic_tools.adapters.dbt.profiles import read_plain_yaml
 from snowflake_semantic_tools.adapters.json_files import JsonFileError, read_json_file
-from snowflake_semantic_tools.adapters.paths import UnsafeWrite, write_within
+from snowflake_semantic_tools.adapters.paths import UnsafeWrite, remove_within, write_within
 
 STAMP_NAME = "sst_stamp.json"
 # Each dbt_project.yml key naming input directories, with dbt's default for it.
@@ -81,6 +81,21 @@ def stamped_at(state_dir: Path, digest: str) -> datetime | None:
         return datetime.fromisoformat(str(stamp.get("written_at")))
     except ValueError:
         return None
+
+
+def clear_stamp(state_dir: Path) -> bool:
+    """Remove the stamp before a parse rewrites the manifest beside it; report whether it is gone.
+
+    dbt does not write `manifest.json` in one rename, so a parse that is interrupted can leave a
+    partial manifest. With the old stamp gone first, such a manifest is never taken for the one
+    the stamp describes: the next run parses again. The new stamp is written, in one rename,
+    only after the parse completes.
+    """
+    try:
+        remove_within(state_dir, state_dir / STAMP_NAME)
+    except (OSError, UnsafeWrite):
+        return False
+    return True
 
 
 def write_stamp(state_dir: Path, digest: str, now: datetime | None = None) -> None:

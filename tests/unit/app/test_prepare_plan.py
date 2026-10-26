@@ -134,11 +134,13 @@ def test_a_stale_compile_refuses_the_plan() -> None:
 
     refused, _, _ = select(compiled(), compiled_manifest=other)
 
-    stale = D("SST-MAN009", command="plan or apply", reason="the project compiles to another manifest now")
+    reason = "the project compiles to another manifest now: artifacts.semantic_view:other is gone"
+    stale = D("SST-MAN009", command="plan or apply", reason=reason)
     assert refused == PlanRefused(DiagnosticBag((stale,)), reason=stale.message)
+    # The first difference is named, so a stale compile explains itself.
     assert stale.message == (
-        "compiled SST manifest is stale (the project compiles to another manifest now); "
-        "run sst compile before plan or apply"
+        "compiled SST manifest is stale (the project compiles to another manifest now: "
+        "artifacts.semantic_view:other is gone); run sst compile before plan or apply"
     )
 
 

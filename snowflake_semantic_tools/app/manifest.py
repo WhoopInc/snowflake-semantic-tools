@@ -18,7 +18,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView, CompileResult
 from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints
-from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Severity
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.lineage.members import member_edges, member_expressions
 from snowflake_semantic_tools.domain.model.dbt import DbtNode
 from snowflake_semantic_tools.domain.ports.project import ManifestSources
@@ -51,11 +51,43 @@ def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> Dia
         current: The manifest of the project as it compiles now.
         before: The run that must wait for a fresh compile, as the message names it.
 
+    The reason names the first difference, so a stale compile explains itself: a changed input,
+    as `stale_inputs` names one, else the first section of the manifest, and the first key in
+    it, that differs, such as the dbt digest or an artifact.
+
     Diagnostics:
         SST-MAN009: the compiled manifest is not the one the project compiles to now.
     """
-    if compiled.manifest_id != current.manifest_id:
-        return D("SST-MAN009", command=before, reason="the project compiles to another manifest now")
+    if compiled.manifest_id == current.manifest_id:
+        return None
+    detail = _changed_input(
+        compiled, str(current.project.get("config_checksum") or ""), _checksums(current.files)
+    ) or _changed_section(compiled.hash_material(), current.hash_material())
+    reason = "the project compiles to another manifest now" + (f": {detail}" if detail else "")
+    return D("SST-MAN009", command=before, reason=reason)
+
+
+def _checksums(files: Mapping[str, object]) -> dict[str, str]:
+    return {
+        path: str(entry.get("checksum") or "") if isinstance(entry, Mapping) else "" for path, entry in files.items()
+    }
+
+
+def _changed_section(compiled: Mapping[str, object], current: Mapping[str, object]) -> str | None:
+    """Name the first section of the hashed manifest that differs, and its first differing key."""
+    for section in sorted({*compiled, *current}):
+        before, now = compiled.get(section), current.get(section)
+        if before == now:
+            continue
+        if isinstance(before, Mapping) and isinstance(now, Mapping):
+            for key in sorted({*before, *now}, key=str):
+                if key not in now:
+                    return f"{section}.{key} is gone"
+                if key not in before:
+                    return f"{section}.{key} is new"
+                if before[key] != now[key]:
+                    return f"{section}.{key} differs"
+        return f"{section} differs"
     return None
 
 
@@ -207,15 +239,25 @@ def build_manifest(
         dbt_models=MappingProxyType(dbt_models),
         dbt_nodes=MappingProxyType({node.unique_id: _dbt_node(node) for node in dbt_graph}),
         files=MappingProxyType(files),
-        diagnostics_summary=MappingProxyType(
-            {
-                "error": result.diagnostics.count(Severity.ERROR),
-                "warning": result.diagnostics.count(Severity.WARNING),
-                "info": result.diagnostics.count(Severity.INFO),
-            }
-        ),
+        diagnostics_summary=MappingProxyType(_summary(result)),
     )
     return manifest.with_computed_id()
+
+
+# Notes about how one run went rather than about the project: whether the deferred manifest was
+# reused (SST-DBT035) depends on which earlier run parsed, so counting it would give one project
+# two manifest ids, and plan would refuse a fresh compile as stale (SST-MAN009).
+_RUN_NOTES = frozenset(("SST-DBT035",))
+
+
+def _summary(result: CompileResult) -> dict[str, int]:
+    """Count the compile's diagnostics per severity, leaving out notes about the run itself."""
+    about_project = DiagnosticBag(item for item in result.diagnostics if item.code not in _RUN_NOTES)
+    return {
+        "error": about_project.count(Severity.ERROR),
+        "warning": about_project.count(Severity.WARNING),
+        "info": about_project.count(Severity.INFO),
+    }
 
 
 # What a member's manifest entry records it reads, in `MemberEdges` order.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -250,3 +250,33 @@ def test_test_resolves_the_deferral_as_compile_did(tmp_path: Path, monkeypatch: 
     assert not stale("--defer-target", "prod")
     monkeypatch.setenv("SST_DEFER_TARGET", "prod")
     assert not stale()
+
+
+def test_an_interrupted_deferred_parse_leaves_no_stamp_to_vouch_for_its_partial_manifest(tmp_path: Path) -> None:
+    manifest_path = _small(tmp_path, "defer:\n  target: prod\n  state_path: prod_state\n  auto_compile: true\n")
+    state = tmp_path / "prod_state"
+    document = manifest({"model.fixture.products": model_node("products", "PROD_DB.SCH.PRODUCTS")})
+    dbt = FakeDbt(writes=(state / "manifest.json", document))
+
+    def source(runner: Callable[[Sequence[str], Path], object]) -> YamlProjectSource:
+        return YamlProjectSource(project_paths(tmp_path), manifest_path=manifest_path, dbt_runner=runner)  # type: ignore[arg-type]
+
+    def interrupted(argv: Sequence[str], cwd: Path) -> object:
+        if argv[1] == "parse":
+            # dbt is stopped halfway through writing the manifest.
+            (state / "manifest.json").write_text('{"metadata": {', encoding="utf-8")
+            raise KeyboardInterrupt
+        return dbt(argv, cwd)
+
+    source(dbt).dbt_catalog()
+    assert (state / "sst_stamp.json").is_file()
+    edited = tmp_path / "models" / "new.sql"
+    edited.parent.mkdir(exist_ok=True)
+    edited.write_text("select 1", encoding="utf-8")
+    with pytest.raises(KeyboardInterrupt):
+        source(interrupted).dbt_catalog()
+    assert not (state / "sst_stamp.json").exists()
+    # The inputs are back to what the old stamp described; the partial manifest is parsed again.
+    edited.unlink()
+    source(dbt).dbt_catalog()
+    assert [argv[:2] for argv in dbt.runs].count(("dbt", "parse")) == 2
