@@ -45,9 +45,9 @@ from snowflake_semantic_tools.domain.plan.attach import AttachmentReading
 from snowflake_semantic_tools.domain.plan.preflight import (
     COWORK_PRIVILEGES,
     CREATE_STAGE,
-    CREATE_TABLE,
     STAGE_PRIVILEGES,
     Preflight,
+    state_table_privilege,
 )
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
@@ -220,7 +220,7 @@ def read_preflight(
     creatable = tuple(
         table for table in absent_state if _folded(SchemaScope.from_qualified_name(table)) not in state_schemas
     )
-    needs = _with_state_needs(_create_needs(created, present, stages, absent_stages), creatable)
+    needs = _with_state_needs(_create_needs(created, present, stages, absent_stages), creatable, state_table_kind)
     # The primary role is read once: the profile's role names it, but CURRENT_ROLE() spells it.
     primary = (current if not target.role else _current_role(reader)) if needs else None
     missing_privileges, secondary_privileges, unreached_privileges = _missing_privileges(reader, needs, primary)
@@ -398,12 +398,17 @@ def _state_table_kinds(reader: _Reader, tables: tuple[QualifiedName, ...]) -> tu
 
 
 def _with_state_needs(
-    needs: tuple[tuple[SchemaScope, tuple[str, ...]], ...], absent_state: tuple[QualifiedName, ...]
+    needs: tuple[tuple[SchemaScope, tuple[str, ...]], ...], absent_state: tuple[QualifiedName, ...], kind: str
 ) -> tuple[tuple[SchemaScope, tuple[str, ...]], ...]:
-    """Add CREATE TABLE to what each schema an absent state table is in needs, once per schema."""
+    """Add what creating a state table of `kind` needs to each schema an absent one is in, once.
+
+    A standard table needs CREATE TABLE and a hybrid one CREATE HYBRID TABLE; owning the schema
+    gives either.
+    """
+    privilege = state_table_privilege(kind)
     merged = {scope: set(needed) for scope, needed in needs}
     for table in absent_state:
-        merged.setdefault(SchemaScope.from_qualified_name(table), set()).add(CREATE_TABLE)
+        merged.setdefault(SchemaScope.from_qualified_name(table), set()).add(privilege)
     return tuple((scope, tuple(sorted(needed))) for scope, needed in merged.items())
 
 

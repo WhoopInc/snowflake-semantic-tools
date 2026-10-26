@@ -38,7 +38,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import SSE_STAGE_TYPE, Action, Change, ChangeReason
 from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH
-from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES
+from snowflake_semantic_tools.domain.state.lock import HYBRID_TABLES, STANDARD_TABLES
 
 _Scope = tuple[str, str]
 _Name = tuple[str, str, str]
@@ -47,8 +47,18 @@ _Name = tuple[str, str, str]
 _CREATE = "CREATE"
 # The schema privilege apply needs to create an absent upload stage.
 CREATE_STAGE = "CREATE STAGE"
-# The schema privilege apply needs to create an absent state or lock table.
+# The schema privilege apply needs to create an absent standard state or lock table.
 CREATE_TABLE = "CREATE TABLE"
+# The schema privilege apply needs to create an absent hybrid state or lock table; under
+# behavior change bundle 2026_02 CREATE TABLE no longer covers a hybrid table.
+CREATE_HYBRID_TABLE = "CREATE HYBRID TABLE"
+
+
+def state_table_privilege(kind: str) -> str:
+    """Return the schema privilege creating a state or lock table of `kind` needs."""
+    return CREATE_HYBRID_TABLE if kind == HYBRID_TABLES else CREATE_TABLE
+
+
 # The privileges on an existing upload stage that staging a file and reading it back need.
 STAGE_PRIVILEGES = ("READ", "WRITE")
 # Snowflake private preview (PrPr): CoWork profiles. The privilege on the CoWork object that
@@ -233,12 +243,16 @@ def _writes(change: Change) -> bool:
 
 
 def _state_tables_lacked(preflight: Preflight) -> tuple[Diagnostic, ...]:
-    """SST-PLN008 for each schema an absent state table is in where the primary role lacks CREATE TABLE."""
+    """SST-PLN008 for each schema of an absent state table where the role cannot create one.
+
+    The privilege follows `state.+table_kind`: CREATE TABLE, or CREATE HYBRID TABLE.
+    """
+    privilege = state_table_privilege(preflight.state_table_kind)
     scopes = dict.fromkeys(SchemaScope.from_qualified_name(table) for table in preflight.absent_state_tables)
     return tuple(
-        _lacks(None, CREATE_TABLE, scope, preflight)
+        _lacks(None, privilege, scope, preflight)
         for scope in scopes
-        if CREATE_TABLE in preflight.missing_privileges.get(_scope_key(scope), ())
+        if privilege in preflight.missing_privileges.get(_scope_key(scope), ())
     )
 
 

@@ -701,3 +701,30 @@ def test_a_schema_apply_creates_is_not_observed_and_one_state_records_or_unreada
     unreadable.preflight.missing_schemas.add("DB.SCH")
     unreadable.fail("schema_exists", SnowflakePortError("refused"))
     assert "SST-PLN001" in [item.code for item in _planned_on(unreadable, {}).changeset.diagnostics]
+
+
+def test_an_absent_hybrid_state_table_asks_for_create_hybrid_table_not_create_table() -> None:
+    port = FakeSnowflake()
+    state_table = QualifiedName.parse("DB.STATE.SST_STATE")
+    # The role holds CREATE TABLE, which since BCR 2026_02 no longer covers a hybrid table.
+    port.preflight.lacking["DB.STATE"] = ("CREATE HYBRID TABLE",)
+    port.preflight.missing_relations = {state_table.sql}
+    sales = view("sales")
+
+    def read(kind: str) -> Preflight:
+        found, failures = read_preflight(
+            port,
+            {sales.key: sales},
+            _observation(),
+            state_of(manifest_of()),
+            dev_target(),
+            include_prune=False,
+            state_tables=(state_table,),
+            state_table_kind=kind,
+        )
+        assert failures == ()
+        return found
+
+    assert read("hybrid").missing_privileges[("DB", "STATE")] == ("CREATE HYBRID TABLE",)
+    # A standard table needs only CREATE TABLE, which the role holds.
+    assert ("DB", "STATE") not in read("standard").missing_privileges

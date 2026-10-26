@@ -282,8 +282,11 @@ same reading `sst plan` does.
 
 A run that may only read and write SST's tables can use them: the lock, state,
 and eval tables are created, or given a column an older release lacked, only
-when they need it. `plan` reports a missing CREATE TABLE privilege on the state
-schema (`SST-PLN008`) only when a state or lock table does not exist yet.
+when they need it. `plan` reports a missing create privilege on the state schema
+(`SST-PLN008`) only when a state or lock table does not exist yet: CREATE TABLE
+for `state.+table_kind: standard`, CREATE HYBRID TABLE for `hybrid` (which, since
+behavior change bundle 2026_02, CREATE TABLE no longer covers). Owning the schema
+gives either.
 
 Once it holds the lock, a run reads the target's state again, and refuses the
 plan (`SST-APL012`) if another run changed it since the plan read it. If the run

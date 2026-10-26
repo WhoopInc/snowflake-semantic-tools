@@ -307,3 +307,15 @@ def test_an_absent_state_table_s_create_table_is_checked_only_when_the_plan_writ
     assert _codes(check_preflight((unchanged, pruned), preflight)[1]) == ["SST-PLN008"]
     _, [lacked] = check_preflight((change(rendered("SALES")),), replace(preflight, missing_privileges=lacking))
     assert lacked.message == "DEPLOYER lacks CREATE TABLE on DB.STATE"
+
+
+def test_a_hybrid_state_table_is_blocked_by_create_hybrid_table_alone() -> None:
+    absent = (QualifiedName.parse("DB.STATE.SST_STATE"),)
+    hybrid = Preflight("dev", "DEPLOYER", absent_state_tables=absent, state_table_kind="hybrid")
+    writes = (change(rendered("SALES")),)
+    lacks_hybrid = MappingProxyType({("DB", "STATE"): ("CREATE HYBRID TABLE",)})
+    _, [lacked] = check_preflight(writes, replace(hybrid, missing_privileges=lacks_hybrid))
+    assert lacked.message == "DEPLOYER lacks CREATE HYBRID TABLE on DB.STATE"
+    # Lacking only CREATE TABLE does not block a hybrid state table, which never needs it.
+    lacks_standard = MappingProxyType({("DB", "STATE"): ("CREATE TABLE",)})
+    assert _codes(check_preflight(writes, replace(hybrid, missing_privileges=lacks_standard))[1]) == []
