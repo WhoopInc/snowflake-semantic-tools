@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from ruamel.yaml import YAML
@@ -9,7 +11,7 @@ from ruamel.yaml import YAML
 from snowflake_semantic_tools.adapters.yaml.format import canonical_yaml, keep_canonical
 from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle, fold_positions, foldable, unwrap_prose
 
-STYLE = {"wrap_width": 60, "unwrap_prose": True}
+STYLE: dict[str, Any] = {"wrap_width": 60, "unwrap_prose": True}
 _WORDS = st.lists(st.text(alphabet="abcdefghij'.,:-()", min_size=1, max_size=14), min_size=1, max_size=30)
 
 
@@ -64,7 +66,10 @@ def test_a_soft_wrapped_description_publishes_as_one_line_per_paragraph() -> Non
     assert once == (
         "models:\n- name: m\n  description: >-\n    One row per member per day.\n\n    NOTE: exposed as a source.\n"
     )
-    assert _value(once)["models"][0]["description"] == "One row per member per day.\nNOTE: exposed as a source."
+    assert (
+        cast(dict[str, Any], _value(once))["models"][0]["description"]
+        == "One row per member per day.\nNOTE: exposed as a source."
+    )
     assert canonical_yaml(once, "f.yml", **STYLE) == once
 
 

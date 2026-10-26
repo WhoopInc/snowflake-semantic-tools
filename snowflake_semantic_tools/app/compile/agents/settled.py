@@ -87,15 +87,6 @@ def settled_agent(
     return settled, problems
 
 
-def agent_location(model: AgentModel, target: TargetIdentity) -> tuple[str, str]:
-    """Return the database and schema the agent publishes to: its settings', else the target's own."""
-    database, schema = target.database.folded, target.schema.folded
-    return (
-        target_text(setting_value(model.settings, "database"), target, database) or database,
-        target_text(setting_value(model.settings, "schema"), target, schema) or schema,
-    )
-
-
 def agent_environment(model: AgentModel, target: TargetIdentity) -> tuple[str | None, int | None]:
     """Return the warehouse and query timeout the agent's tools run with when they set none.
 

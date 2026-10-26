@@ -12,7 +12,7 @@ into the parts of a `window:` block.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
@@ -250,6 +250,11 @@ def _split_commas(text: str) -> list[str] | None:
         tokens = tokenize(text)
     except LexError:
         return None
+    return _commas(tokens)
+
+
+def _commas(tokens: Sequence[Token]) -> list[str]:
+    """Return the text between the commas outside parentheses, each part stripped."""
     parts: list[str] = []
     current: list[str] = []
     depth = 0
@@ -280,9 +285,8 @@ def _references(text: str, names: ViewNames) -> tuple[str, ...] | None:
 
 def _ordering(text: str, names: ViewNames) -> tuple[Mapping[str, str], ...] | None:
     """Read `ORDER BY`'s entries: each a reference, `ASC` or `DESC`, and `NULLS FIRST` or `LAST`."""
-    parts = _split_commas(text)
-    if parts is None:
-        return None
+    # `text` is a slice of SQL that already lexed, cut at a top-level word, so it lexes too.
+    parts = _commas(tokenize(text))
     entries: list[Mapping[str, str]] = []
     for part in parts:
         words = part.split()

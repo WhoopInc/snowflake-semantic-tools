@@ -603,8 +603,6 @@ def _new_patch_file(model: DbtModel) -> str:
 def _normal(value: object) -> object:
     if isinstance(value, str):
         return value.casefold()
-    if isinstance(value, Mapping):
-        return {str(key): _normal(item) for key, item in value.items()}
     if isinstance(value, list | tuple):
         return tuple(_normal(item) for item in value)
     return value

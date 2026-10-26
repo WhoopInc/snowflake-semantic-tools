@@ -14,6 +14,7 @@ import posixpath
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
+from typing import cast
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.file_names import file_name
@@ -86,11 +87,14 @@ def import_tool(live: LiveTool, index: ProjectIndex, placement: ToolPlacement, *
         body["signature"] = [{"name": arg.casefold(), "type": kind} for arg, kind in live.signature]
     if defined and placement.destination.overridden:
         database, schema, _ = live.name.folded
-        config = body.setdefault("config", {})
-        if isinstance(config, dict):
-            config.update({"database": database, "schema": schema})
+        _config(body).update({"database": database, "schema": schema})
     main = ImportedFile(posixpath.join(folder, f"{file_name(name)}.yml"), {"tool": body})
     return ImportedObject("tool", live.name, name, (main, *files), diagnostics=tuple(diagnostics))
+
+
+def _config(body: dict[str, object]) -> dict[str, object]:
+    """Return the member's `config:` mapping, created empty when it has none; only this sets it."""
+    return cast("dict[str, object]", body.setdefault("config", {}))
 
 
 def _reference(live: LiveTool, index: ProjectIndex, body: dict[str, object]) -> None:
@@ -138,10 +142,7 @@ def _define_search(
     for setting in ("warehouse", "target_lag", "embedding_model"):
         value = live.described.get(setting, "")
         if value:
-            body.setdefault("config", {})
-            config = body["config"]
-            if isinstance(config, dict):
-                config[setting] = value
+            _config(body)[setting] = value
     if live.described.get("refresh_mode"):
         body["refresh_mode"] = live.described["refresh_mode"].upper()
     return True
@@ -233,11 +234,8 @@ def _relations_as_refs(source: str, index: ProjectIndex) -> str:
             and all(window[at].kind in (TokenKind.WORD, TokenKind.QUOTED_IDENTIFIER) for at in (0, 2, 4))
             and (index_at == 0 or tokens[index_at - 1].text != ".")
         ):
-            try:
-                relation = QualifiedName.parse("".join(token.text for token in window))
-            except ValueError:
-                relation = None
-            model = index.model(relation) if relation is not None else None
+            # The lexer makes a WORD only of an unquoted identifier, so the five tokens always parse.
+            model = index.model(QualifiedName.parse("".join(token.text for token in window)))
             if model is not None:
                 out.append("{{ ref('" + model + "') }}")
                 index_at += 5

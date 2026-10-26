@@ -454,7 +454,7 @@ def _canonical_value(value: object, *, sanitize: bool, key: str) -> object:
     if sanitize and key == "description" and isinstance(value, str):
         value = _restyled(value, _JINJA.sub(_unjinja, value))
     trimmed = _trimmed_prose(value, key)
-    return LiteralScalarString(trimmed) if trimmed is not value else _literal(value)
+    return LiteralScalarString(str(trimmed)) if trimmed is not value else _literal(value)
 
 
 def _trimmed_prose(value: object, key: str | None) -> object:

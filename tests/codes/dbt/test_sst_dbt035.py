@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.project_source import YamlProjectSource
-from snowflake_semantic_tools.domain.diagnostics import Severity
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Severity
 from tests.helpers.projects import project_paths
 from tests.helpers.seam_projects import FakeDbt, SmallProject, manifest, model_node
 
@@ -17,12 +17,12 @@ PROFILES = (
 DEFER = "defer:\n  target: prod\n  state_path: prod_state\n  auto_compile: true\n"
 
 
-def _runs(tmp_path: Path, extra: str = "") -> tuple[FakeDbt, list[tuple[str, ...]]]:
+def _runs(tmp_path: Path, extra: str = "") -> tuple[FakeDbt, list[tuple[Diagnostic, ...]]]:
     config = f"project:\n  semantic_models_dir: semantic_models\n{DEFER}{extra}"
     manifest_path = SmallProject(tmp_path, files={"profiles.yml": PROFILES, "sst_config.yml": config}).write()
     document = manifest({"model.fixture.products": model_node("products", "PROD_DB.SCH.PRODUCTS")})
     dbt = FakeDbt(writes=(tmp_path / "prod_state" / "manifest.json", document))
-    reports = []
+    reports: list[tuple[Diagnostic, ...]] = []
     for _ in range(2):
         source = YamlProjectSource(project_paths(tmp_path), manifest_path=manifest_path, dbt_runner=dbt)
         reports.append(tuple(item for item in source._seam_diagnostics(source.dbt_catalog())))

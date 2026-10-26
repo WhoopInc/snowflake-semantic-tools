@@ -111,7 +111,7 @@ def validate(
     try:
         with ConnectorPool(workers, lambda: open_connector(params)) as pool, RUN_TIMINGS.phase("validate"):
             readers = Fanout(port, pool, workers) if port is not None else None
-            models = model_check(project_config(paths), readers, identity) if readers is not None else None
+            models = model_check(project_config(paths), readers, identity) if readers and identity else None
             result = ValidateArtifacts(
                 port,
                 catalog=port,

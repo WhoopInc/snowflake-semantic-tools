@@ -288,7 +288,7 @@ def _orchestration(
         passthrough["orchestration"] = dict(orchestration)
         mapping.differs(
             f"`orchestration` holds {', '.join(sorted(unmodelled))}, which SST does not model for "
-            f"a {mapping.artifact_type}; the whole section is kept in spec.passthrough"
+            f"{_article(mapping.artifact_type)} {mapping.artifact_type}; the whole section is kept in spec.passthrough"
         )
         return
     if not modelled:
@@ -600,3 +600,8 @@ def _qualified(value: object) -> QualifiedName | None:
         return QualifiedName.parse(value)
     except ValueError:
         return None
+
+
+def _article(word: str) -> str:
+    """Return the indefinite article `word` takes: `an agent`, `a cowork_profile`."""
+    return "an" if word[:1].casefold() in "aeiou" else "a"

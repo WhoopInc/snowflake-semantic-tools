@@ -275,8 +275,8 @@ def _rewrite(
         edit = Edit(target.line, target.col, target.end_line, target.end_col, quoted)
         changes.add(edit, text, after, "ref")
         return None
-    if any(scalar.positions[start][0] < 0 or scalar.positions[end - 1][0] < 0 for start, end, _ in splices):
-        return f"its {_key(kind)} is a multi-line or escaped scalar; name {unnamed} with ref() by hand"
+    # A splice covers word tokens only, and `_block` maps every character of a content line,
+    # so both ends of every splice have a position in the file.
     for start, end, replacement in reversed(splices):
         line, col = scalar.positions[start]
         end_line, end_col = scalar.positions[end - 1]

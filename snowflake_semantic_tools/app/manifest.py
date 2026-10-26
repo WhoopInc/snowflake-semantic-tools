@@ -67,6 +67,10 @@ def stale_manifest(compiled: Manifest, current: Manifest, *, before: str) -> Dia
     return D("SST-MAN009", command=before, reason=reason)
 
 
+# What a key a manifest section lacks stands for, so a missing key never equals a present one.
+_ABSENT = object()
+
+
 def _checksums(files: Mapping[str, object]) -> dict[str, str]:
     return {
         path: str(entry.get("checksum") or "") if isinstance(entry, Mapping) else "" for path, entry in files.items()
@@ -79,15 +83,11 @@ def _changed_section(compiled: Mapping[str, object], current: Mapping[str, objec
         before, now = compiled.get(section), current.get(section)
         if before == now:
             continue
-        if isinstance(before, Mapping) and isinstance(now, Mapping):
-            for key in sorted({*before, *now}, key=str):
-                if key not in now:
-                    return f"{section}.{key} is gone"
-                if key not in before:
-                    return f"{section}.{key} is new"
-                if before[key] != now[key]:
-                    return f"{section}.{key} differs"
-        return f"{section} differs"
+        if not (isinstance(before, Mapping) and isinstance(now, Mapping)):
+            return f"{section} differs"
+        # Two unequal mappings always hold a key whose value, or presence, differs.
+        key = min((key for key in {*before, *now} if before.get(key, _ABSENT) != now.get(key, _ABSENT)), key=str)
+        return f"{section}.{key} " + ("is gone" if key not in now else "is new" if key not in before else "differs")
     return None
 
 

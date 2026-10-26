@@ -11,8 +11,8 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
-from snowflake_semantic_tools.adapters import project_source
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
+from snowflake_semantic_tools.adapters.dbt.manifest import load_manifest_catalog
 from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
 from snowflake_semantic_tools.adapters.deferral import Deferral, resolve_deferral
 from snowflake_semantic_tools.adapters.errors import ProjectError
@@ -123,13 +123,13 @@ def test_sources_sharing_a_run_cache_parse_and_decode_each_manifest_once(
     document = manifest({"model.fixture.products": model_node("products", "PROD_DB.SCH.PRODUCTS")})
     dbt = FakeDbt(writes=(state / "manifest.json", document))
     decoded: list[Path] = []
-    real = project_source.load_manifest_catalog
+    real = load_manifest_catalog
 
     def counting(path: Path, **options: Any) -> Any:
         decoded.append(path)
         return real(path, **options)
 
-    monkeypatch.setattr(project_source, "load_manifest_catalog", counting)
+    monkeypatch.setattr("snowflake_semantic_tools.adapters.project_source.load_manifest_catalog", counting)
     cache = DbtCache()
     paths = project_paths(tmp_path)
     inputs = YamlProjectInputs(
