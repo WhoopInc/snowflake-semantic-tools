@@ -222,7 +222,7 @@ def _generic(
     if backing is None:
         return None
     name = authored.name or ""
-    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse
+    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse or context.target_warehouse
     # A referenced member with no relation is reported; the tool's other checks still run.
     relation = _member_target(backing, context, diagnostics) or context.tool_target(backing.name)
     resources: dict[str, object] = {

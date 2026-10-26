@@ -2,7 +2,7 @@ $ sst --project-dir <project> --manifest <manifest> list
 --- exit 0
 --- stdout
 ARTIFACT                              STATUS   TARGET                                   FINGERPRINT
-agent:jaffle_analytics_agent          pending  SST_REF_DEV...JAFFLE_ANALYTICS_AGENT     50cb54a5d312
+agent:jaffle_analytics_agent          pending  SST_REF_DEV...JAFFLE_ANALYTICS_AGENT     241e0bfd5811
 agent:jaffle_delivery_agent           pending  SST_REF_DEV...JAFFLE_DELIVERY_AGENT      587ccbb3cf86
 agent:jaffle_minimal_agent            pending  SST_REF_DEV.OPS.JAFFLE_MINIMAL_AGENT     506d43050765
 coco_desktop_profile:jaffle-analyst   pending  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY      e99facf42651

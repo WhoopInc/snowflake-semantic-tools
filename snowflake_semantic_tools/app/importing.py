@@ -371,7 +371,7 @@ class ImportObjects:
             ):
                 place = Destination(preferred, place.overridden)
         root = configured_dir(config, artifact.dir_key, artifact.dir_key.removesuffix("_dir"))
-        return place, self._inherited(block, place.folder), root
+        return place, self._inherited(artifact_type, block, place.folder), root
 
     def _placement(self, artifact_type: str, name: QualifiedName) -> AgentPlacement:
         place, settings, root = self._destination(artifact_type, name)
@@ -383,10 +383,14 @@ class ImportObjects:
             inherited=MappingProxyType(settings),
         )
 
-    def _inherited(self, block: object, folder: tuple[str, ...]) -> dict[str, object]:
-        """Return what an artifact in `folder` inherits; tools run on the target's warehouse unless set."""
+    def _inherited(self, artifact_type: str, block: object, folder: tuple[str, ...]) -> dict[str, object]:
+        """Return what an artifact in `folder` inherits.
+
+        A defined tool runs on the target's warehouse unless set; an agent's tools inherit no
+        warehouse, so Snowflake runs them on the caller's default one.
+        """
         settings = dict(inherited(block, folder, self._setup.target))
-        if not settings.get("warehouse") and self._setup.target.warehouse:
+        if artifact_type == "tool" and not settings.get("warehouse") and self._setup.target.warehouse:
             settings["warehouse"] = self._setup.target.warehouse
         return settings
 

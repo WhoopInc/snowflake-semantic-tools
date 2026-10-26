@@ -902,3 +902,41 @@ def test_analyst_environment_carries_a_warehouse_without_a_timeout() -> None:
     assert tool is not None
     assert tool.resources["execution_environment"] == {"type": "warehouse", "warehouse": "WH"}
     assert (tool.name, tool.depends_on) == ("SALES", ("semantic_view:sales",))
+
+
+def test_a_tool_with_no_warehouse_publishes_none_but_a_generic_one_gets_the_targets() -> None:
+    origin = Origin("agent.yml")
+    model = AgentModel("analyst", origin, ("agent.yml",))
+    backing = ToolMember(
+        "lookup",
+        "procedure",
+        ToolOwnership.REFERENCE,
+        origin,
+        "tools.yml",
+        description="One order.",
+        relations=MappingProxyType({"dev": "DB.S.LOOKUP"}),
+    )
+    unset = replace(
+        context(tools=ToolCatalog((backing,), "dev", frozenset(("dev",))), warehouse=None), target_warehouse="TARGET_WH"
+    )
+    analyst, _ = resolve_tool(
+        model, AgentTool("cortex_analyst_text_to_sql", origin, description="Sales.", semantic_view="SALES"), unset
+    )
+    generic, diagnostics = resolve_tool(
+        model,
+        AgentTool(
+            "generic",
+            origin,
+            name="lookup",
+            backing="lookup",
+            description="One order.",
+            input_schema=MappingProxyType({"type": "object", "properties": {}}),
+        ),
+        unset,
+    )
+    assert analyst is not None and analyst.resources["execution_environment"] == {
+        "type": "warehouse",
+        "query_timeout": 60,
+    }
+    assert generic is not None and generic.resources["execution_environment"]["warehouse"] == "TARGET_WH"  # type: ignore[index]
+    assert "SST-VAL527" not in [item.code for item in diagnostics]

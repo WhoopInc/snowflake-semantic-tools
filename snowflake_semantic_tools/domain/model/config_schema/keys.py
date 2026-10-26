@@ -357,7 +357,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "agents.+warehouse",
         _S,
         "Warehouse an agent's Analyst, search, and generic tools run on when they name none.",
-        default="the target warehouse",
+        default="none: Snowflake runs them on the caller's default warehouse",
     ),
     _key(
         "agents.+orchestration_model",

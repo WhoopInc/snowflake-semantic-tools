@@ -32,7 +32,10 @@ class AgentCompileContext:
             as its settings resolve: its own `config:`, the `tools:` folder routes over its
             file, then the block root.
         warehouse, query_timeout: The execution environment a tool gets when it sets none: the
-            agent's resolved `warehouse`, else the target's, and its `query_timeout`.
+            agent's resolved `warehouse`, else none (Snowflake then uses the caller's default
+            warehouse), and its `query_timeout`.
+        target_warehouse: The target's warehouse, which only a generic tool falls back to,
+            since Snowflake requires one for it (SST-VAL527).
         allowed_models: `snowflake.orchestration_models`, the gate for SST-VAL543.
         skills, plugins: What `skill()` and `plugin()` references pin to, by name.
     """
@@ -62,6 +65,7 @@ class AgentCompileContext:
     # `snowflake.tool_types`: tool types this project adds to the ones SST renders (SST-RND012).
     extra_tool_types: frozenset[str] = frozenset()
     tool_locations: Mapping[str, tuple[str, str]] = field(default_factory=lambda: MappingProxyType({}))
+    target_warehouse: str | None = None
 
     def agent_target(self, name: str) -> QualifiedName:
         """Return where the agent named `name` publishes: its entry in `agents`, else the block's location."""

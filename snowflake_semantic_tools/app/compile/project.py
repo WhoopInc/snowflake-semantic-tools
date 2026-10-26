@@ -467,7 +467,7 @@ class CompileProject:
             _skill_variables(settings.tree, self._inputs.git_sha()),
             database,
             schema,
-            target_text(defaults.get("+warehouse"), settings.target, settings.target.warehouse),
+            target_text(defaults.get("+warehouse"), settings.target, None) or None,
             config_int(defaults.get("+query_timeout")),
             allowed_models=allowed_models,
             skills=skill_pins,
@@ -476,6 +476,7 @@ class CompileProject:
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
+            target_warehouse=settings.target.warehouse,
             extra_tool_types=_extra_tool_types(settings.block("snowflake")),
             tool_locations=MappingProxyType(
                 {

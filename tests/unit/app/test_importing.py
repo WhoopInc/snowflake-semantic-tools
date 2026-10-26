@@ -89,3 +89,13 @@ def test_a_skill_is_read_from_a_stage_folder_and_reported_by_its_path() -> None:
     [obj] = report.objects
     assert obj.shown == "@DB.SK.SRC/skills/ops/check/" and obj.artifact_key == "skill:check"
     assert [file.path for file in report.files] == ["skills/check/SKILL.md"]
+
+
+def test_an_agent_tool_on_the_target_warehouse_keeps_it_since_an_agent_inherits_none() -> None:
+    port = FakeImportPort()
+    staged_agent(port, "DB.S.SALES_BOT")
+    report = run(port, "agent", "DB.S.SALES_BOT")
+    [agent] = [file.document for file in report.files if file.path == "agents/sales_bot/agent.yml"]
+    assert agent is not None
+    [tool] = agent["spec"]["tools"]  # type: ignore[index]
+    assert tool["warehouse"] == "WH"

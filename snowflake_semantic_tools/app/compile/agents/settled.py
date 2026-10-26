@@ -67,7 +67,6 @@ def settled_agent(
     defaults: dict[str, object] = {
         "database": target.database.folded,
         "schema": target.schema.folded,
-        "warehouse": target.warehouse,
         "orchestration_model": "auto",
         "enabled": True,
         "secure": False,
@@ -100,11 +99,11 @@ def agent_location(model: AgentModel, target: TargetIdentity) -> tuple[str, str]
 def agent_environment(model: AgentModel, target: TargetIdentity) -> tuple[str | None, int | None]:
     """Return the warehouse and query timeout the agent's tools run with when they set none.
 
-    The warehouse is the agent's `warehouse` setting, else the target's; a setting that renders
-    empty is unset.
+    The warehouse is the agent's `warehouse` setting, else none, so Snowflake runs the tools on
+    the caller's default warehouse; a setting that renders empty is unset.
     """
-    warehouse = target_text(setting_value(model.settings, "warehouse"), target, target.warehouse)
-    return warehouse or target.warehouse, config_int(setting_value(model.settings, "query_timeout"))
+    warehouse = target_text(setting_value(model.settings, "warehouse"), target, None)
+    return warehouse or None, config_int(setting_value(model.settings, "query_timeout"))
 
 
 def reported_settings(

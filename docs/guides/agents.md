@@ -145,7 +145,7 @@ agent's settings with where each came from.
 | Key | Meaning |
 |---|---|
 | `database`, `schema` | Where the agent publishes. Unset, the target's. |
-| `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none; `query_timeout` is at least 1. With no `warehouse`, they run on the target's warehouse. |
+| `warehouse`, `query_timeout` | The execution environment of every Analyst, search, and generic tool of the agent that sets none; `query_timeout` is at least 1. With no `warehouse`, SST publishes none for Analyst and search tools, and Snowflake runs them on the default warehouse of the person asking; a generic tool, which Snowflake requires a warehouse for, gets the target's. |
 | `orchestration_model` | Rendered as `models.orchestration`. It must be in `snowflake.orchestration_models` (`SST-VAL543`), which defaults to `[auto]` alone, so a project that names a model lists it there. The connected check runs each model in that list in a throwaway agent, so a model agents refuse fails validation (`SST-VAL551`) rather than an agent's first question. Unset, `auto`, which warns: see [Pinning the orchestration model](#pinning-the-orchestration-model). |
 | `allow_auto_model` | `true` keeps `auto` deliberately, so `SST-VAL560` does not warn about this agent. Unset, false. |
 | `budget_seconds`, `budget_tokens` | Rendered as `orchestration.budget`; each at least 1. Tokens spent inside tools are not counted, so the token budget is not a spend ceiling: an agent that sets `config.budget_tokens` itself is warned (`SST-VAL547`) unless a comment on that line, or just above it, says `orchestration`. A budget an agent inherits from `agents:` is not warned. |

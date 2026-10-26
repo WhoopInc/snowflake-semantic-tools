@@ -93,7 +93,6 @@
       "semantic_view": "SST_REF_DEV.JAFFLE.JAFFLE_SALES",
       "execution_environment": {
         "type": "warehouse",
-        "warehouse": "SST_REF_WH",
         "query_timeout": 60
       }
     },
@@ -101,7 +100,6 @@
       "semantic_view": "SST_REF_DEV.CORE.JAFFLE_MENU",
       "execution_environment": {
         "type": "warehouse",
-        "warehouse": "SST_REF_WH",
         "query_timeout": 60
       }
     },
@@ -138,7 +136,6 @@
       },
       "execution_environment": {
         "type": "warehouse",
-        "warehouse": "SST_REF_WH",
         "query_timeout": 60
       }
     },

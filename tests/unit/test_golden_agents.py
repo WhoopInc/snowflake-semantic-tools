@@ -66,7 +66,9 @@ def test_reference_agents_match_complete_json_goldens() -> None:
             variables={"sha_version": "0000000"},
             database="SST_REF_DEV",
             schema="JAFFLE",
-            warehouse="SST_REF_WH",
+            # No agent sets a warehouse, so its tools name none; a generic tool takes the target's.
+            warehouse=None,
+            target_warehouse="SST_REF_WH",
             query_timeout=int(config["agents"]["+query_timeout"]),
             allowed_models=frozenset(config["snowflake"]["orchestration_models"]),
             skills=pins,

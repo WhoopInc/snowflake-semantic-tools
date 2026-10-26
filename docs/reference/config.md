@@ -176,7 +176,7 @@ Defaults for Cortex Agents, overridable per folder and by an agent's own `config
 |---|---|---|---|
 | `agents.+database` | identifier | the target database | Database for agents. |
 | `agents.+schema` | identifier | the target schema | Schema for agents. |
-| `agents.+warehouse` | string | the target warehouse | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
+| `agents.+warehouse` | string | `none: Snowflake runs them on the caller's default warehouse` | Warehouse an agent's Analyst, search, and generic tools run on when they name none. |
 | `agents.+orchestration_model` | string | `auto` | Orchestration model; must be in `snowflake.orchestration_models` (SST-CFG025 here, SST-VAL543 for the value an agent resolves). `auto` lets Snowflake choose, and SST-VAL560 warns. |
 | `agents.+allow_auto_model` | boolean | `false` | Keep an agent's orchestration model on `auto` deliberately: true silences SST-VAL560 for it, not SST-VAL544. |
 | `agents.+query_timeout` | integer, at least 1 |  | Query timeout, in seconds, of an agent's tools that set none. |
