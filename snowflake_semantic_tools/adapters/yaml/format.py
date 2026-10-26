@@ -12,6 +12,10 @@ The canonical form is a re-layout that never changes what the file means:
   `|` when it ends in a newline); a block scalar keeps the style it was written in, folded or
   literal, so the formatter never rewrites how an author chose to write a value; a string
   holding a control character such as a carriage return stays double-quoted;
+- a multi-line prose value (`PROSE_KEYS`) whose lines end in whitespace, which no block scalar
+  can hold, has that whitespace and its final newline dropped and is written as `|-`, rather
+  than as one escaped double-quoted line: a whitespace-only repair, which the value check
+  allows for, and which Snowflake and dbt docs never show;
 - with `wrap_width` (`format.wrap_width`), a single-line string that would run past it is a
   folded block, `>-`, broken at single spaces so it loads back as the same one line; and with
   `unwrap_prose` (`format.unwrap_prose`), a prose value's soft wraps are joined first, the third
@@ -180,7 +184,7 @@ def _canonical(text: str, path: str, options: _Options) -> str:
     yaml.explicit_start = source.lstrip().startswith("---")
     try:
         documents = list(yaml.load_all(source))
-        expected = list(_plain().load_all(source))
+        expected = [_trimmed_tree(document) for document in _plain().load_all(source)]
     except YAMLError as exc:
         raise _unparseable(path, exc) from exc
     for document in documents:
@@ -403,7 +407,36 @@ def _reorderable(item: object) -> bool:
 def _canonical_value(value: object, *, sanitize: bool, key: str) -> object:
     if sanitize and key == "description" and isinstance(value, str):
         value = _restyled(value, _JINJA.sub(_unjinja, value))
-    return _literal(value)
+    trimmed = _trimmed_prose(value, key)
+    return LiteralScalarString(trimmed) if trimmed is not value else _literal(value)
+
+
+def _trimmed_prose(value: object, key: str | None) -> object:
+    """Return a multi-line prose value without the whitespace that ends its lines, or `value`.
+
+    Only a value a block scalar could otherwise hold is trimmed: one with no control character
+    and no tab in a line's indentation. Its final newline goes too, so it is written as `|-`.
+    `value` itself is returned when nothing applies.
+    """
+    if key not in PROSE_KEYS or not isinstance(value, str) or _CONTROL.search(value):
+        return value
+    lines = value.split("\n")
+    if len(value.rstrip("\n").split("\n")) < 2 or all(line == line.rstrip() for line in lines):
+        return value
+    if any("\t" in line[: len(line) - len(line.lstrip())] for line in lines):
+        return value
+    return "\n".join(line.rstrip() for line in lines).rstrip("\n")
+
+
+def _trimmed_tree(value: object, key: str | None = None) -> object:
+    """Return a plain loaded value with each prose string trimmed as `_trimmed_prose` trims it."""
+    if isinstance(value, dict):
+        return {k: _trimmed_tree(v, str(k)) for k, v in value.items()}
+    if isinstance(value, list):
+        # A list item is never trimmed, as `_canonical_item` leaves it.
+        return [_trimmed_tree(v) for v in value]
+    trimmed = _trimmed_prose(value, key)
+    return str(trimmed) if trimmed is not value else value
 
 
 def _canonical_item(item: object, *, sanitize: bool, parent_key: str | None) -> object:

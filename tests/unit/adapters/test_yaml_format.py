@@ -270,3 +270,27 @@ def test_a_carriage_return_stays_escaped_in_a_double_quoted_string() -> None:
     once = canonical_yaml(text, "f.yml")
     assert _value(once) == _value(text)
     assert canonical_yaml(once, "f.yml") == once
+
+
+def test_a_folded_description_ending_lines_in_spaces_becomes_a_literal_block_not_a_quoted_line() -> None:
+    folded = (
+        "models:\n"
+        "  - name: m\n"
+        "    description: >\n"
+        "      For each turn (a, b),  \n"
+        "      this table records it. \n"
+        "\n"
+        "      Sourced from events. \n"
+    )
+    formatted = canonical_yaml(folded, "m.yml")
+    assert formatted == (
+        "models:\n"
+        "  - name: m\n"
+        "    description: |-\n"
+        "      For each turn (a, b),   this table records it.\n"
+        "      Sourced from events.\n"
+    )
+    assert canonical_yaml(formatted, "m.yml") == formatted
+    # A value that is not prose keeps its trailing whitespace, double-quoted, as before.
+    sql = "models:\n  - name: m\n    meta:\n      sql: |\n        select 1 \n        from t\n"
+    assert '"select 1 \\nfrom t\\n"' in canonical_yaml(sql, "m.yml")
