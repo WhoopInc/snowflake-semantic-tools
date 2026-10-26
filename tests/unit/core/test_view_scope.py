@@ -161,6 +161,34 @@ class TestParseSemanticViewsScope:
         assert "columns" not in result[0]
         assert "relationships" not in result[0]
 
+    def test_database_and_schema_parsed(self):
+        """Per-view database and schema override are included in the record."""
+        views = [
+            {
+                "name": "security_view",
+                "tables": ["incidents"],
+                "database": "SECURITY_DB",
+                "schema": "SEMANTIC_VIEWS",
+            }
+        ]
+        result = parse_semantic_views(views, Path("test.yml"))
+        assert result[0]["database"] == "SECURITY_DB"
+        assert result[0]["schema"] == "SEMANTIC_VIEWS"
+
+    def test_database_only_override(self):
+        """Only database can be overridden; schema defaults to None."""
+        views = [{"name": "test_view", "tables": ["orders"], "database": "OTHER_DB"}]
+        result = parse_semantic_views(views, Path("test.yml"))
+        assert result[0]["database"] == "OTHER_DB"
+        assert result[0]["schema"] is None
+
+    def test_no_database_schema_defaults_to_none(self):
+        """When no database/schema specified, both default to None."""
+        views = [{"name": "simple_view", "tables": ["orders"]}]
+        result = parse_semantic_views(views, Path("test.yml"))
+        assert result[0]["database"] is None
+        assert result[0]["schema"] is None
+
 
 # ===== Builder scope tests =====
 
