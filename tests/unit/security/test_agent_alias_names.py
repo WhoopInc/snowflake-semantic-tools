@@ -32,6 +32,8 @@ SPECIAL = (
     '"promoted"',
     '"Prod"',
     '"select"',
+    '"0"',
+    '"$"',
     "a.b.c",
     'x"; DROP AGENT y; --',
     "x'; DROP",

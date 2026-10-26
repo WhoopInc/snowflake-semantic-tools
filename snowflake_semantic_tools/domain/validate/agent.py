@@ -273,7 +273,8 @@ def plain_alias(value: str) -> bool:
         rendered = str(ident(Identifier.parse(text)))
     except (TypeError, ValueError):
         return False
-    return rendered == text.upper() and not reserved_alias(text)
+    # A quoted name that renders as written, such as `"0"`, is still quoted: never plain.
+    return not rendered.startswith('"') and rendered == text.upper() and not reserved_alias(text)
 
 
 def _alias_problems(model: PublishedAgent, alias: str) -> tuple[Diagnostic, ...]:
