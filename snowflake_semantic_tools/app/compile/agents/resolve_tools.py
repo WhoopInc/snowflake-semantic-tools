@@ -83,7 +83,7 @@ def resolve_tool(
         SST-VAL559: the tool's type is `mcp`, which no run of the agent accepts.
         SST-RND012: the tool type is unknown to the renderer, and `snowflake.tool_types` adds no such type.
         SST-VAL516: the tool declares a key another tool type takes and its own does not.
-        SST-VAL520: an Analyst tool names no semantic view, or is given a name as well.
+        SST-VAL520: an Analyst tool names no semantic view.
         SST-VAL016: an Analyst tool's semantic view is one the project declares and does not
             publish, because it is disabled.
         SST-REF011: an Analyst tool's semantic view is not one that compiled.
@@ -127,7 +127,7 @@ def resolve_tool(
         )
         return None, tuple(diagnostics)
     # A known type without a resolver of its own is a built-in.
-    # An Analyst tool is named after its view; any other unnamed tool, after its type.
+    # An unnamed Analyst tool is named after its view; any other unnamed tool, after its type.
     label = authored.name or (authored.semantic_view.upper() if authored.semantic_view else authored.type)
     diagnostics.extend(misplaced_keys(agent, authored, label))
     resolution = _RESOLVERS.get(authored.type, _builtin)(agent, authored, context, diagnostics)
@@ -140,17 +140,9 @@ def resolve_tool(
 def _analyst(
     agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
 ) -> _Resolution | None:
-    """A Cortex Analyst tool: named after the compiled semantic view it queries."""
-    if not authored.semantic_view or authored.name:
-        diagnostics.append(
-            D(
-                "SST-VAL520",
-                artifact=agent.name,
-                name=authored.name or "",
-                count=int(bool(authored.semantic_view)),
-                subject=agent.key,
-            )
-        )
+    """A Cortex Analyst tool: its own `name`, else the name of the compiled view it queries."""
+    if not authored.semantic_view:
+        diagnostics.append(D("SST-VAL520", artifact=agent.name, name=authored.name or "", subject=agent.key))
         return None
     target = context.semantic_views.get(authored.semantic_view.casefold())
     declared = view_key(authored.semantic_view)
@@ -165,7 +157,7 @@ def _analyst(
         authored.query_timeout or context.query_timeout,
     )
     return _Resolution(
-        target.name.folded,
+        authored.name or target.name.folded,
         authored.description or "",
         {"semantic_view": target.sql, **environment},
         (view_key(authored.semantic_view),),

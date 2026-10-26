@@ -126,8 +126,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: {detail}",
         "review the file before `sst state adopt`, which shows each difference that remains",
         condition=(
-            "a live property SST cannot write as it is, such as a Cortex Analyst tool named other "
-            "than its view, a STAGE skill source, or a setting SST does not model"
+            "a live property SST cannot write as it is, such as a STAGE skill source, or a setting SST does not model"
         ),
         precheck=Precheck.LOCAL,
     ),

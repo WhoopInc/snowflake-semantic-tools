@@ -65,6 +65,8 @@ Every physical name a live object holds is mapped to the project's own call, on 
 - a search service, procedure, function or partner agent to `{{ tool('<member>') }}`; one the
   project has no member for gets a new tool member that references it;
 - a skill extension to `{{ skill('<name>') }}`, a plugin to `{{ plugin('<name>') }}`;
+- a Cortex Analyst tool keeps its live name: `name:` is written when it is not the view's,
+  so evals, instructions and run history keyed on the tool still match after apply;
 - a view's base table to `{{ ref('<model>') }}`, its source table to `{{ source() }}`, and each
   `TABLE.COLUMN` and metric in an expression to a `ref()` or `metric()` call.
 

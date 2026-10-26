@@ -158,12 +158,12 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL520",
         Severity.ERROR,
-        "Analyst tool does not declare exactly one semantic view",
-        "agent '{artifact}': tool '{name}' declares {count} semantic views",
-        "declare exactly one semantic_view and no name",
+        "Analyst tool declares no semantic view",
+        "agent '{artifact}': tool '{name}' declares no semantic view",
+        "declare the semantic_view the tool queries",
         condition=(
-            "a cortex_analyst_text_to_sql tool declares no `semantic_view`, or also declares a `name`: "
-            "an Analyst tool is named after its view"
+            "a cortex_analyst_text_to_sql tool declares no `semantic_view`; its optional `name` "
+            "defaults to the view's name"
         ),
     ),
     spec(

@@ -124,8 +124,8 @@ not compile; write it as `instructions: {response: Answer briefly.}`.
   error (`SST-PRS118`). An eval question identical to a sample question is
   reported by the eval checks.
 - Instructions that name a tool the agent does not have are warned
-  (`SST-VAL535`). An Analyst tool's name is its view's name in upper case, such
-  as `SALES`.
+  (`SST-VAL535`). An Analyst tool's name is its `name:`, else its view's name in
+  upper case, such as `SALES`.
 
 ### Settings
 
@@ -216,7 +216,7 @@ Each `spec.tools` entry is one tool. SST splits it into the spec's `tools` and
 
 | `type` | What it names |
 |---|---|
-| `cortex_analyst_text_to_sql` | `semantic_view: "{{ semantic_view('<name>') }}"`, a view this project compiles (`SST-REF011`). It takes no `name:` (`SST-VAL520`): the tool is named after the view. |
+| `cortex_analyst_text_to_sql` | `semantic_view: "{{ semantic_view('<name>') }}"`, a view this project compiles (`SST-REF011`); one with none is `SST-VAL520`. An optional `name:` names the tool; without one it is named after the view. |
 | `cortex_search` | `name:` and `search_service: "{{ tool('<name>') }}"`, a `cortex_search_service` tool member. Optional: `max_results`, `id_column`, `title_column`, `columns`, `filter`, and `stage_path` with `relative_path_column` (both or neither, `SST-VAL522`). A `stage_path` on a stage this project declares opens with its member, `"{{ tool('<stage>') }}/<path>"`; an external stage is written as it is. |
 | `generic` | `name:`, `identifier: "{{ tool('<name>') }}"`, a `procedure` or `function` tool member, and an object `input_schema` (`SST-VAL526`). |
 | `agent_toolset` | `agent: "{{ agent('<name>') }}"`, or `identifier: "{{ tool('<name>') }}"`, an `agent` tool member; see [agent toolsets](#agent-toolsets). |

@@ -16,7 +16,7 @@ from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
 from snowflake_semantic_tools.domain.sql import ident
 
-# The keys every tool type takes; `name` on an Analyst tool is SST-VAL520's to report.
+# The keys every tool type takes; an Analyst tool's `name` defaults to its view's name.
 _COMMON = frozenset(("type", "name", "description", "tool_spec_passthrough"))
 _ENVIRONMENT = frozenset(("warehouse", "query_timeout"))
 TOOL_KEYS: Mapping[str, frozenset[str]] = {

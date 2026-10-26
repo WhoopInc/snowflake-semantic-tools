@@ -3815,13 +3815,13 @@ Note: Near-identical descriptions are the dominant cause of tool_selection_accur
 
 ### SST-VAL520
 
-**Analyst tool does not declare exactly one semantic view** (error)
+**Analyst tool declares no semantic view** (error)
 
-`agent '<artifact>': tool '<name>' declares <count> semantic views`
+`agent '<artifact>': tool '<name>' declares no semantic view`
 
-Raised when a cortex_analyst_text_to_sql tool declares no `semantic_view`, or also declares a `name`: an Analyst tool is named after its view.
+Raised when a cortex_analyst_text_to_sql tool declares no `semantic_view`; its optional `name` defaults to the view's name.
 
-Fix: declare exactly one semantic_view and no name
+Fix: declare the semantic_view the tool queries
 
 ### SST-VAL521
 
@@ -8081,7 +8081,7 @@ Fix: import it as well (`sst import {type} {value}`, or --with-dependencies), or
 
 `<artifact>: <detail>`
 
-Raised when a live property SST cannot write as it is, such as a Cortex Analyst tool named other than its view, a STAGE skill source, or a setting SST does not model.
+Raised when a live property SST cannot write as it is, such as a STAGE skill source, or a setting SST does not model.
 
 Fix: review the file before `sst state adopt`, which shows each difference that remains
 

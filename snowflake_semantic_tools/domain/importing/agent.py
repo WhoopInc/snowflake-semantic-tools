@@ -160,8 +160,8 @@ def import_agent(live: LiveAgent, index: ProjectIndex, placement: AgentPlacement
 
     Diagnostics:
         SST-IMP012: a tool, skill or agent the spec names is not compiled by the project.
-        SST-IMP013: a property SST writes otherwise, or cannot write: an analyst tool named
-            other than its view, a STAGE skill, a setting the folder sets that the agent does not.
+        SST-IMP013: a property SST writes otherwise, or cannot write: a STAGE skill, a setting
+            the folder sets that the agent does not.
     """
     mapping = _Mapping(live, index, placement, "agent")
     document: dict[str, object] = {"name": mapping.name}
@@ -370,9 +370,15 @@ def _agent_tool(mapping: _Mapping, tool: object, resources: Mapping[str, object]
 def _analyst(
     mapping: _Mapping, name: str, tool_spec: Mapping[str, object], resource: Mapping[str, object]
 ) -> dict[str, object]:
-    """Map a Cortex Analyst tool to the `semantic_view()` it queries; SST names it after the view."""
+    """Map a Cortex Analyst tool to the `semantic_view()` it queries, keeping its live name.
+
+    The name is written only when it is not the view's, which is what SST names it otherwise;
+    evals, instructions and run history are keyed on it.
+    """
     entry: dict[str, object] = {"type": "cortex_analyst_text_to_sql"}
     view = _qualified(resource.get("semantic_view"))
+    if view is None or name != view.name.folded:
+        entry["name"] = name
     if view is None:
         mapping.differs(f"Cortex Analyst tool '{name}' names no semantic view; written with none")
     else:
@@ -382,11 +388,6 @@ def _analyst(
         entry["semantic_view"] = reference
         if placed is None:
             mapping.unresolved("semantic_view", view.sql, reference)
-        if name.casefold() != view.name.folded.casefold():
-            mapping.differs(
-                f"Cortex Analyst tool '{name}' is named after its view, {view.name.folded}, as SST names "
-                "every analyst tool; instructions that name the tool need the new name"
-            )
     _describe(entry, tool_spec)
     _environment(mapping, entry, name, resource)
     if tool_spec.get("input_schema"):
