@@ -146,6 +146,82 @@ class TestDbtModelValidator:
             ]
             assert len(column_type_errors) == 1, f"Failed to catch {description}: {invalid_type}"
 
+    def test_measure_and_metric_suggest_fact(self):
+        """Test that 'measure' and 'metric' errors include 'Did you mean: fact?' suggestion."""
+        for alias in ("measure", "metric"):
+            dbt_data = {
+                "sm_tables": [
+                    {
+                        "table_name": "TEST_TABLE",
+                        "database": "ANALYTICS",
+                        "schema": "TEST",
+                        "primary_key": ["id"],
+                    }
+                ],
+                "sm_dimensions": {
+                    "items": [
+                        {
+                            "table_name": "TEST_TABLE",
+                            "name": "bad_col",
+                            "column_type": alias,
+                            "data_type": "number",
+                        }
+                    ]
+                },
+            }
+
+            result = self.validator.validate(dbt_data)
+
+            column_type_errors = [
+                issue
+                for issue in result.issues
+                if issue.severity == ValidationSeverity.ERROR and "invalid column_type" in issue.message
+            ]
+            assert len(column_type_errors) == 1, f"Expected error for column_type '{alias}'"
+            assert (
+                "Did you mean: 'fact'?" in column_type_errors[0].message
+            ), f"Expected 'Did you mean' suggestion for '{alias}'"
+
+    def test_timestamp_and_time_suggest_time_dimension(self):
+        """Test that 'timestamp', 'time', 'date' errors include 'Did you mean: time_dimension?' suggestion."""
+        for alias, expected in [
+            ("timestamp", "time_dimension"),
+            ("time", "time_dimension"),
+            ("date", "time_dimension"),
+        ]:
+            dbt_data = {
+                "sm_tables": [
+                    {
+                        "table_name": "TEST_TABLE",
+                        "database": "ANALYTICS",
+                        "schema": "TEST",
+                        "primary_key": ["id"],
+                    }
+                ],
+                "sm_dimensions": {
+                    "items": [
+                        {
+                            "table_name": "TEST_TABLE",
+                            "name": "bad_col",
+                            "column_type": alias,
+                            "data_type": "timestamp_ntz",
+                        }
+                    ]
+                },
+            }
+
+            result = self.validator.validate(dbt_data)
+
+            column_type_errors = [
+                issue
+                for issue in result.issues
+                if issue.severity == ValidationSeverity.ERROR and "invalid column_type" in issue.message
+            ]
+            assert len(column_type_errors) == 1, f"Expected error for column_type '{alias}'"
+            assert (
+                f"Did you mean: '{expected}'?" in column_type_errors[0].message
+            ), f"Expected 'Did you mean' suggestion for '{alias}'"
+
     def test_empty_column_type_not_validated(self):
         """Test that empty/missing column_type doesn't trigger the invalid type error."""
         dbt_data = {

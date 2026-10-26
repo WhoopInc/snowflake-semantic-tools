@@ -348,9 +348,9 @@ def get_column_type(column: Dict[str, Any], table_name: str = "") -> str:
     # Normalize the column type if provided
     if column_type in ["dimension"]:
         return "dimension"
-    elif column_type in ["time_dimension", "time", "date", "timestamp"]:
+    elif column_type in ["time_dimension"]:
         return "time"
-    elif column_type in ["fact", "measure", "metric"]:
+    elif column_type in ["fact"]:
         return "fact"
     else:
         # Return empty string if missing or invalid - validation will catch this

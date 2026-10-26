@@ -11,6 +11,7 @@ import pytest
 from snowflake_semantic_tools.core.parsing.parsers.data_extractors import (
     clear_deprecation_warnings,
     extract_column_info,
+    get_column_type,
     get_sst_meta,
 )
 
@@ -196,3 +197,46 @@ class TestExtractColumnInfo:
         assert result["data_type"] == "NUMBER"
         assert result["_native_data_type"] == "NUMBER"
         assert result["_sst_data_type"] == "text"
+
+
+class TestGetColumnType:
+    """Tests for get_column_type normalization."""
+
+    def _make_column(self, column_type):
+        return {
+            "name": "test_col",
+            "config": {"meta": {"sst": {"column_type": column_type}}},
+        }
+
+    def test_valid_dimension(self):
+        assert get_column_type(self._make_column("dimension")) == "dimension"
+
+    def test_valid_fact(self):
+        assert get_column_type(self._make_column("fact")) == "fact"
+
+    def test_valid_time_dimension(self):
+        assert get_column_type(self._make_column("time_dimension")) == "time"
+
+    def test_measure_rejected(self):
+        """'measure' is not a valid alias and must return empty string."""
+        assert get_column_type(self._make_column("measure")) == ""
+
+    def test_metric_rejected(self):
+        """'metric' is not a valid alias and must return empty string."""
+        assert get_column_type(self._make_column("metric")) == ""
+
+    def test_timestamp_rejected(self):
+        """'timestamp' is not a valid alias and must return empty string."""
+        assert get_column_type(self._make_column("timestamp")) == ""
+
+    def test_time_rejected(self):
+        """'time' is not a valid alias and must return empty string."""
+        assert get_column_type(self._make_column("time")) == ""
+
+    def test_date_rejected(self):
+        """'date' is not a valid alias and must return empty string."""
+        assert get_column_type(self._make_column("date")) == ""
+
+    def test_missing_column_type(self):
+        column = {"name": "test_col", "config": {"meta": {"sst": {}}}}
+        assert get_column_type(column) == ""

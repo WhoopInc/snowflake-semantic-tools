@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from snowflake_semantic_tools.core.models import ValidationResult
 from snowflake_semantic_tools.core.models.validation import ValidationSeverity
 from snowflake_semantic_tools.core.parsing.parsers.data_extractors import get_sst_meta
+from snowflake_semantic_tools.shared.constants import COLUMN_TYPE_ALIASES
 from snowflake_semantic_tools.shared.utils import get_logger
 from snowflake_semantic_tools.shared.utils.character_sanitizer import CharacterSanitizer
 
@@ -151,6 +152,10 @@ class DbtModelValidator:
         time_dimensions_data = dbt_data.get("sm_time_dimensions", {})
         time_dimensions = self._extract_items(time_dimensions_data)
 
+        # Get columns that were skipped during parsing (invalid column_type)
+        skipped_columns_data = dbt_data.get("sm_skipped_columns", {})
+        skipped_columns = self._extract_items(skipped_columns_data)
+
         # Get all models for comprehensive checking
         models = dbt_data.get("models", [])
 
@@ -171,7 +176,7 @@ class DbtModelValidator:
                 skipped_tables.append((table_name, missing_fields, table.get("source_file")))
                 continue
 
-            self._validate_table(table, result, dimensions, facts, time_dimensions)
+            self._validate_table(table, result, dimensions, facts, time_dimensions, skipped_columns)
 
         # Check for models that should be included but aren't
         self._check_missing_models(models, tables, result)
@@ -249,6 +254,7 @@ class DbtModelValidator:
         dimensions: List[Dict[str, Any]],
         facts: List[Dict[str, Any]],
         time_dimensions: List[Dict[str, Any]],
+        skipped_columns: Optional[List[Dict[str, Any]]] = None,
     ):
         """Validate a single table/model."""
         table_name = table.get("table_name", "unknown")
@@ -288,6 +294,12 @@ class DbtModelValidator:
 
         for column in table_columns:
             self._validate_column(column, table_name, result)
+
+        # Validate skipped columns (invalid column_type caught during parsing)
+        if skipped_columns:
+            table_skipped = [c for c in skipped_columns if c.get("table_name", "").upper() == table_name.upper()]
+            for column in table_skipped:
+                self._validate_column(column, table_name, result)
 
         # Log if this table passed all validations
         if result.error_count == initial_error_count and result.warning_count == initial_warning_count:
@@ -648,11 +660,15 @@ class DbtModelValidator:
                 context={"table": table_name, "column": column_name, "field": "column_type", "level": "column"},
             )
         elif column_type not in self.VALID_COLUMN_TYPES:
+            canonical = COLUMN_TYPE_ALIASES.get(column_type)
+            hint = f" Did you mean: '{canonical}'?" if canonical else ""
             result.add_error(
-                f"Column '{column_name}' in table '{table_name}' has invalid column_type: '{column_type}'. Must be one of: {', '.join(sorted(self.VALID_COLUMN_TYPES))}",
+                f"Column '{column_name}' in table '{table_name}' has invalid column_type: '{column_type}'.{hint} Must be one of: {', '.join(sorted(self.VALID_COLUMN_TYPES))}",
                 file_path=source_file,
                 rule_id="SST-V007",
-                suggestion="Must be one of: dimension, fact, time_dimension",
+                suggestion=(
+                    f"Did you mean: '{canonical}'" if canonical else "Must be one of: dimension, fact, time_dimension"
+                ),
                 entity_name=column_name,
                 context={
                     "table": table_name,
