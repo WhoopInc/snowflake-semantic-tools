@@ -187,8 +187,11 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
 
 
 def _listed(command: str, data: Mapping[str, object]) -> list[str]:
-    """Return one line per item `list` lists, node `lineage` traces, kit skill not current, or file
-    and baseline entry a command changes or lists."""
+    """Return one line per item a command lists, traces, or changes.
+
+    That is each item `list` lists, node `lineage` traces, kit skill not current, and file or
+    baseline entry `format`, `clean`, `migrate`, and `baseline` change or list.
+    """
     if command in _FILE_COMMANDS:
         return _files(command, data)
     if command == "list":

@@ -239,9 +239,10 @@ class DropObject:
         return self._execute(request, lease, entries, manifest, dependents)
 
     def _changed(self, request: DropRequest, lease: RunLease, marker: OwnershipMarker | None) -> Diagnostic | None:
-        """Check, immediately before the DROP, that the run still holds the lock and the marker reads as it did.
+        """Check the lock and the marker again, immediately before the DROP.
 
-        `marker` is None for an extension, which carries none.
+        The run must still hold the lock, and the marker read as it did; `marker` is None for an
+        extension, which carries none.
 
         Diagnostics:
             SST-APL011: the run no longer holds the lock.
