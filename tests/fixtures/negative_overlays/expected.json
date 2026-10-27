@@ -184,7 +184,7 @@
       {"code": "SST-REF011", "severity": "error", "count": 1},
       {"code": "SST-VAL007", "severity": "warning", "count": 1}
     ],
-    "reaches": ["semantic_models/custom_instructions/custom_instructions.yml"]
+    "reaches": ["semantic_models/custom_instructions/custom_instructions.yml", "agents/jaffle_analytics/agent.yml"]
   },
   "35-include-and-exclude-metrics.yml": {
     "into": "semantic_models/semantic_views",

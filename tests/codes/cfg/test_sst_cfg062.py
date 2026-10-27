@@ -18,6 +18,7 @@ ENTRIES = (
     BaselineEntry("0" * 16, "SST-VAL003"),
     BaselineEntry("1" * 16, "SST-NOPE999"),
     BaselineEntry("2" * 16, "SST-MEM003"),
+    BaselineEntry("3" * 16, "SST-V050"),
 )
 
 
@@ -29,13 +30,17 @@ def _notices(*entries: BaselineEntry) -> list[tuple[str, str]]:
 
 def test_sst_cfg062_fires() -> None:
     baseline = Baseline(".sst/baseline.json", "2099-01-01", ENTRIES)
-    first, second = match_baseline((), baseline, today="2026-10-02", warn_from="2026-11-01").notices
+    first, second, third = match_baseline((), baseline, today="2026-10-02", warn_from="2026-11-01").notices
     assert (first.code, first.severity) == ("SST-CFG062", Severity.WARNING)
     assert first.message == "baseline entry 2 records SST-NOPE999, which SST does not report; no code replaced it"
     assert (first.subject, first.origin) == ("config:.sst/baseline.json", Origin(".sst/baseline.json"))
     # A retired code names the code that took its condition over.
     assert second.message == (
         "baseline entry 3 records SST-MEM003, which SST does not report; it was replaced by SST-REF001"
+    )
+    # A 0.3 code names the 1.0 code that answers for it.
+    assert third.message == (
+        "baseline entry 4 records SST-V050, which SST does not report; it was replaced by SST-VAL403"
     )
 
 

@@ -81,6 +81,19 @@ def test_selectors_that_match_nothing_refuse_the_plan_unless_it_prunes() -> None
     assert isinstance(pruning, PlanCandidates) and pruning.selected.compiled == ()
 
 
+def test_an_exclusion_that_removes_every_selected_artifact_says_so() -> None:
+    # GitHub #272: this once said the selector matched nothing.
+    result = compiled("MENU")
+    scope = PlanScope(
+        ("menu",), None, frozenset(("semantic_view:menu",)), None, frozenset(("semantic_view:menu",)), False
+    )
+    refused, _, _ = select(result, scope=scope)
+    assert isinstance(refused, PlanRefused)
+    assert [(item.code, item.message) for item in refused.diagnostics] == [
+        ("SST-DIS015", "--exclude removed every artifact --select menu chose")
+    ]
+
+
 def test_a_scope_covers_what_its_types_or_keys_select_less_what_it_excludes() -> None:
     result = compiled("MENU", "SALES")
     by_key = PlanScope(("menu",), None, frozenset(("semantic_view:menu",)), None, None, False)
