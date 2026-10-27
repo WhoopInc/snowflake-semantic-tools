@@ -5,7 +5,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "snowflake-semantic-tools"
 version = "1.0.0"
-description = "Compile and publish Snowflake semantic views, Cortex Agents, skills, and CoCo Desktop profiles from a dbt project"
+description = "Declarative semantic layer and Cortex Agent orchestration framework for Snowflake and dbt"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
 license = "Apache-2.0"
