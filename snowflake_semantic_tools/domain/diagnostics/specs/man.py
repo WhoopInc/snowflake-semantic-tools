@@ -181,6 +181,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-MAN033",
+        Severity.WARNING,
+        "Lineage reads a stale manifest",
+        "the compiled manifest is stale ({reason}); lineage shows the last compile",
+        "run sst compile, or pass --no-manifest to trace the files as they are now",
+        condition="`sst lineage` reads a compiled manifest whose recorded inputs changed since it was written",
+    ),
+    spec(
         "SST-MAN201",
         Severity.INFO,
         "Older manifest schema migrated in memory",

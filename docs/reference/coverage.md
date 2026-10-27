@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 827
+- Codes: 828
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -246,6 +246,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-MAN030`](error-codes.md#sst-man030) | MAN | warning | local | `snowflake_semantic_tools.app.apply.observation` | `tests/codes/man/test_sst_man030.py` |
 | [`SST-MAN031`](error-codes.md#sst-man031) | MAN | error | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man031.py` |
 | [`SST-MAN032`](error-codes.md#sst-man032) | MAN | error | local | `snowflake_semantic_tools.app.evals.compare_refresh`<br>`snowflake_semantic_tools.cli.compare` | `tests/codes/man/test_sst_man032.py` |
+| [`SST-MAN033`](error-codes.md#sst-man033) | MAN | warning | local | `snowflake_semantic_tools.cli.wiring.manifest` | `tests/codes/man/test_sst_man033.py` |
 | [`SST-MAN201`](error-codes.md#sst-man201) | MAN | info | local | `snowflake_semantic_tools.app.manifest` | `tests/codes/man/test_sst_man201.py` |
 | [`SST-MAN202`](error-codes.md#sst-man202) | MAN | warning | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man202.py` |
 | [`SST-MAN203`](error-codes.md#sst-man203) | MAN | error | local | `snowflake_semantic_tools.domain.state.manifest` | `tests/codes/man/test_sst_man203.py` |

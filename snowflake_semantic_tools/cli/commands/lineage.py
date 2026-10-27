@@ -41,7 +41,12 @@ from snowflake_semantic_tools.cli.render.style import Style
 from snowflake_semantic_tools.cli.render.tree import connectors, tree_prefixes
 from snowflake_semantic_tools.cli.runner import CommandResult, command_body
 from snowflake_semantic_tools.cli.wiring import compile as compiling
-from snowflake_semantic_tools.cli.wiring.manifest import build_manifest, compiled_manifest, refuse_another_target
+from snowflake_semantic_tools.cli.wiring.manifest import (
+    build_manifest,
+    compiled_manifest,
+    refuse_another_target,
+    stale_warning,
+)
 from snowflake_semantic_tools.cli.wiring.project import target_dir
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.lineage.graph import EDGE_KINDS, LineageGraph, manifest_lineage
@@ -107,7 +112,9 @@ def lineage_command(
     Without --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
     it, the project is compiled in memory, nothing is written, and what fails to compile is
     reported and exits 1. --state marks what changed since that directory's manifest. A NODE
-    the graph does not hold exits 3 (SST-PRT112).
+    the graph does not hold exits 3 (SST-PRT112), unless it failed to compile under --no-manifest,
+    when its compile errors are reported and the command exits 1. Without --no-manifest, a
+    manifest older than the project's files is traced with a warning (SST-MAN033).
     """
     paths = with_model_paths(paths, dbt_dir, semantic_dir)
     if no_manifest:
@@ -118,8 +125,14 @@ def lineage_command(
         manifest = compiled_manifest(paths.project_dir)
         refuse_another_target(manifest, target_name)
         notes = read_notes(manifest, str(target_dir(paths.project_dir) / "manifest.json"))
+        stale = stale_warning(paths, target_name, manifest_path, manifest)
+        notes = (*notes, *((stale,) if stale is not None else ()))
     graph = manifest_lineage(manifest)
     start = find_nodes(graph, node, SEMANTIC_REGISTRY.artifacts)
+    failed = _failed_to_compile(notes, node) if no_manifest and not start else ()
+    if failed:
+        # The node is not in the graph because it did not compile: its errors say why.
+        return CommandResult(ERROR, DiagnosticBag(failed), {"node": node, "nodes": []}, gated=True)
     if not start:
         close = near_miss(graph, node)
         refusal = D("SST-PRT112", subject="cli", value=node, detail=f"; did you mean {close}?" if close else "")
@@ -139,6 +152,21 @@ def lineage_command(
         human=lambda: _print(shown),
         gated=True,
         headline=f"traced {plural(len(traced.nodes), 'node')} from {', '.join(start)}",
+    )
+
+
+def _failed_to_compile(notes: tuple[Diagnostic, ...], node: str) -> tuple[Diagnostic, ...]:
+    """Return the compile errors about the artifact `node` names, which kept it out of the graph.
+
+    `node` is `<kind>:<name>` or a bare name, compared casefolded with each error's subject.
+    """
+    wanted = node.casefold()
+    return tuple(
+        item
+        for item in notes
+        if item.blocks
+        and item.subject
+        and (item.subject.casefold() == wanted or item.subject.casefold().partition(":")[2] == wanted)
     )
 
 

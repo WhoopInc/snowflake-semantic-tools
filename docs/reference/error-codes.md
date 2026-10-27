@@ -25,7 +25,7 @@ cannot be downgraded by any setting.
 - [Validation (VAL)](#validation-val) -- 329 codes
 - [dbt (DBT)](#dbt-dbt) -- 33 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
-- [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
+- [Manifest and state (MAN)](#manifest-and-state-man) -- 22 codes
 - [Planning (PLN)](#planning-pln) -- 49 codes
 - [Apply (APL)](#apply-apl) -- 46 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
@@ -6660,6 +6660,16 @@ Fix: re-run; a concurrent dbt compile is in progress
 Raised when `sst eval --refresh-cost` was given a file that is not there, is not JSON, or is not an `sst.compare/1` report with every key it writes.
 
 Fix: pass a compare.json that `sst eval --compare-models` wrote, as it wrote it; compare again for a new one
+
+### SST-MAN033
+
+**Lineage reads a stale manifest** (warning)
+
+`the compiled manifest is stale (<reason>); lineage shows the last compile`
+
+Raised when `sst lineage` reads a compiled manifest whose recorded inputs changed since it was written.
+
+Fix: run sst compile, or pass --no-manifest to trace the files as they are now
 
 ### SST-MAN201
 

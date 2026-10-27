@@ -11,7 +11,7 @@ from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_inputs, stale_manifest, target_mismatch
 from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
-from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.lineage.graph import GraphSource, manifest_lineage
 from snowflake_semantic_tools.domain.state import Manifest
 
@@ -95,3 +95,16 @@ def refuse_stale_inputs(paths: ProjectPaths, target_name: str | None, manifest_p
     stale = stale_inputs(compiled, config_checksum=checksum, file_checksums=files, before=before)
     if stale is not None:
         raise ProjectError(diagnostics=(stale,))
+
+
+def stale_warning(
+    paths: ProjectPaths, target_name: str | None, manifest_path: Path | None, compiled: Manifest
+) -> Diagnostic | None:
+    """Warn when `compiled` records other inputs than the project has now, as a reader may go on.
+
+    Diagnostics:
+        SST-MAN033: the compiled manifest is stale; what reads it shows the last compile.
+    """
+    checksum, files = project_inputs(paths, target_name, manifest_path).recorded_inputs()
+    stale = stale_inputs(compiled, config_checksum=checksum, file_checksums=files, before="lineage")
+    return D("SST-MAN033", reason=stale.context["reason"]) if stale is not None else None

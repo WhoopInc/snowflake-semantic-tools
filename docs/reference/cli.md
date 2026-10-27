@@ -521,7 +521,9 @@ or a fact. `-o plain` prints one `<depth> <key>` line per node, upstream depths 
 Without --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
 it, the project is compiled in memory, nothing is written, and what fails to compile is
 reported and exits 1. --state marks what changed since that directory's manifest. A NODE
-the graph does not hold exits 3 (SST-PRT112).
+the graph does not hold exits 3 (SST-PRT112), unless it failed to compile under --no-manifest,
+when its compile errors are reported and the command exits 1. Without --no-manifest, a
+manifest older than the project's files is traced with a warning (SST-MAN033).
 
 ```text
 sst lineage [OPTIONS] NODE
