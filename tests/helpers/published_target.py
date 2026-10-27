@@ -23,6 +23,7 @@ from click.testing import CliRunner
 from snowflake_semantic_tools.adapters.locations import locate_project
 from snowflake_semantic_tools.app.compile import CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
@@ -39,7 +40,7 @@ from tests.helpers.snowflake_fake import FakeSnowflake, Sent
 
 # The artifact types apply marks with the object they publish, which SHOW then lists. A CoWork
 # profile, a Snowflake private preview, is an AGENT marked as an agent is.
-MARKED_TYPES = frozenset(("semantic_view", "tool", "agent", "cowork_profile"))
+MARKED_TYPES = frozenset(("semantic_view", "tool", "agent", "cowork_profile", "coco_profile"))
 _ROW_COUNT = "SELECT COUNT(*) AS ROW_COUNT FROM "
 _ROWS = "SELECT INPUT_QUERY, GROUND_TRUTH FROM "
 
@@ -133,7 +134,7 @@ def describe_published(port: PublishingSnowflake, project: Path, target: str, *,
 
     Each view's GET_DDL returns its render, so a plan's drift check reads it.
 
-    With `agents`, each agent and CoWork profile serves one version, the default, holding the
+    With `agents`, each agent, CoWork profile and Cortex Code profile serves one version, the default, holding the
     specification published; the fake then reads each one's versions as drifted, so a plan
     updates every one of them.
     """
@@ -142,7 +143,7 @@ def describe_published(port: PublishingSnowflake, project: Path, target: str, *,
         if isinstance(item, CompiledView):
             port.view_descriptions[name] = described_view(item.view)
             port.definitions[name] = item.rendered_artifact.ddl
-        elif isinstance(item, (CompiledAgent, CompiledCoworkProfile)) and agents:
+        elif isinstance(item, (CompiledAgent, CompiledCoworkProfile, CompiledCocoProfile)) and agents:
             alias = item.rendered_artifact.desired_alias
             port.agent_version_rows[name] = (AgentVersion("VERSION$1", alias, True, specification=item.payload),)
         elif isinstance(item, CompiledTool) and item.member.type == "cortex_search_service":

@@ -20,7 +20,7 @@ def test_sst_val838_fires() -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "agent 'router': skill source 'month-close' sets version, which SST manages for skill('month-close')"
+        "'router': skill source 'month-close' sets version, which SST manages for skill('month-close')"
     )
     assert diagnostic.subject == "agent:router"
 

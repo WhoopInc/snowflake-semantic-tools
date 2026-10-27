@@ -22,12 +22,10 @@ from snowflake_semantic_tools.domain.validate.publication import (
     eval_publication_diagnostics,
     put_target_diagnostics,
     refused_value,
-    registry_pointer_diagnostics,
     run_config_diagnostics,
     schema_diagnostics,
     statement_diagnostic,
     version_collision_diagnostics,
-    version_coverage_diagnostics,
     version_diagnostics,
 )
 from tests.helpers.artifact_builders import rendered
@@ -111,17 +109,6 @@ def test_each_upload_location_must_be_a_directory() -> None:
     assert [(item.code, item.context["path"]) for item in found] == [("SST-VAL820", "@DB.S.STAGE/b")]
 
 
-def test_each_uploaded_tree_needs_a_pointer_in_the_registry_row() -> None:
-    uploads = ("@DB.S.STAGE/a", "@DB.S.STAGE/b")
-    found = registry_pointer_diagnostics("coco_desktop_profile:p", "p", uploads, ("@DB.S.STAGE/a/SKILL.md",))
-    assert [(item.code, item.context["path"]) for item in found] == [("SST-VAL822", "@DB.S.STAGE/b")]
-
-
-def test_each_shipped_tree_prefix_must_be_hashed_into_the_version() -> None:
-    found = version_coverage_diagnostics("coco_desktop_profile:p", "p", ("a1", "b2"), "a1:digest")
-    assert [(item.code, item.context["value"]) for item in found] == [("SST-VAL823", "b2")]
-
-
 def test_a_publisher_sends_typed_sql_and_typed_grants_only() -> None:
     raw = statement_diagnostic("skill:month-close", "DROP TABLE x", certification_pending=False)
     assert raw is not None and (raw.code, raw.context["value"]) == ("SST-VAL827", "DROP TABLE x")
@@ -142,11 +129,12 @@ def test_every_channel_change_reports_exactly_one_outcome() -> None:
     changes = (
         ("skill:a", "skill"),
         ("plugin:b", "plugin"),
-        ("coco_desktop_profile:c", "coco_desktop_profile"),
+        ("plugin:c", "plugin"),
+        ("coco_profile:p", "coco_profile"),
         ("semantic_view:v", "semantic_view"),
     )
     found = channel_outcome_diagnostics(changes, ("skill:a", "plugin:b", "plugin:b"))
     assert [(item.subject, item.context["detail"]) for item in found] == [
         ("plugin:b", "the catalog channel reported 2 outcomes"),
-        ("coco_desktop_profile:c", "the stage channel reported no outcomes"),
+        ("plugin:c", "the catalog channel reported no outcomes"),
     ]

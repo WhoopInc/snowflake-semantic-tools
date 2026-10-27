@@ -26,13 +26,10 @@ Where each artifact type lives on disk.
 | `project.agents_dir` | string | `agents` | Agent specs; per-agent evals nest under each agent. |
 | `project.eval_metrics_dir` | string | `eval_metrics` | Shared LLM-judge metrics for evals. |
 | `project.tools_dir` | string | `tools` | Backing objects for agent tools. |
-| `project.skills_dir` | string | `skills` | `SKILL.md` folders, published as Cortex Extensions and inside Desktop profiles. |
+| `project.skills_dir` | string | `skills` | `SKILL.md` folders, published as Cortex Extensions that agents and profiles pin. |
 | `project.plugins_dir` | string | `plugins` | Plugin manifests, each grouping skills into one extension. |
-| `project.coco_desktop_profiles_dir` | string | `coco_desktop_profiles` | CoCo Desktop profiles and their shared layer. |
+| `project.coco_profiles_dir` | string | `coco_profiles` | Cortex Code agent profiles (Snowflake private preview) and their shared layer. |
 | `project.cowork_profiles_dir` | string | `cowork_profiles` | Snowflake CoWork profiles (Snowflake private preview), each routing questions to agents. |
-| `project.hooks_dir` | string | `hooks` | Hook definitions and their scripts, referenced by profiles. |
-| `project.mcp_servers_dir` | string | `mcp-servers` | MCP server configs, referenced by profiles. |
-| `project.commands_dir` | string | `commands` | Desktop slash commands (`*.md`, nested folders allowed), referenced by profiles. |
 | `project.target_profile` | string |  | The `profiles.yml` profile of a project with no `dbt_project.yml`. In a dbt project it must match the dbt `profile:`. |
 
 ## validation
@@ -253,18 +250,17 @@ Defaults for plugins, overridable per folder and by a plugin's own `config:`. A 
 | `plugins.+version_prefix` | string | `SST_` | Prefix of every plugin version alias; the rest is 12 hex characters of the bundle digest. |
 | `plugins.<route>` | block |  | Folder route: overrides for the plugins under that directory. |
 
-## coco_desktop_profiles
+## coco_profiles
 
-Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A profile publishes only when `+stage` resolves for it.
+Defaults for Cortex Code agent profiles (Snowflake private preview), overridable per folder and by a profile's own `config:`. The Cortex Code CLI, Desktop, and Snowsight list only the profiles in CORTEX_CODE.CONFIG.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `coco_desktop_profiles.+database` | identifier | the target database | Database of the profile stage and registry. |
-| `coco_desktop_profiles.+schema` | identifier | the target schema | Schema of the profile stage and registry. |
-| `coco_desktop_profiles.+stage` | identifier or three-part name |  | Internal stage that holds profile trees; created when absent. Unset, the profile does not publish. |
-| `coco_desktop_profiles.+registry_table` | identifier or three-part name | `CORTEX_CODE.CONFIG.PROFILE_REGISTRY` | Profile registry table; the default is the only one Desktop reads. A bare name is qualified in `+database`.`+schema`, for rehearsal. |
-| `coco_desktop_profiles.+name_suffix` | string |  | Appended to each profile's name to make its row's `CONFIG_NAME`, so targets sharing one registry write separate rows; letters, digits, `_`, and `-`. |
-| `coco_desktop_profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
+| `coco_profiles.+database` | identifier | the target database | Database for Cortex Code profiles; Cortex Code lists only the profiles in CORTEX_CODE.CONFIG. |
+| `coco_profiles.+schema` | identifier | the target schema | Schema for Cortex Code profiles; Cortex Code lists only the profiles in CORTEX_CODE.CONFIG. |
+| `coco_profiles.+enabled` | boolean | `true` | Whether Cortex Code profiles are compiled; false leaves them out of the project. |
+| `coco_profiles.+name_suffix` | string |  | Appended to each profile's name to make its AGENT's, so targets sharing CORTEX_CODE.CONFIG publish separate profiles; letters, digits, and `_`. |
+| `coco_profiles.<route>` | block |  | Folder route: overrides for the profile in that directory. |
 
 ## extensions
 
@@ -347,7 +343,11 @@ as though it still does.
 
 | Key | Why it was removed | Code |
 |---|---|---|
-| `project.profiles_dir` | renamed project.coco_desktop_profiles_dir | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `project.coco_desktop_profiles_dir` | CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to coco_profiles/ and configure coco_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `project.profiles_dir` | CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to coco_profiles/ and configure coco_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `project.hooks_dir` | Cortex Code agent profiles cannot carry hooks | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `project.mcp_servers_dir` | Cortex Code agent profiles cannot carry MCP servers | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `project.commands_dir` | Cortex Code agent profiles cannot carry commands; make each one a skill | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.expression_rules` | the expression rules it disabled are no longer optional | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.multipath_check` | multi-path relationship analysis is always on | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `validation.smoke_query` | smoke probes run only under sst test | [`SST-CFG043`](error-codes.md#sst-cfg043) |
@@ -370,6 +370,7 @@ as though it still does.
 | `skills.+grant_read_to` | access is managed outside SST; SST never issues grants | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.+enabled` | a skill publishes only where +bundle_stage resolves for it | [`SST-CFG043`](error-codes.md#sst-cfg043) |
 | `skills.catalog` | set +bundle_stage, +database and +schema on skills: and plugins: themselves | [`SST-CFG042`](error-codes.md#sst-cfg042) |
-| `skills.stage` | Desktop profiles publish through coco_desktop_profiles: | [`SST-CFG042`](error-codes.md#sst-cfg042) |
+| `skills.stage` | CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to coco_profiles/ and configure coco_profiles: | [`SST-CFG042`](error-codes.md#sst-cfg042) |
 | `skills.extensions` | consumed extensions are the top-level extensions: block | [`SST-CFG042`](error-codes.md#sst-cfg042) |
-| `profiles` | renamed coco_desktop_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `coco_desktop_profiles` | CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to coco_profiles/ and configure coco_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |
+| `profiles` | CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to coco_profiles/ and configure coco_profiles: | [`SST-CFG043`](error-codes.md#sst-cfg043) |

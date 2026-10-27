@@ -12,7 +12,6 @@ from snowflake_semantic_tools.adapters.yaml.migrate import (
     create_file,
     files_under,
     filter_sites,
-    hook_files,
     remove_file,
     semantic_files,
     uses_crlf,
@@ -82,16 +81,14 @@ def test_the_file_sets_each_migration_reads(tmp_path: Path) -> None:
         "agents/a/agent.yml": "name: a\n",
         "agents/a/evals/config.yml": "name: c\n",
         "agents/a/instructions/notes.yml": "x: 1\n",
-        "hooks/h/hook.yaml": "script: run.sh\n",
-        "hooks/h/other.yml": "x: 1\n",
-        "commands/c.md": "---\n",
+        "tools/t.yml": "x: 1\n",
+        "tools/notes.md": "---\n",
     }.items():
         (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
         (tmp_path / path).write_text(text, encoding="utf-8")
     agents, evals = agent_files(tmp_path, "agents")
     assert list(agents) == ["agents/a/agent.yml"] and list(evals) == ["agents/a/evals/config.yml"]
-    assert list(hook_files(tmp_path, "hooks")) == ["hooks/h/hook.yaml"]
-    assert list(files_under(tmp_path, "commands", frozenset((".md",)))) == ["commands/c.md"]
+    assert list(files_under(tmp_path, "tools", frozenset((".md",)))) == ["tools/notes.md"]
     assert files_under(tmp_path, "missing", frozenset((".md",))) == {}
 
 

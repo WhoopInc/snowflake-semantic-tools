@@ -37,7 +37,7 @@ from snowflake_semantic_tools.domain.state import ADOPTED, AppliedEntry
 from snowflake_semantic_tools.domain.state.lock import LockClaim, StateWrite
 
 # The types adopt compares: those whose live object `COMPARISONS` reads whole.
-ADOPTABLE_TYPES = ("semantic_view", "tool", "agent", "cowork_profile")
+ADOPTABLE_TYPES = ("semantic_view", "tool", "agent", "cowork_profile", "coco_profile")
 _DEFAULT_LOCK_POLICY = LockPolicy()
 # How many changed members a refusal names before it counts the rest.
 _LISTED = 6

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -12,19 +13,17 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker
+from snowflake_semantic_tools.domain.model.lifecycle import ExecResult, OwnershipMarker, ShowRow
 from snowflake_semantic_tools.domain.sql import Sql
 from snowflake_semantic_tools.domain.state import content_hash
 from tests.helpers.apply_sessions import RecordingSnowflake
 from tests.helpers.cli_projects import (
-    OFFLINE_VALIDATION,
-    PROFILE_CONFIG,
     common,
     compile_project,
     invoke_counting_closes,
     invoke_with_port,
     on_a_terminal,
-    profile_with_commands_and_plugin,
+    profile_with_plugin,
     skill_project,
 )
 from tests.helpers.reference_project import break_menu_view, project_copy
@@ -92,7 +91,7 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
         "tool",
         "skill",
         "plugin",
-        "coco_desktop_profile",
+        "coco_profile",
         "agent",
         "cowork_profile",
         "eval",
@@ -115,8 +114,9 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
         result = original_execute(statements)
         for planned_change in planned_payload["data"]["changes"]:
-            # A CoWork profile (a Snowflake private preview) is an AGENT, marked as an agent is.
-            if planned_change["artifact_type"] in {"tool", "agent", "cowork_profile"}:
+            # A CoWork or Cortex Code profile (each a Snowflake private preview) is an AGENT, marked
+            # as an agent is.
+            if planned_change["artifact_type"] in {"tool", "agent", "cowork_profile", "coco_profile"}:
                 apply_port.markers[planned_change["target"]] = OwnershipMarker(
                     planned_payload["data"]["manifest_id"],
                     planned_change["fingerprint"],
@@ -137,21 +137,21 @@ def test_apply_requires_confirmation_and_accepts_current_saved_plan(
     plan_phases = planned_payload["invocation"]["timings"]["phases"]
     assert {"load", "validate", "state_read", "observe", "classify"} <= set(plan_phases)
     assert {"lock", "publish", "state_write"} <= set(payload["invocation"]["timings"]["phases"])
-    # Eight more than M4: the bundle stage, one CREATE carrying the first version for each
-    # of four skills (one nested in another) and the plugin, and the profile stage; the eval dataset's own version;
-    # and the agent spec stage, created once for every agent and CoWork profile that stages
-    # there. One more certifies the version of jaffle-catalogue, the skill whose own config:
-    # sets certified, one more creates the order_status procedure, and one more the CoWork
-    # profile, whose CREATE AGENT carries its marker as each agent's does.
-    assert len(apply_port.scripts) == 23
+    # Seven more than M4: the bundle stage, and one CREATE carrying the first version for each
+    # of four skills (one nested in another) and the plugin; the eval dataset's own version;
+    # and the agent spec stage, created once for every agent and profile that stages there.
+    # One more certifies the version of jaffle-catalogue, the skill whose own config: sets
+    # certified, one more creates the order_status procedure, and one each the CoWork profile
+    # and the two Cortex Code profiles, whose CREATE AGENT carries its marker as each agent's does.
+    assert len(apply_port.scripts) == 24
     first_lines = [statements[0].split("\n", 1)[0] for statements in apply_port.scripts]
     assert sum("CERTIFICATION_STATUS" in line and "JAFFLE_CATALOGUE" in line for line in first_lines) == 1
     assert sum("CERTIFICATION_STATUS" in line for line in first_lines) == 1
     assert sum("JAFFLE_TOOLKIT" in line for line in first_lines) == 1
     assert not any(line.startswith("ALTER CORTEX EXTENSION") and " ADD VERSION " in line for line in first_lines)
-    assert sum("SKILL_BUNDLES " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
+    assert sum("SKILL_BUNDLE_SRC " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
     assert sum("AGENT_SPECS_SSE " in line and line.startswith("CREATE STAGE") for line in first_lines) == 1
-    assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 9
+    assert sum("[sst:" in statement for statements in apply_port.scripts for statement in statements) == 11
 
 
 def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
@@ -198,7 +198,7 @@ def test_partial_runs_publish_what_is_healthy_and_still_exit_one(
     def execute_with_markers(statements: Sequence[Sql]) -> ExecResult:
         executed = original_execute(statements)
         for change in plan_payload["data"]["changes"]:
-            if change["artifact_type"] in {"tool", "agent"}:
+            if change["artifact_type"] in {"tool", "agent", "coco_profile"}:
                 port.markers[change["target"]] = OwnershipMarker(
                     plan_payload["data"]["manifest_id"], change["fingerprint"]
                 )
@@ -410,72 +410,46 @@ def test_skills_only_project_publishes_through_plan_and_apply(tmp_path: Path, mo
     assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
 
 
-def test_profiles_publish_then_deactivate_under_prune(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    project = skill_project(tmp_path / "skills")
-    (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
-    profile = project / "coco_desktop_profiles" / "analyst"
-    profile.mkdir(parents=True)
-    (profile / "coco_desktop_profile.yml").write_text(
-        "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n",
-        encoding="utf-8",
-    )
-    compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
-    assert compiled.exit_code == 0, compiled.output
-    assert [item["artifact_key"] for item in json.loads(compiled.output)["data"]["artifacts"]] == [
-        "coco_desktop_profile:analyst"
-    ]
-    assert json.loads(compiled.output)["data"]["artifacts"][0]["target"] == "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
-
+def test_a_coco_profile_publishes_as_an_agent_then_drops_under_prune(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Cortex Code agent profiles are a Snowflake private preview; each is an AGENT in CORTEX_CODE.CONFIG.
+    project = profile_with_plugin(tmp_path / "skills")
+    compile_project(project)
     port = FakeSnowflake(existing=())
+    original_execute = port.execute_script
+
+    def execute_with_marker(statements: Sequence[Sql]) -> ExecResult:
+        result = original_execute(statements)
+        manifest = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
+        entry = manifest["artifacts"].get("coco_profile:analyst")
+        if entry is not None and any("CREATE AGENT" in text for text in texts(statements)):
+            # The fake records neither the AGENT nor its marker, so the write leaves both here.
+            assert port.existing is not None
+            port.existing.add("CORTEX_CODE.CONFIG.ANALYST")
+            marker = OwnershipMarker(manifest["manifest_id"], entry["fingerprint"])
+            comment = f"Analyst. [sst:{marker.manifest_id}:{marker.fingerprint}]"
+            port.show(ShowRow("ANALYST", "CORTEX_CODE", "CONFIG", "OWNER", "now", comment, object_type="AGENT"))
+            port.markers["CORTEX_CODE.CONFIG.ANALYST"] = marker
+        return result
+
+    port.execute_script = execute_with_marker  # type: ignore[method-assign]
     applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
     assert applied.exit_code == 0, applied.output
-    row = port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))[0]
-    assert (row["CONFIG_NAME"], row["VERSION"]) == ("analyst", "1")
+    assert json.loads(applied.output)["data"]["applied"] == ["plugin:kit", "skill:month-close", "coco_profile:analyst"]
+    assert any(
+        " ".join(text.split()).startswith("CREATE AGENT CORTEX_CODE.CONFIG.ANALYST")
+        for script in port.scripts
+        for text in script
+    )
 
-    replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
-    assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
-
-    import shutil
-
-    shutil.rmtree(profile)
-    compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project)])
-    assert compiled.exit_code == 0, compiled.output
+    shutil.rmtree(project / "coco_profiles")
+    compile_project(project)
     pruned = invoke_with_port(
         monkeypatch, port, ["apply", "--project-dir", str(project), "--prune", "--yes", "--output", "json"]
     )
     assert pruned.exit_code == 0, pruned.output
-    assert json.loads(pruned.output)["data"]["pruned"] == ["coco_desktop_profile:analyst"]
-    assert port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY")) == ()
-
-
-def test_profile_commands_and_plugins_publish_and_every_pointer_resolves(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    project = profile_with_commands_and_plugin(tmp_path / "skills")
-    compiled = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
-    assert compiled.exit_code == 0, compiled.output
-    port = FakeSnowflake(existing=())
-    applied = invoke_with_port(monkeypatch, port, ["apply", "--project-dir", str(project), "--yes", "--output", "json"])
-    assert applied.exit_code == 0, applied.output
-    row = port.desktop_profile_rows(QualifiedName.parse("CORTEX_CODE.CONFIG.PROFILE_REGISTRY"))[0]
-    commands = json.loads(str(row["COMMAND_REPOS"]))
-    plugins = json.loads(str(row["PLUGINS"]))
-    assert [pointer["snowflake_stage"].split("/")[1:3] for pointer in commands] == [
-        ["commands", "shared"],
-        ["commands", "analyst"],
-    ]
-    assert port.list_location(commands[0]["snowflake_stage"]) == ("daily.md",)
-    assert port.list_location(commands[1]["snowflake_stage"]) == ("sql/check.md",)
-    assert (
-        len(plugins) == 1
-        and plugins[0].startswith("@DB.SCH.PROFILES/plugins/analyst/")
-        and plugins[0].endswith("/kit/")
-    )
-    assert ".cortex-plugin/plugin.json" in port.list_location(plugins[0])
-
-    replanned = invoke_with_port(monkeypatch, port, ["plan", "--project-dir", str(project), "--output", "json"])
-    assert replanned.exit_code == 0, replanned.output
-    assert [item["action"] for item in json.loads(replanned.output)["data"]["changes"]] == ["noop"]
+    assert json.loads(pruned.output)["data"]["pruned"] == ["coco_profile:analyst"]
 
 
 # What a run sends Snowflake to take the run lock, hold it, and write state under it.

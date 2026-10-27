@@ -35,6 +35,6 @@ def test_sst_reg020_fires_for_a_type_with_no_ref_function() -> None:
 
 
 def test_sst_reg020_silent() -> None:
-    # An eval and a CoCo Desktop profile are leaves, deliberately unreferenced.
+    # An eval and a Cortex Code profile are leaves, deliberately unreferenced.
     assert freeze((artifact("semantic_view"), artifact("eval", 200, ref_function=None))).artifacts["eval"]
-    assert SEMANTIC_REGISTRY.artifacts["coco_desktop_profile"].ref_function is None
+    assert SEMANTIC_REGISTRY.artifacts["coco_profile"].ref_function is None

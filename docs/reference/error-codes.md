@@ -22,18 +22,18 @@ cannot be downgraded by any setting.
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
-- [Validation (VAL)](#validation-val) -- 340 codes
+- [Validation (VAL)](#validation-val) -- 329 codes
 - [dbt (DBT)](#dbt-dbt) -- 33 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
-- [Planning (PLN)](#planning-pln) -- 50 codes
-- [Apply (APL)](#apply-apl) -- 49 codes
+- [Planning (PLN)](#planning-pln) -- 48 codes
+- [Apply (APL)](#apply-apl) -- 46 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Import (IMP)](#import-imp) -- 16 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 31 codes
 - [External systems (PRT)](#external-systems-prt) -- 26 codes
 - [Internal (INT)](#internal-int) -- 13 codes
-- [Retired numbers](#retired-numbers) -- 78 numbers
+- [Retired numbers](#retired-numbers) -- 100 numbers
 
 ## Registry (REG)
 
@@ -639,7 +639,7 @@ Fix: delete the key
 
 Raised when configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is absent, or `sst init` runs in a directory with no dbt_project.yml.
 
-Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and CoCo Desktop profiles only
+Fix: add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, and Cortex Code profiles only
 
 ### SST-CFG047
 
@@ -1599,7 +1599,7 @@ Fix: remove one of the two keys
 
 `<file>: invalid UTF-8 at byte <offset>`
 
-Raised when a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a verified-query SQL file or a routine body, a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule.
+Raised when a file SST reads is not UTF-8: project YAML, a `file()` sidecar such as an instruction, a verified-query SQL file or a routine body, a `SKILL.md`, or a Cortex Code profile's `AGENTS.md` or rule.
 
 Fix: re-save the file as UTF-8
 
@@ -1711,7 +1711,7 @@ Fix: quote the value if it is meant as a string, or write {} if it is meant as a
 
 `<file> begins with a BOM`
 
-Raised when the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar (a hook script among them), a `SKILL.md`, or a CoCo Desktop profile's `AGENTS.md` or rule; the mark is refused rather than removed, since removing it would change what is published.
+Raised when the file begins with a UTF-8 byte-order mark (U+FEFF): project YAML, a `file()` sidecar such as a routine body, a `SKILL.md`, or a Cortex Code profile's `AGENTS.md` or rule; the mark is refused rather than removed, since removing it would change what is published.
 
 Fix: re-save without a BOM
 
@@ -1761,7 +1761,7 @@ Fix: add the artifact's root key
 
 `<file>: '<field>' holds <found>, which Snowflake cannot store`
 
-Raised when a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone UTF-16 surrogate, such as a YAML `\0` or `\ud800` escape: project YAML, a `file()` sidecar, a `SKILL.md`, a CoCo Desktop profile's `AGENTS.md` or rule, or a dbt description, synonym or sample value a view uses.
+Raised when a file SST reads holds a NUL character, or a value read from one holds a NUL or a lone UTF-16 surrogate, such as a YAML `\0` or `\ud800` escape: project YAML, a `file()` sidecar, a `SKILL.md`, a Cortex Code profile's `AGENTS.md` or rule, or a dbt description, synonym or sample value a view uses.
 
 Fix: remove the character
 
@@ -1929,7 +1929,7 @@ Fix: declare the extension source, or correct the name
 
 `{{ file('<path>') }} does not resolve to a file`
 
-Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` or a hook's `script:` -- names, relative to its own file's folder, a file that does not exist.
+Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` -- names, relative to its own file's folder, a file that does not exist.
 
 Fix: create the file, or correct the path
 
@@ -2009,7 +2009,7 @@ Fix: declare the metric in the eval_metrics/ tree, or correct the name
 
 `{{ file('<path>') }} resolves outside the project root`
 
-Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` or a hook's `script:` -- is an absolute path, or climbs out of the project.
+Raised when a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's `body:` -- is an absolute path, or climbs out of the project.
 
 Fix: use a path inside the project
 
@@ -2163,7 +2163,7 @@ Fix: name a {kind} file in the agent's evals/ folder by its name:, or give one t
 
 `<artifact>: <field> is '<found>'; it takes a {{ <function>(...) }} call`
 
-Raised when a field that names a file or a member, and so is read only as a template call, holds a bare value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a plugin's or CoCo Desktop profile's member, a hook's `script:` or a command's `skill:`.
+Raised when a field that names a file or a member, and so is read only as a template call, holds a bare value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a plugin's or Cortex Code profile's member.
 
 Fix: write the value as a {function}() call; a bare value is not read
 
@@ -5251,11 +5251,11 @@ Note: Snowflake private preview: CoWork profiles. CORTEX_AGENT_USAGE_HISTORY rec
 
 ### SST-VAL801
 
-**Skill, plugin, CoCo Desktop or CoWork profile, or agent folder is misnamed** (error)
+**Skill, plugin, Cortex Code or CoWork profile, or agent folder is misnamed** (error)
 
 `'<artifact>': <detail>`
 
-Raised when a skill, plugin, CoCo Desktop profile or CoWork profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml, or a CoWork profile folder both cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
+Raised when a skill, plugin, Cortex Code profile or CoWork profile folder is misnamed or its manifest is wrong: a skill or plugin name is not kebab-case or would publish as an extension name that does not start with a letter; a Cortex Code profile name is not lowercase letters, digits and '_' starting with a letter; a plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent folder holds both agent.yml and agent.yaml, or a CoWork profile folder both cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest `name` is not the folder's name.
 
 Fix: rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names
 
@@ -5291,7 +5291,7 @@ Note: A version that is not content-derived could change content under a pinned 
 
 `<artifact>: version <value> is referenced by no agent`
 
-Raised when the project defines agents, and a skill or plugin it publishes is pinned by none of them and included in no plugin, CoCo Desktop profile or the shared layer.
+Raised when the project defines agents, and a skill or plugin it publishes is pinned by none of them, by no CoWork or Cortex Code profile, and is included in no plugin.
 
 Fix: reference it, or stop publishing it
 
@@ -5415,29 +5415,9 @@ Raised when any skill bundle builds; reports how its bytes split between SKILL.m
 
 `skill '<artifact>': PUT target '<path>' does not end in '/'`
 
-Raised when a bundle's or CoCo Desktop profile tree's stage upload location does not end in '/'.
+Raised when a bundle's stage upload location does not end in '/'.
 
 Fix: append a trailing slash
-
-### SST-VAL822
-
-**Uploaded artifact has no registry pointer** (error)
-
-`skill '<artifact>': '<path>' was uploaded with no PROFILE_REGISTRY pointer`
-
-Raised when no pointer in a CoCo Desktop profile's registry row reaches a tree the profile uploads.
-
-Fix: write the pointer as part of the same publish
-
-### SST-VAL823
-
-**CoCo Desktop profile content hash does not cover every shipped tree** (error)
-
-`skill '<artifact>': hash omits <value>`
-
-Raised when a CoCo Desktop profile ships a tree whose digest-named prefix is absent from what its VERSION is the digest of, so a change there would produce no new version.
-
-Fix: include every shipped tree in the hash
 
 ### SST-VAL824
 
@@ -5487,29 +5467,9 @@ Fix: validate every interpolated identifier at parse time
 
 `skill '<artifact>': <detail>`
 
-Raised when apply reports no outcome, or several, for a skill, plugin or CoCo Desktop profile change, so the result would not show that channel's state.
+Raised when apply reports no outcome, or several, for a skill or plugin change, so the result would not show that channel's state.
 
 Fix: report per-channel status separately
-
-### SST-VAL829
-
-**Channel content hashes diverge** (warning)
-
-`skill '<artifact>': catalog and stage hashes diverge by <value>`
-
-Raised when a skill's catalog and stage file sets differ.
-
-Fix: compare the two bundles
-
-### SST-VAL830
-
-**Skill reaches neither channel** (warning)
-
-`skill '<artifact>' is published nowhere`
-
-Raised when no `+bundle_stage` resolves for the skill, and no CoCo Desktop profile, plugin a profile names, or the shared layer includes it.
-
-Fix: reference it from a CoCo Desktop profile, or give it a +bundle_stage
 
 ### SST-VAL831
 
@@ -5575,9 +5535,9 @@ Fix: list each member once
 
 **Version set on a project-published extension** (error)
 
-`agent '<artifact>': skill source '<name>' sets version, which SST manages for <kind>('<path>')`
+`'<artifact>': skill source '<name>' sets version, which SST manages for <kind>('<path>')`
 
-Raised when an agent skill source for a project-published extension sets version.
+Raised when an agent's, CoWork profile's or Cortex Code profile's skill source for a project-published extension sets version.
 
 Fix: delete version; SST pins the published content-hash alias
 
@@ -5585,7 +5545,7 @@ Fix: delete version; SST pins the published content-hash alias
 
 **Skill version pinned to the commit SHA** (error)
 
-`agent '<artifact>': skill source '<name>' pins var('sha_version'), which names no published version`
+`'<artifact>': skill source '<name>' pins var('sha_version'), which names no published version`
 
 Raised when an agent skill source pins var('sha_version'), which names no published version.
 
@@ -5595,7 +5555,7 @@ Fix: use skill() or plugin() with no version, or pin a real version of a consume
 
 **Plugin entry name is not one of its members** (error)
 
-`agent '<artifact>': plugin entry name {{ skill('<name>') }} must be <expected>`
+`'<artifact>': plugin entry name {{ skill('<name>') }} must be <expected>`
 
 Raised when an agent's `plugin()` entry names a skill that is not a member of the plugin.
 
@@ -5623,135 +5583,33 @@ Raised when two artifacts of different types publish to one Snowflake name.
 
 Fix: rename one of them; plans and reports that name the object become ambiguous
 
-### SST-VAL844
-
-**CoCo Desktop profile names a skill the project does not have** (error)
-
-`CoCo Desktop profile '<artifact>': skill '<name>' is not a skill in this project`
-
-Raised when the shared layer or a CoCo Desktop profile names a skill the project does not have.
-
-Fix: add the skill under the skills directory, or remove it from the CoCo Desktop profile
-
 ### SST-VAL845
 
-**CoCo Desktop profile repeats a shared skill or command** (warning)
+**Cortex Code profile repeats a shared skill** (warning)
 
-`CoCo Desktop profile '<artifact>': <kind> '<name>' already reaches every profile through shared/`
+`coco profile '<artifact>': skill '<name>' already reaches every profile through shared/`
 
-Raised when a CoCo Desktop profile repeats a skill or command the shared layer already carries.
+Raised when a Cortex Code profile lists a skill the shared layer already carries; it is pinned once.
 
-Fix: remove it from the CoCo Desktop profile
-
-### SST-VAL846
-
-**CoCo Desktop profile names an unknown hook** (error)
-
-`CoCo Desktop profile '<artifact>': hook '<name>' is not defined under the hooks directory`
-
-Raised when a CoCo Desktop profile names a hook not defined under the hooks directory.
-
-Fix: add the hook, or remove it from the CoCo Desktop profile
-
-### SST-VAL847
-
-**CoCo Desktop profile names an unknown MCP config** (error)
-
-`CoCo Desktop profile '<artifact>': MCP config '<name>' is not defined under the MCP servers directory`
-
-Raised when a CoCo Desktop profile names an MCP config not defined under the MCP servers directory.
-
-Fix: add the config, or remove it from the CoCo Desktop profile
-
-### SST-VAL848
-
-**MCP server entry is not a configuration** (error)
-
-`CoCo Desktop profile '<artifact>': MCP server '<name>' is not a configuration object`
-
-Raised when an MCP server a CoCo Desktop profile uses is not a configuration object.
-
-Fix: replace the placeholder with a server definition, or stop referencing the config
-
-### SST-VAL849
-
-**Two MCP configs define one server** (error)
-
-`CoCo Desktop profile '<artifact>': MCP server '<name>' is defined by both '<a>' and '<b>'`
-
-Raised when two MCP configs a CoCo Desktop profile uses define one server name.
-
-Fix: rename one server, or reference only one of the configs
-
-### SST-VAL850
-
-**MCP config carries a literal credential** (error)
-
-`MCP config '<artifact>': server '<name>' sets '<key>' to a literal value`
-
-Raised when an MCP config sets a credential-like key to a literal value, or sends an `Authorization`, `Proxy-Authorization` or `Cookie` header whose value holds no `${VARIABLE}` placeholder.
-
-Fix: use a ${VARIABLE} placeholder; published configs are readable by every CoCo Desktop profile user
+Fix: remove it from the Cortex Code profile's coco_profile.yml
 
 ### SST-VAL851
 
-**CoCo Desktop profile key is not accepted** (error)
+**Cortex Code profile key is not accepted** (error)
 
-`CoCo Desktop profile '<artifact>': '<key>' is not accepted: <reason>`
+`coco profile '<artifact>': '<key>' is not accepted: <reason>`
 
-Raised when a CoCo Desktop profile declares a key SST refuses.
+Raised when a Cortex Code profile declares a key agent profiles cannot carry, such as hooks or mcp_servers.
 
 Fix: delete the key
 
-### SST-VAL852
-
-**Hook definition is incomplete or ambiguous** (error)
-
-`hook '<artifact>': <detail>`
-
-Raised when a hook folder has no manifest or both spellings, is not exactly one event/command, or, with no `script:`, holds no script or more than one.
-
-Fix: declare event and command, and name the script with script: "{{ file('&lt;path&gt;') }}" when the folder holds several files
-
-Note: A `script:` that names no file is `SST-REF014`; one that is not a `file()` call is `SST-REF050`.
-
-### SST-VAL853
-
-**MCP config is not valid** (error)
-
-`MCP config '<artifact>': <detail>`
-
-Raised when an MCP config folder has no mcp.json, or it is not UTF-8 JSON of the mcpServers shape.
-
-Fix: write mcp.json as `{"mcpServers": {"<name>": {...}}}`
-
-### SST-VAL854
-
-**CoCo Desktop profile registry is not the one Desktop reads** (info)
-
-`CoCo Desktop profiles publish to <value>; CoCo Desktop reads only <expected>`
-
-Raised when CoCo Desktop profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`).
-
-Fix: unset coco_desktop_profiles.+registry_table to publish where Desktop reads, or keep this for rehearsal
-
-### SST-VAL855
-
-**CoCo Desktop profile includes a skill or plugin with errors** (error)
-
-`CoCo Desktop profile '<artifact>': <kind> '<name>' has errors, so the profile cannot publish`
-
-Raised when a CoCo Desktop profile includes a skill or plugin that has errors.
-
-Fix: fix the errors reported for it
-
 ### SST-VAL856
 
-**Agent references an extension that cannot publish** (error)
+**Agent or Cortex Code profile references an extension that cannot publish** (error)
 
-`agent '<artifact>': <kind>('<name>') has no version to pin because <reason>`
+`'<artifact>': <kind>('<name>') has no version to pin because <reason>`
 
-Raised when an agent references a declared extension that has no version to pin.
+Raised when an agent, CoWork profile or Cortex Code profile references a declared extension that has no version to pin.
 
 Fix: fix the diagnostic that names the cause; the reference resolves once the extension publishes
 
@@ -5761,39 +5619,9 @@ Fix: fix the diagnostic that names the cause; the reference resolves once the ex
 
 `<artifact>: <value> cannot be staged, because '<found>' is not made only of <expected>`
 
-Raised when a skill file, hook script or command path has a name a stage rejects.
+Raised when a skill file has a name a stage rejects.
 
 Fix: rename the file or folder; a stage rejects any other name, so apply would fail partway through
-
-### SST-VAL858
-
-**CoCo Desktop profile names an unknown command** (error)
-
-`CoCo Desktop profile '<artifact>': command '<name>' is not a .md file under the commands directory`
-
-Raised when the shared layer or a CoCo Desktop profile names a command that is not a .md file under the commands directory.
-
-Fix: name a command by its path below project.commands_dir without .md, such as sql/check
-
-### SST-VAL859
-
-**Command file is invalid** (error)
-
-`command '<artifact>': <detail>`
-
-Raised when a command file is not UTF-8, or its frontmatter is malformed or holds an unknown value.
-
-Fix: frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, and hidden
-
-### SST-VAL860
-
-**CoCo Desktop profile names an unknown plugin** (error)
-
-`CoCo Desktop profile '<artifact>': plugin '<name>' is not a plugin under the plugins directory`
-
-Raised when a CoCo Desktop profile names a plugin not under the plugins directory.
-
-Fix: name a plugin folder that has a plugin.yml
 
 ### SST-VAL861
 
@@ -6018,6 +5846,76 @@ Raised when the config of a CoWork profile's eval names no custom metric and no 
 Fix: add answer_correctness or logical_consistency under metrics.system, or a custom metric
 
 Note: Snowflake private preview. The config Snowflake runs would list no metric, since `routing_accuracy` is SST's own and never sent to Snowflake; SST refuses it, as it refuses a config with no metric at all (SST-PRS101).
+
+### SST-VAL890
+
+**Cortex Code profile relies on a Snowflake private preview** (info)
+
+`coco profile '<artifact>' relies on Cortex Code agent profiles, a Snowflake private preview`
+
+Raised when a Cortex Code agent profile compiles; reported once per compiled profile.
+
+Fix: expect the agent profile contract to change before general availability, and recompile after each SST upgrade
+
+Note: Snowflake private preview. SST renders only the keys a Cortex Code profile accepts: models.orchestration, instructions.response, and skills.
+
+### SST-VAL891
+
+**Cortex Code profile publishes where Cortex Code does not list it** (info)
+
+`coco profile '<artifact>' publishes to <target>, where Cortex Code does not list profiles`
+
+Raised when a compiled Cortex Code profile's database and schema, compared as Snowflake resolves them, are not CORTEX_CODE.CONFIG.
+
+Fix: publish to CORTEX_CODE.CONFIG on the target Cortex Code users reach
+
+Note: Snowflake private preview. The Cortex Code CLI, Desktop, and Snowsight list only the AGENT objects in CORTEX_CODE.CONFIG, so a Cortex Code profile anywhere else is a rehearsal, such as one a dev target publishes.
+
+### SST-VAL892
+
+**Cortex Code profile shares a schema with an agent or CoWork profile** (error)
+
+`coco profile '<artifact>' publishes to <target>, where '<other>' publishes too`
+
+Raised when a compiled Cortex Code profile publishes to a schema, compared as Snowflake resolves it, that a compiled agent or CoWork profile publishes to.
+
+Fix: give coco_profiles: a schema of its own, such as CORTEX_CODE.CONFIG
+
+Note: Cortex Code profiles, agents, and CoWork profiles are all AGENT objects. SST tells them apart by the schema each kind publishes to, so one schema holding two kinds would observe each object under two keys.
+
+### SST-VAL893
+
+**No Cortex Code profile is named default** (info)
+
+`<count> coco profiles publish to CORTEX_CODE.CONFIG (<names>) and none is DEFAULT`
+
+Raised when more than one compiled Cortex Code profile publishes to CORTEX_CODE.CONFIG, and none publishes as DEFAULT.
+
+Fix: name one Cortex Code profile folder default, or grant each role USAGE on one Cortex Code profile only
+
+Note: Cortex Code applies a Cortex Code profile automatically only when the current role sees exactly one, or sees several and one is named DEFAULT. A role granted USAGE on two of them is given none until its user chooses one.
+
+### SST-VAL894
+
+**Cortex Code profile model is not in the allowlist** (error)
+
+`coco profile '<artifact>': model '<found>' is not in the allowlist`
+
+Raised when a Cortex Code profile's `model:` is not listed in `snowflake.orchestration_models`, which defaults to [auto]; compared exactly.
+
+Fix: add it to snowflake.orchestration_models, use auto, or leave model unset
+
+### SST-VAL895
+
+**CoCo Desktop profile folder is no longer read** (error)
+
+`'<folder>/' holds CoCo Desktop profiles, which SST no longer publishes`
+
+Raised when the project has a `coco_desktop_profiles/` folder beside the Cortex Code profiles directory.
+
+Fix: move each CoCo Desktop profile to coco_profiles/&lt;name&gt;/coco_profile.yml and delete '{folder}/'
+
+Note: Cortex Code agent profiles, AGENT objects in CORTEX_CODE.CONFIG, replaced the CoCo Desktop profile registry. A Cortex Code profile carries skills and instructions only: no hooks, MCP servers, or commands.
 
 ## dbt (DBT)
 
@@ -7011,7 +6909,7 @@ Fix: move the object explicitly, then reconcile state and re-run plan
 
 `<artifact>: stage <value> is <found>, expected INTERNAL NO CSE`
 
-Raised when the skill bundle stage, the CoCo Desktop profile stage, or the `apply.agent_spec_stage` stage exists but is not INTERNAL with SNOWFLAKE_SSE encryption.
+Raised when the skill bundle stage or the `apply.agent_spec_stage` stage exists but is not INTERNAL with SNOWFLAKE_SSE encryption.
 
 Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage
 
@@ -7024,26 +6922,6 @@ Fix: point the configuration at an internal stage with SNOWFLAKE_SSE encryption;
 Raised when a version alias SST would reuse holds files that differ from the bundle.
 
 Fix: an earlier publish left a damaged version under this alias; remove the alias in Snowflake, then plan again
-
-### SST-PLN028
-
-**Registry row changed since SST last wrote it** (error, always an error)
-
-`<artifact>: registry row '<value>' has VERSION <found>, and SST last wrote <expected>`
-
-Raised when a profile-registry row carries a VERSION state did not record, and content other than this release's.
-
-Fix: another writer changed the row; reconcile it, then plan again
-
-### SST-PLN029
-
-**Registry table has the wrong shape** (error, always an error)
-
-`<artifact>: <value> <detail>`
-
-Raised when the CoCo Desktop profile registry table lacks a column SST writes, or types it differently.
-
-Fix: SST never alters the registry; fix the table or point coco_desktop_profiles.+registry_table at a compatible one
 
 ### SST-PLN030
 
@@ -7453,31 +7331,11 @@ Fix: no action; the same committed file is reusable for a permanent apply
 
 `<artifact>: <detail>`
 
-Raised when a composite publish (an eval, a skill or plugin, or a CoCo Desktop profile) wrote part of what it publishes, then a statement failed or what it wrote did not read back as rendered.
+Raised when a composite publish (an eval, or a skill or plugin) wrote part of what it publishes, then a statement failed or what it wrote did not read back as rendered.
 
 Fix: read the detail: when a statement failed, fix its cause and apply again; when what was written does not read back as rendered, restore it or drop the object by hand, then apply
 
 Note: State keeps the partial write, so the next plan publishes the artifact again.
-
-### SST-APL017
-
-**Per-channel publish reported aggregate success** (error)
-
-`<artifact>: <detail>`
-
-Raised when a CoCo Desktop profile's registry row was written, but a stage pointer it carries does not resolve to a tree the stage holds.
-
-Fix: report per-channel status separately
-
-### SST-APL018
-
-**Registry pointer write failed after an upload** (error)
-
-`<artifact>: uploaded <path>, pointer write failed: <detail>`
-
-Raised when a CoCo Desktop profile's trees were uploaded to its stage, then writing its registry row failed.
-
-Fix: re-run apply; the publish is half complete
 
 ### SST-APL019
 
@@ -7543,18 +7401,6 @@ Fix: treat this as a failure and re-run
 
 Note: SST already counts the attempt as not passing: although this is a warning, the eval is not accepted, and the `sst eval` gate fails, unless another attempt completes; then SST-APL029 replaces this warning. A partial status `run.accept_statuses` names reports SST-VAL730, an error, instead.
 
-### SST-APL027
-
-**Metadata table absent or the wrong shape** (error)
-
-`<value>: <detail>`
-
-Raised when the CoCo Desktop profile registry table SST created is absent afterwards, or lacks the columns Desktop's query reads.
-
-Fix: re-run sst extract, then apply
-
-Note: There is no `sst extract` command in 1.0: check that the role may create the table in the registry's schema and that nothing else defines it with other columns, then re-apply.
-
 ### SST-APL028
 
 **Eval config stage has the wrong FILE FORMAT** (error)
@@ -7605,7 +7451,7 @@ Fix: run `sst state convert --to {expected}` to rebuild it, or set state.+table_
 
 `state entries recovered from ownership markers and content digests: <count>; unrecorded artifacts left: <value>`
 
-Raised when `sst state recover` ran: each artifact state did not record whose live objects prove they hold the compiled definition under the compiled name -- by the ownership marker on a semantic view, tool or agent, and by the content of a skill's or plugin's version and bundle prefix, a CoCo Desktop profile's registry row, or an eval's dataset version and staged config -- was recorded, without writing the object.
+Raised when `sst state recover` ran: each artifact state did not record whose live objects prove they hold the compiled definition under the compiled name -- by the ownership marker on a semantic view, tool, agent, CoWork profile or Cortex Code profile, and by the content of a skill's or plugin's version and bundle prefix, or an eval's dataset version and staged config -- was recorded, without writing the object.
 
 Fix: run sst plan: what was recovered now plans as unchanged
 
@@ -7615,7 +7461,7 @@ Fix: run sst plan: what was recovered now plans as unchanged
 
 `<artifact>: not recovered (<found>); the next apply <value>`
 
-Raised when `sst state recover` found an artifact state does not record whose live content is not the compiled definition: the object is absent, carries no marker, or carries one for another definition; a skill's or plugin's version or bundle prefix is missing or holds other files; a CoCo Desktop profile's registry row shows Desktop other columns; an eval's dataset version records other provenance, or its staged config other bytes; or Snowflake would not report the objects.
+Raised when `sst state recover` found an artifact state does not record whose live content is not the compiled definition: the object is absent, carries no marker, or carries one for another definition; a skill's or plugin's version or bundle prefix is missing or holds other files; an eval's dataset version records other provenance, or its staged config other bytes; or Snowflake would not report the objects.
 
 Fix: review the plan for it: an object SST cannot prove is its own stays unmanaged (SST-PLN024) until dropped or renamed
 
@@ -7757,15 +7603,15 @@ Note: Only agents are temporary: the views, tools and skills the same run publis
 
 ### SST-APL106
 
-**CoWork profile left out of a temporary run** (info)
+**CoWork or Cortex Code profile left out of a temporary run** (info)
 
-`<artifact>: skipped, because --temporary publishes no CoWork profile`
+`<artifact>: skipped, because --temporary publishes no CoWork or Cortex Code profile`
 
-Raised when `apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a temporary profile has not been measured on Snowflake, and a permanent one would route to agents that end with the run's session, so the profile is neither published nor recorded.
+Raised when `apply --temporary` would publish a CoWork profile or a Cortex Code agent profile, each a Snowflake private preview feature: a temporary profile has not been measured on Snowflake, a permanent CoWork profile would route to agents that end with the run's session, and a Cortex Code profile would be listed to no one once the session ends, so the profile is neither published nor recorded.
 
-Fix: apply without --temporary to publish the CoWork profile
+Fix: apply without --temporary to publish the CoWork or Cortex Code profile
 
-Note: The agents the CoWork profile routes to still publish, as temporary agents.
+Note: The agents a CoWork profile routes to, and the skills a Cortex Code profile pins, still publish.
 
 ### SST-APL107
 
@@ -8880,6 +8726,24 @@ Fix: report this as a bug
 A retired number is never raised and never reused, so an old log, baseline, or
 setting that names one still means what it meant.
 
+### SST-APL017
+
+**Per-channel publish reported aggregate success** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so no publish writes two channels.
+
+### SST-APL018
+
+**Registry pointer write failed after an upload** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so no registry row is written.
+
+### SST-APL027
+
+**Metadata table absent or the wrong shape** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so SST creates no registry table.
+
 ### SST-APL101
 
 **Rolled back after a smoke failure** (retired in 1.0.0)
@@ -9035,6 +8899,18 @@ Retired because a member's tables are the ones its expression reaches, so it can
 **Member attached only through a legacy reference** (retired in 1.0.0)
 
 Retired because legacy `table()` and `column()` references are refused at parse, so no member can attach through one.
+
+### SST-PLN028
+
+**Registry row changed since SST last wrote it** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry; a changed profile AGENT is drift, as an agent's is.
+
+### SST-PLN029
+
+**Registry table has the wrong shape** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so SST reads no registry table.
 
 ### SST-PRS102
 
@@ -9398,8 +9274,118 @@ Retired because `+auto_compress` was removed: profile trees always upload uncomp
 
 Retired because `+layout` was removed: profile trees are always laid out by type.
 
+### SST-VAL822
+
+**Uploaded artifact has no registry pointer** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so nothing points into a stage.
+
+### SST-VAL823
+
+**CoCo Desktop profile content hash does not cover every shipped tree** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry; a profile is one AGENT, versioned as an agent is.
+
+### SST-VAL829
+
+**Channel content hashes diverge** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, so a skill publishes through its extension alone.
+
+### SST-VAL830
+
+**Skill reaches neither channel** (retired in 1.0.0)
+
+Retired because a skill publishes only as a Cortex Extension; pinning one with no version is SST-VAL856.
+
 ### SST-VAL833
 
 **Script names a path that flattening renames** (retired in 1.0.0)
 
 Retired because skills publish as authored, so no path a script names is renamed.
+
+### SST-VAL844
+
+**CoCo Desktop profile names a skill the project does not have** (retired in 1.0.0)
+
+Retired because a profile's skill() is resolved as an agent's is, so an unknown skill is SST-REF032.
+
+Superseded by [`SST-REF032`](#sst-ref032).
+
+### SST-VAL846
+
+**CoCo Desktop profile names an unknown hook** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry hooks.
+
+### SST-VAL847
+
+**CoCo Desktop profile names an unknown MCP config** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry MCP servers.
+
+### SST-VAL848
+
+**MCP server entry is not a configuration** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry MCP servers.
+
+### SST-VAL849
+
+**Two MCP configs define one server** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry MCP servers.
+
+### SST-VAL850
+
+**MCP config carries a literal credential** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry MCP servers.
+
+### SST-VAL852
+
+**Hook definition is incomplete or ambiguous** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry hooks.
+
+### SST-VAL853
+
+**MCP config is not valid** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry MCP servers.
+
+### SST-VAL854
+
+**CoCo Desktop profile registry is not the one Desktop reads** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry; a profile published outside CORTEX_CODE.CONFIG is SST-VAL891.
+
+Superseded by [`SST-VAL891`](#sst-val891).
+
+### SST-VAL855
+
+**CoCo Desktop profile includes a skill or plugin with errors** (retired in 1.0.0)
+
+Retired because a profile pins its skills as an agent does, so one with no version to pin is SST-VAL856.
+
+Superseded by [`SST-VAL856`](#sst-val856).
+
+### SST-VAL858
+
+**CoCo Desktop profile names an unknown command** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry commands.
+
+### SST-VAL859
+
+**Command file is invalid** (retired in 1.0.0)
+
+Retired because agent profiles replaced the Desktop registry, and agent profiles cannot carry commands.
+
+### SST-VAL860
+
+**CoCo Desktop profile names an unknown plugin** (retired in 1.0.0)
+
+Retired because a profile's plugin() is resolved as an agent's is, so an unknown plugin is SST-REF036.
+
+Superseded by [`SST-REF036`](#sst-ref036).

@@ -11,7 +11,7 @@ description: |-
 # Working in an SST project
 
 SST compiles a dbt project's semantic YAML into Snowflake semantic views, Cortex Agents,
-CoWork profiles, skills, and CoCo Desktop profiles, then publishes them. This kit was installed by SST
+CoWork profiles, skills, plugins, and Cortex Code profiles, then publishes them. This kit was installed by SST
 @SST_VERSION@; its documentation is at @SST_DOCS@/index.md, and the terms are defined in
 @SST_DOCS@/glossary.md.
 
@@ -134,7 +134,7 @@ else the change reaches. Selectors and `+` are in @SST_DOCS@/guides/lineage.md.
   views, metrics, relationships, filters, verified queries, and custom instructions anywhere
   below it (a view's folder picks its `semantic_views:` routes), usually one item per file under its singular root.
 - Column metadata: each dbt model's YAML, under `config.meta.sst`.
-- `agents/`, `cowork_profiles/`, `tools/`, `skills/`, `plugins/`, `coco_desktop_profiles/`: agents and what SST publishes for
+- `agents/`, `cowork_profiles/`, `tools/`, `skills/`, `plugins/`, `coco_profiles/`: agents and what SST publishes for
   them. The `skills/` folder there is published to Snowflake. These kit skills are not, and
   must stay out of it.
 - `sst_target/`: build output. Never edit it, and never commit it.

@@ -213,22 +213,23 @@ the skill. Check the validation output for the file:
 - a path that walks out of the skill folder (`../../other-skill/x.md`) names a
   file the published skill does not carry; move the file into the skill.
 
-## A profile does not appear in CoCo Desktop
+## A Cortex Code profile does not appear in Cortex Code
 
-- **`SST-VAL854`** is reported: the project publishes to a registry table other
-  than the one Desktop reads. That is right for rehearsal; unset
-  `coco_desktop_profiles.+registry_table` to publish where Desktop reads.
-- **Desktop shows `Database 'CORTEX_CODE' does not exist or not authorized`.**
-  The account has no registry yet, or none of the user's roles can read it.
-  Publish once to create it, then grant readers USAGE on `CORTEX_CODE` and
-  `CORTEX_CODE.CONFIG`, SELECT on the registry, and READ on the profile stage;
-  see [Plugins and CoCo Desktop profiles](plugins-and-coco-desktop-profiles.md#how-a-profile-publishes).
-- **Desktop lists the profile under another name.** Each row is named by the
-  profile's name and its target's `coco_desktop_profiles.+name_suffix`, such as
-  `sales-analyst-dev`.
-- The profile was deactivated by a `--prune` run after its folder was deleted.
-- A pointer in the row does not resolve. `apply` checks every pointer after the
-  write and reports the one that failed.
+- **`SST-VAL891`** is reported: the Cortex Code profile publishes outside
+  `CORTEX_CODE.CONFIG`, the only schema Cortex Code lists. That is right for
+  rehearsal; set `coco_profiles.+database: CORTEX_CODE` and `+schema: CONFIG`
+  to publish where Cortex Code reads.
+- **The role cannot see it.** SST issues no grants. The user's role needs USAGE
+  on `CORTEX_CODE`, `CORTEX_CODE.CONFIG`, and the AGENT, and USAGE on each
+  extension it pins to load its skills; see
+  [Plugins and Cortex Code profiles](plugins-and-coco-profiles.md#how-a-profile-publishes).
+- **The role is given another Cortex Code profile, or none.** A role that sees
+  several is given the one named `DEFAULT`; with no `DEFAULT`, its user must
+  choose (`SST-VAL893`). Publish `coco_profiles/default/` for that.
+- **It is listed under another name.** Each AGENT is named by its folder and its
+  target's `coco_profiles.+name_suffix`, such as `SALES_ANALYST_DEV`.
+- The Cortex Code profile was dropped by a `--prune` run after its folder was
+  deleted.
 
 ## A bare `apply` plans the whole project again
 

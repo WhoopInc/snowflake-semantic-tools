@@ -1,4 +1,4 @@
-"""The definitions of an artifact made of files and rows: a skill, plugin, profile or eval."""
+"""The definitions of an artifact made of files and rows: a skill, plugin or eval."""
 
 from __future__ import annotations
 
@@ -10,8 +10,6 @@ from snowflake_semantic_tools.domain.plan.definitions.composite import (
     file_text,
     files_members,
     payload_questions,
-    profile_definition,
-    tree_root,
 )
 from snowflake_semantic_tools.domain.plan.member_diff import ADDED, CHANGED, REMOVED, diff_definitions
 
@@ -33,33 +31,6 @@ def test_a_skill_edit_shows_as_the_file_it_changes_and_its_comment_without_a_mar
         (CHANGED, "file SKILL.md"),
         (ADDED, "file extra.md"),
     ]
-
-
-def test_a_profile_compares_its_columns_without_digests_and_its_trees_by_file() -> None:
-    pointer = "@DB.S.BUNDLES/skills/team/0123456789ab/"
-    moved = "@DB.S.BUNDLES/skills/team/ba9876543210/"
-    live = profile_definition(
-        {"VERSION": "1-aaa", "SKILL_REPOS": [{"source": pointer}], "MODEL": "auto"},
-        {"skills/team/": {"a/SKILL.md": b"old\n"}},
-    )
-    desired = profile_definition(
-        {"VERSION": "1-bbb", "SKILL_REPOS": json.dumps([{"source": moved}]), "MODEL": "auto"},
-        {"skills/team/": {"a/SKILL.md": b"new\n"}, "hooks/team/": {"guard.sh": b"exit 0\n"}},
-    )
-    # The version and the moved pointer are not changes; the files are.
-    assert [(item.op, item.label) for item in diff_definitions(live, desired)] == [
-        (ADDED, "file hooks/team/guard.sh"),
-        (CHANGED, "file skills/team/a/SKILL.md"),
-    ]
-    assert [member.name for member in desired.members][:2] == ["model", "skill_repos"]
-
-
-def test_a_pointer_names_the_tree_it_points_into_and_its_root() -> None:
-    root = "@DB.S.BUNDLES/hooks/team/0123456789ab/"
-    assert tree_root(f"{root}guard/guard.sh") == ("hooks/team/", root)
-    assert tree_root(root) == ("hooks/team/", root)
-    assert tree_root(root[:-1]) == ("hooks/team/", root)
-    assert tree_root("@DB.S.BUNDLES/plugins/") is None
 
 
 def test_an_eval_compares_its_config_and_each_question_by_its_text() -> None:

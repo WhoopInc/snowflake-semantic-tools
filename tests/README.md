@@ -75,7 +75,7 @@ tests/
 
 ## The Reference Project
 
-`fixtures/reference_project/` publishes 14 artifacts: three semantic views, a tool, three agents, an eval, three skills, a plugin, and two CoCo Desktop profiles. Its default `dev` target is the golden target; `dev`, `prod`, and `ci` carry no credentials and cannot connect. From the repository root:
+`fixtures/reference_project/` publishes 17 artifacts: three semantic views, two tools, three agents, a CoWork profile, an eval, four skills, a plugin, and two Cortex Code profiles. Its default `dev` target is the golden target; `dev`, `prod`, and `ci` carry no credentials and cannot connect. From the repository root:
 
 ```bash
 P=tests/fixtures/reference_project

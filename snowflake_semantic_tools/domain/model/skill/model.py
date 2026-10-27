@@ -2,8 +2,8 @@
 
 A skill is one authored folder and a plugin one manifest naming skills; each publishes as a
 Cortex Extension named by `extension_identifier`. A bundle is the exact file set one extension
-version is built from, and `bundle_digest` is its content address: version aliases and Desktop
-tree names are cut from it, so it must not change while the content does not.
+version is built from, and `bundle_digest` is its content address: version aliases are cut
+from it, so it must not change while the content does not.
 """
 
 from __future__ import annotations

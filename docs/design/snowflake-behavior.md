@@ -1157,6 +1157,79 @@ attempt's run name carries its timestamp and attempt number, as
 [routes.py](../../snowflake_semantic_tools/app/evals/routes.py); `_run_name` in
 [run.py](../../snowflake_semantic_tools/app/evals/run.py).
 
+## Cortex Code profiles (private preview)
+
+Cortex Code agent profiles are a Snowflake private preview[^preview] (PrPr): an
+AGENT in `CORTEX_CODE.CONFIG` that the Cortex Code CLI, Desktop, and Snowsight
+apply for the roles with USAGE on it. Each entry below was measured on
+2026-10-26 in a sandbox account enrolled in the preview. A preview may change
+before general availability, so re-check these first when Cortex Code profiles
+misbehave.
+
+### A skill's version may be an extension version alias
+
+**Docs say**: the preview's notes show a skill entry as `source.type:
+CORTEX_EXTENSION` and `source.path`, and say nothing of `source.version`.
+
+**Server does**: `CREATE AGENT ... FROM SPECIFICATION` in `CORTEX_CODE.CONFIG`
+accepts a skill whose `source.version` is an SST extension version alias (such
+as `SST_DA1593FC54C6`), a system version name (`VERSION$3`), or no version at
+all. `LIST 'snow://cortex_extension/<fqn>/versions/<alias>/'` resolves an alias
+to its version's files, so an alias names exactly the bytes SST published.
+
+**Evidence**: `Enforced` for SST's side: every Cortex Code profile pins each
+skill to the alias its extension published, as an agent does, and one with no
+version to pin is SST-VAL856. The goldens under
+[tests/golden/expected/coco_profile/](../../tests/golden/expected/coco_profile/),
+compared by [test_goldens.py](../../tests/unit/test_goldens.py), pin the
+rendered `source.version`. Whether the server still accepts an alias is
+`Observed`; probe: create a scratch AGENT whose one skill names an alias, then
+`DESCRIBE AGENT` it and `LIST` the alias's path.
+
+**SST depends on it at**: `render_coco_profile_spec` in
+[coco_profile.py](../../snowflake_semantic_tools/domain/render/coco_profile.py);
+[the plugins and Cortex Code profiles guide](../guides/plugins-and-coco-profiles.md#cortex-code-profiles).
+
+### The specification refuses some unknown keys, and SST writes only three
+
+**Docs say**: a Cortex Code profile's specification holds
+`models.orchestration`, `instructions.response`, and `skills`.
+
+**Server does**: an unknown top-level key `budget` is refused with `agent spec
+is invalid: unrecognized field budget`, but a `tools` key is accepted, so the
+server does not hold a profile to the three keys. An `instructions.response` of
+40 KB is accepted.
+
+**Evidence**: `Enforced` for SST's side: SST itself limits the specification to
+`models`, `instructions`, and `skills`, and refuses `hooks`, `mcp_servers`,
+`commands`, `owner_team`, and `allowed_roles` (SST-VAL851). The goldens under
+[tests/golden/expected/coco_profile/](../../tests/golden/expected/coco_profile/)
+pin the rendered keys. Whether the server still accepts `tools` is not relied
+on.
+
+**SST depends on it at**: `render_coco_profile_spec` and
+`assemble_instructions` in
+[coco_profile.py](../../snowflake_semantic_tools/domain/render/coco_profile.py).
+
+### A Cortex Code profile takes the agent version statements
+
+**Docs say**: nothing specific to Cortex Code profiles; they are AGENT objects.
+
+**Server does**: `DESCRIBE AGENT` returns `agent_spec` as JSON and the versions
+`["VERSION$1"]` plus a live version. `ALTER AGENT ... MODIFY LIVE VERSION SET
+SPECIFICATION`, `COMMIT`, and `ADD LIVE VERSION FROM LAST` behave as they do for
+any agent (see [Agents](#agents)).
+
+**Evidence**: `Observed`. SST publishes a Cortex Code profile with the same
+staged-agent programs as an agent, from `coco-profiles/<profile>/<git sha>/`
+under `apply.agent_spec_stage`. Probe: create a scratch AGENT in a schema of its
+own, change its live version's specification, commit, and `DESCRIBE AGENT` it;
+then drop it.
+
+**SST depends on it at**: `agent_programs` and `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+[coco_profiles.py](../../snowflake_semantic_tools/app/compile/coco_profiles.py).
+
 ## Cortex extensions and stages
 
 ### The extension grammar is undocumented

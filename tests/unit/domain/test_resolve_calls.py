@@ -56,7 +56,7 @@ def test_a_legacy_call_is_located_at_the_call_even_without_an_origin() -> None:
 
 
 def test_every_function_names_its_arity() -> None:
-    assert len(KNOWN_FUNCTIONS) == 24
+    assert len(KNOWN_FUNCTIONS) == 21
     assert (accepted_arity("ref"), accepted_arity("source"), accepted_arity("tool"), accepted_arity("tag")) == (
         (1, 2),
         (2,),

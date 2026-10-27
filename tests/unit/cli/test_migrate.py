@@ -115,7 +115,7 @@ def test_migrate_split_leaves_a_list_whole_rather_than_overwrite(tmp_path: Path)
     assert unresolved.exit_code == 1 and "left skills.stage unchanged" in unresolved.output
 
 
-def test_migrate_refs_reads_tools_agents_evals_hooks_and_commands(tmp_path: Path) -> None:
+def test_migrate_refs_reads_tools_agents_and_evals_and_leaves_hooks_and_commands(tmp_path: Path) -> None:
     root = project(
         tmp_path,
         {
@@ -132,5 +132,6 @@ def test_migrate_refs_reads_tools_agents_evals_hooks_and_commands(tmp_path: Path
     assert (root / "tools" / "t.yml").read_text(encoding="utf-8").endswith("  body: \"{{ file('sql/t.sql') }}\"\n")
     assert (root / "agents" / "a" / "agent.yml").read_text(encoding="utf-8") == "name: a\nconfig:\n  alias: x\n"
     assert (root / "agents" / "a" / "evals" / "config.yml").read_text(encoding="utf-8") == "name: c\n"
-    assert (root / "hooks" / "h" / "hook.yml").read_text(encoding="utf-8") == "script: \"{{ file('run.sh') }}\"\n"
-    assert "skill: \"{{ skill('s') }}\"" in (root / "commands" / "c.md").read_text(encoding="utf-8")
+    # Hooks and commands are no longer artifacts SST publishes, so their files are left as written.
+    assert (root / "hooks" / "h" / "hook.yml").read_text(encoding="utf-8") == "script: run.sh\n"
+    assert (root / "commands" / "c.md").read_text(encoding="utf-8") == "---\nskill: s\n---\n"

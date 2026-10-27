@@ -1,9 +1,8 @@
-"""Invariants of skill and profile publication that keep several failure shapes from arising.
+"""Invariants of skill publication that keep several failure shapes from arising.
 
 Each test pins the property that rules a condition out, so a change that broke it would fail
 here: versions are named by content, an extension lands where its settings place it and no
-grouping folder moves it, SST issues no grant, no raw string reaches DDL, and each channel
-reports its own outcome.
+grouping folder moves it, SST issues no grant, and no raw string reaches DDL.
 """
 
 from __future__ import annotations
@@ -12,27 +11,17 @@ from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
-from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
-from snowflake_semantic_tools.app.manifest import build_manifest
-from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, OutcomeStatus
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, ArtifactLifecycle
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
-from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
 from snowflake_semantic_tools.domain.sql import sql
 from snowflake_semantic_tools.domain.state import AppliedEntry
 from snowflake_semantic_tools.domain.validate.config import validate_config
-from tests.helpers.app_ports import InMemoryStateStore
-from tests.helpers.artifact_builders import empty_state, target
-from tests.helpers.clocks import FixedClock
-from tests.helpers.publications import SKILL_STAGE, compiled_profile, compiled_skill, publish_skill, skill
+from tests.helpers.publications import SKILL_STAGE, compiled_skill, publish_skill
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 
@@ -83,42 +72,11 @@ def test_no_raw_text_reaches_ddl_through_the_statement_builder() -> None:
         sql("CREATE CORTEX EXTENSION {name}", name="DB.S.X; DROP TABLE T")  # type: ignore[arg-type]
 
 
-def test_each_channel_reports_its_own_outcome_and_one_failure_fails_the_deploy() -> None:
-    port = FakeSnowflake(existing=())
-    extension = compiled_skill()
-    profile = compiled_profile(skill())
-    # The stage channel's registry write is refused; the catalog channel publishes.
-    port.refused = ("MERGE",)
-    handlers: dict[str, CompositeLifecycleHandler] = {
-        "skill": ExtensionLifecycleHandler(port, {extension.artifact_key: extension.release}, "skill"),
-        "coco_desktop_profile": CocoDesktopProfileLifecycleHandler(port, {profile.artifact_key: profile}),
-    }
-    rendered = {item.artifact_key: item.rendered_artifact for item in (extension, profile)}
-    manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
-    changeset = PlanArtifacts(port, lifecycle_handlers=handlers).run(
-        rendered, manifest, empty_state(), target(), fetched_at="now"
-    )
-    result = ApplyArtifacts(
-        port,
-        InMemoryStateStore(),
-        FixedClock(),
-        state_table=QualifiedName.parse("DB.S.SST_STATE"),
-        lifecycle_handlers=handlers,
-    ).run(changeset, empty_state(), ApplyOptions())
-    statuses = {outcome.key: outcome.status for outcome in result.outcomes}
-    assert statuses == {
-        "skill:month-close": OutcomeStatus.APPLIED,
-        "coco_desktop_profile:analyst": OutcomeStatus.FAILED,
-    }
-    assert not result.success
-
-
 def test_every_composite_prune_sorts_at_its_type_registry_position() -> None:
     port = FakeSnowflake(existing=())
     handlers: list[CompositeHandler[Any, Any, Any]] = [
         ExtensionLifecycleHandler(port, {}, "skill"),
         ExtensionLifecycleHandler(port, {}, "plugin"),
-        CocoDesktopProfileLifecycleHandler(port, {}),
         EvalLifecycleHandler(port),
     ]
     composite = {

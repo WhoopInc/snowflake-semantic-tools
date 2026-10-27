@@ -28,7 +28,7 @@ If the user keeps SST in another environment (a conda env or virtualenv with thi
 | Path | `tests/fixtures/reference_project/` |
 | dbt manifest | `tests/fixtures/reference_project_manifest.json` (dbt 1.11, manifest schema v12) |
 | Artifacts | 16, of all eight types |
-| Goldens | `tests/golden/expected/{ddl,agent,tool,cowork_profile,eval,skill,plugin,coco_desktop_profile}/` |
+| Goldens | `tests/golden/expected/{ddl,agent,tool,cowork_profile,eval,skill,plugin,coco_profile}/` |
 | Targets | `dev` (default, the golden target), `prod`, `ci`: no credentials, offline only (`ci` is in no tool `relations:` map, so compiling for it stops with `SST-REF018`); `verify`: reads `SST_TEST_SNOWFLAKE_*` |
 
 It is vendored in this repository, so there is nothing to clone.

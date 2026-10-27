@@ -1,13 +1,12 @@
-"""Read what a published skill, plugin, profile or eval holds, and build what SST renders for one.
+"""Read what a published skill, plugin or eval holds, and build what SST renders for one.
 
 Each artifact type has a desired builder, from what compiled, and a live read, from a session:
 - a skill or plugin: the files of the version state records SST published, by its alias, else
   of the version the catalog serves -- the effective one, else the default -- and the
   extension's comment;
-- a profile: its registry row and the files of each tree the row points into;
 - an eval: the config file and the questions of what state records it last published.
 
-Each file is read with one GET; a file a read returns nothing for, or a version, row or record
+Each file is read with one GET; a file a read returns nothing for, or a version or record
 that is not there, is a `SnowflakePortError`, which leaves the artifact uncompared.
 """
 
@@ -16,17 +15,13 @@ from __future__ import annotations
 from typing import TypeVar
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
-from snowflake_semantic_tools.app.desktop_contract import desktop_view, stage_pointers
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.plan.definitions.composite import (
     eval_definition,
     extension_definition,
     payload_questions,
-    profile_definition,
-    tree_root,
 )
 from snowflake_semantic_tools.domain.plan.member_diff import Definition
 from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
@@ -78,30 +73,6 @@ def served_extension(
     if default is not None or not versions:
         return default
     return max(versions, key=_number)
-
-
-def desired_profile(compiled: CompiledArtifact) -> Definition:
-    """The registry row and trees a profile releases."""
-    release = compiled_as(compiled, CompiledCocoDesktopProfile).release
-    trees = {
-        f"{tree.kind}/{tree.scope}/": {entry.path: entry.content for entry in tree.entries} for tree in release.trees
-    }
-    return profile_definition(desktop_view(release.row), trees)
-
-
-def live_profile(port: SnowflakePort, compiled: CompiledArtifact) -> Definition:
-    """The registry row the profile's channel holds for it, and the trees that row points into."""
-    profile = compiled_as(compiled, CompiledCocoDesktopProfile)
-    row = port.read_profile_row(profile.channel.registry, profile.release.name)
-    if row is None:
-        raise SnowflakePortError(f"{profile.channel.registry.sql} holds no row for profile {profile.release.name}")
-    view = desktop_view(row)
-    roots = dict(root for pointer in stage_pointers(view) if (root := tree_root(pointer)) is not None)
-    trees = {
-        tree: {path: _read(port, f"{location}{path}") for path in port.list_location(location)}
-        for tree, location in roots.items()
-    }
-    return profile_definition(view, trees)
 
 
 def desired_eval(compiled: CompiledArtifact) -> Definition:

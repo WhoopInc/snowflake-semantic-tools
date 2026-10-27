@@ -96,13 +96,6 @@ class NamePolicy:
 
 # Skills and plugins publish as extension folders: lowercase kebab-case, at most 64 characters.
 SKILL_NAMES = NamePolicy(re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*"), 64, "lowercase kebab-case of at most 64 characters")
-# Profiles become CoCo Desktop profile names, which also allow '_'; 'shared' names the common layer.
-PROFILE_NAMES = NamePolicy(
-    re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)*"),
-    None,
-    "lowercase letters, digits, '-' or '_', and not 'shared'",
-    frozenset(("shared",)),
-)
 
 
 # Words a description uses to say when its object applies: "use when", "invoke for", "if".

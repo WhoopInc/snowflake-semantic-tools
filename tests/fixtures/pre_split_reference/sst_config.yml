@@ -58,16 +58,13 @@ project:
   # Custom LLM-judge metrics. They create no Snowflake object: each is inlined
   # into the rendered eval config of the agents that use it.
   eval_metrics_dir: eval_metrics
-  # CoCo Desktop inputs: plugins group skills into one extension, profiles are
-  # registry rows, and hooks, MCP configs and commands are what profiles name.
+  # Plugins group skills into one extension; Cortex Code agent profiles (a
+  # Snowflake private preview) pin skills and plugins as agents do.
   plugins_dir: plugins
-  coco_desktop_profiles_dir: coco_desktop_profiles
+  coco_profiles_dir: coco_profiles
   # Snowflake CoWork profiles (a Snowflake private preview), each routing a
   # question to one of this project's agents.
   cowork_profiles_dir: cowork_profiles
-  hooks_dir: hooks
-  mcp_servers_dir: mcp-servers
-  commands_dir: commands
 
 # `{{ var('<name>') }}` reads this block; an undeclared name is SST-CFG029. A var
 # is substituted at compile time, so it means the same in every view. These two
@@ -270,21 +267,15 @@ skills:
     # `+registry_table` is removed (SST-CFG043). `+prune_deleted` may only be true:
     # every version is built from the complete bundle.
 
-  stage:
-    +database: "{{ target.database }}"
-    +schema: JAFFLE
-    +stage: SKILL_BUNDLES
-    # A rehearsal registry in this schema. CoCo Desktop reads only
-    # CORTEX_CODE.CONFIG.PROFILE_REGISTRY, so SST-VAL854 notes on every run that
-    # Desktop will not see these rows. SST creates the table when absent and
-    # refuses one with the wrong shape (SST-PLN029).
-    +registry_table: PROFILE_REGISTRY
-    # Must be false (SST-VAL818): Desktop expects the authored nested layout.
-    +flatten: false
-    # Must be false (SST-VAL819): compressed uploads are invisible to Desktop.
-    +auto_compress: false
-    # The only layout (SST-VAL821): trees under skills/, prompts/, mcp/ and hooks/.
-    +layout: by_type
+coco_profiles:
+  # Cortex Code agent profiles (a Snowflake private preview). Cortex Code lists
+  # only the AGENTs in CORTEX_CODE.CONFIG, so SST-VAL891 notes on every run that
+  # these are rehearsals. A schema of their own: an agent or CoWork profile
+  # beside them is SST-VAL892. +name_suffix keeps a target's AGENT names apart
+  # from another target's that shares CORTEX_CODE.CONFIG.
+  +database: "{{ target.database }}"
+  +schema: COCO_PROFILES
+  +name_suffix: _REHEARSAL
 
 apply:
   # `agent_spec_stage` takes a location. `eval_config_stage` takes only a stage

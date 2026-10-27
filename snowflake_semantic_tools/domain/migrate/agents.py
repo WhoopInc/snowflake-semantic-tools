@@ -1,4 +1,4 @@
-"""`sst migrate refs` for agents, eval files, hooks and commands.
+"""`sst migrate refs` for agents and eval files.
 
 Agent files: a tag's bare `name:` becomes `tag()`; an agent toolset written by bare `name:` gains
 `identifier: "{{ tool('<name>') }}"`, which is how SST resolved it; a Cortex Search tool's own
@@ -12,20 +12,16 @@ Eval files lose `agent:`: the `evals/` folder says whose they are. A config's `a
 `run.tier`, `run.retry`, `run.concurrency` and `run.baseline_runs` move under `config:`. Its
 `run.retention` map of classes by variant becomes the one class its `run.variant` is listed under;
 the map's `decision_window_days` has no successor and goes.
-
-A hook's bare `script:` becomes a `file()` call; a command's frontmatter `skill:` a `skill()` call.
 """
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 
 from snowflake_semantic_tools.domain.migrate.calls import bare, quoted_call
 from snowflake_semantic_tools.domain.migrate.changes import Changes
 from snowflake_semantic_tools.domain.migrate.edits import Edit, double_quoted, entry_span
 from snowflake_semantic_tools.domain.migrate.outline import Node
-from snowflake_semantic_tools.domain.migrate.refs import MigrationResult, Rewrite
 from snowflake_semantic_tools.domain.migrate.semantic import tag_names
 from snowflake_semantic_tools.domain.migrate.settings import Move, delete_key, move_settings
 from snowflake_semantic_tools.domain.migrate.tools import ToolInfo, columns_list, stage_path
@@ -50,7 +46,6 @@ EVAL_MOVES = (
     Move(("run", "baseline_runs"), "baseline_runs"),
 )
 _SEARCH_COLUMNS = ("id_column", "title_column", "relative_path_column")
-_FRONTMATTER_SKILL = re.compile(r"^(skill\s*:\s*)(\S.*?)(\s*)$")
 
 
 def agent_references(root: Node, lines: Sequence[str], index: Mapping[str, ToolInfo]) -> Changes:
@@ -95,38 +90,6 @@ def eval_structure(lines: Sequence[str], root: Node) -> Changes:
         moves.append(Move(("run", "retention"), "retention", chosen, drop=chosen is None))
     move_settings(lines, root, moves, changes, block="config")
     return changes
-
-
-def hook_references(root: Node) -> Changes:
-    """Record a hook manifest's rewrite: a bare `script:` as a `file()` call."""
-    changes = Changes()
-    script = root.get("script")
-    written = bare(script.text) if script is not None else None
-    if script is not None and written is not None:
-        changes.replace(script, quoted_call("file", written), "file")
-    return changes
-
-
-def command_skill(text: str) -> MigrationResult:
-    """Write a command's frontmatter `skill: <name>` as `skill: "{{ skill('<name>') }}"`.
-
-    Only a frontmatter block that opens the file with `---` and closes with `---` is read.
-    """
-    lines = text.splitlines(keepends=True)
-    if not lines or lines[0].rstrip("\r\n") != "---":
-        return MigrationResult(text)
-    for index, line in enumerate(lines[1:], start=1):
-        body = line.rstrip("\r\n")
-        if body == "---":
-            break
-        match = _FRONTMATTER_SKILL.match(body)
-        name = bare(match.group(2).strip("'\"")) if match is not None else None
-        if match is not None and name is not None:
-            after = quoted_call("skill", name)
-            lines[index] = match.group(1) + after + match.group(3) + line[len(body) :]
-            rewrite = Rewrite(index + 1, len(match.group(1)) + 1, match.group(2), after, "reference")
-            return MigrationResult("".join(lines), (rewrite,))
-    return MigrationResult(text)
 
 
 def _calls(node: Node | None, function: str) -> bool:

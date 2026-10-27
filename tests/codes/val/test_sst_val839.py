@@ -21,7 +21,7 @@ def test_sst_val839_fires() -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == (
-        "agent 'router': skill source 'month-close' pins var('sha_version'), which names no published version"
+        "'router': skill source 'month-close' pins var('sha_version'), which names no published version"
     )
     assert diagnostic.subject == "agent:router"
 

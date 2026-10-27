@@ -56,14 +56,14 @@ tool:order_status
 uses the node above it. A name too long for the terminal is cut short with `…`:
 
 ```text
-skill:jaffle-semantics                            SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
+skill:jaffle-semantics                       SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
 └── read by
-    ├── agent:jaffle_analytics_agent              SST_REF_DEV.JAFFLE.JAFFLE_ANALYTIC…  loads it
-    │   ├── cowork_profile:jaffle_concierge       SST_REF_DEV.PROFILES.JAFFLE_CONCIE…  calls it as a tool
-    │   └── eval:jaffle_analytics_agent           SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANA…  tests it
-    ├── plugin:jaffle-toolkit                     SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT    bundles it
-    │   └── coco_desktop_profile:jaffle-operator  SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
-    └── coco_desktop_profile:jaffle-analyst       SST_REF_DEV.JAFFLE.PROFILE_REGISTRY  includes it
+    ├── agent:jaffle_analytics_agent         SST_REF_DEV.JAFFLE.JAFFLE_ANALYTIC…  loads it
+    │   ├── cowork_profile:jaffle_concierge  SST_REF_DEV.PROFILES.JAFFLE_CONCIE…  calls it as a tool
+    │   └── eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANA…  tests it
+    ├── coco_profile:jaffle_analyst          SST_REF_DEV.COCO_PROFILES.JAFFLE_A…  loads it
+    └── plugin:jaffle-toolkit                SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT    bundles it
+        └── coco_profile:jaffle_operator     SST_REF_DEV.COCO_PROFILES.JAFFLE_O…  loads it
 ```
 
 A trace from a `column:`, `dimension:` or `fact:` node traces a column, so it
@@ -84,10 +84,9 @@ member's `TABLES` and `USES`, and with `--wide` its `COLUMNS` and expression;
 | a member builds on another member | `uses it` | `used by it` |
 | a model or source holds a column | `a column of it` | `has it` |
 | a view holds a member | `holds it` | `attaches to it` |
-| an agent or a CoWork profile loads a skill | `loads it` | `loaded by it` |
+| an agent, a CoWork profile, or a Cortex Code profile loads a skill or plugin | `loads it` | `loaded by it` |
 | an agent calls a view, tool or agent as a tool; a CoWork profile's router calls each agent it routes to | `calls it as a tool` | `a tool it calls` |
 | a plugin bundles a skill | `bundles it` | `bundled by it` |
-| a profile includes a plugin or skill | `includes it` | `included by it` |
 | anything else | `depends on it` | `needed by it` |
 
 Every reference is drawn: a node two nodes read is shown, subtree included,
@@ -142,7 +141,7 @@ NODE the graph does not hold exits 3 (`SST-PRT112`).
 `depth`, `direction` and `marker` (and `changed` under `--state`), and the
 edges between them, each with `from`, `to` and `kind`: one of `builds`,
 `tests`, `exposes`, `reads`, `uses`, `contains`, `attaches`, `loads`, `calls`,
-`bundles`, `includes` and `depends`, as the table above names them.
+`bundles` and `depends`, as the table above names them.
 
 ## Selecting by lineage
 

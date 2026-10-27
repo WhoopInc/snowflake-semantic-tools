@@ -49,8 +49,6 @@ def test_migrate_refs_reads_every_kind_of_file() -> None:
             "agents/b/agent.yml": "- a list\n",
         },
         evals={"agents/a/evals/config.yml": "agent: a\nname: c\n"},
-        hooks={"hooks/h/hook.yml": "script: run.sh\n"},
-        commands={"commands/c.md": "---\nskill: s\n---\n{{ tool('g', 't') }}\n"},
         config={"sst_config.yml": "x: \"{{ tool('g', 't') }}\"\n"},
     )
     report = MigrateRefs(files, lambda text, path: (), outline).run()
@@ -60,8 +58,6 @@ def test_migrate_refs_reads_every_kind_of_file() -> None:
     assert by_path["agents/a/agent.yml"].counts() == counts(tool=1, tool_column=1, setting=1)
     assert not by_path["agents/b/agent.yml"].result.changed and not by_path["s/bad.yml"].result.changed
     assert by_path["agents/a/evals/config.yml"].counts() == counts(removed=1)
-    assert by_path["hooks/h/hook.yml"].counts() == counts(file=1)
-    assert by_path["commands/c.md"].counts() == counts(reference=1, tool=1)
     assert by_path["sst_config.yml"].counts() == counts(tool=1)
 
 
@@ -107,10 +103,14 @@ def test_a_split_without_configuration_or_with_unreadable_configuration() -> Non
         lambda path: False,
     ).run()
     assert [plan.refused for plan in claimed.plans] == [None, "another list is split into a/m.yml too"]
+    # A profile stage under skills: has no 1.0 form to move to, so it is reported, not rewritten.
     moved = MigrateSplit(
         SplitFiles(semantic={}, config=("c.yml", "skills:\n  stage:\n    +stage: S\n")), outline, lambda path: False
-    )
-    assert moved.run().changed
+    ).run()
+    assert moved.config is not None and not moved.changed
+    assert [(item.text, item.reason) for item in moved.config[1].untouched] == [
+        ("skills.stage", "delete it, and move each profile to coco_profiles/")
+    ]
 
 
 def test_migrate_refs_writes_a_0_3_2_view_scope_in_the_1_0_form() -> None:

@@ -1,30 +1,17 @@
-"""Composite artifacts the per-code PLN tests plan and publish: one skill, and one CoCo Desktop profile.
+"""Composite artifacts the per-code PLN tests plan and publish: one skill.
 
-`publish_skills` and `publish_profiles` plan the compiled artifacts against a recorded
+`publish_skills` plans the compiled artifacts against a recorded
 Snowflake through their lifecycle handlers, then apply the plan, as the lifecycle tests do.
 """
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import (
-    CompileCocoDesktopProfiles,
-    CompiledCocoDesktopProfile,
-    DesktopChannel,
-)
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
-from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
-    CocoDesktopProfile,
-    CocoDesktopProfileCatalog,
-    HookDefinition,
-    McpConfig,
-    SharedCocoDesktopProfile,
-)
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
@@ -35,8 +22,6 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 BUNDLE_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
-PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
-REGISTRY = QualifiedName.parse("DB.S.PROFILE_REGISTRY")
 STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
 
 
@@ -84,57 +69,3 @@ def publish_skills(port: FakeSnowflake, compiled: dict[str, CompiledExtension], 
         changeset, previous, ApplyOptions()
     )
     return store.state or previous
-
-
-def analyst_profile() -> dict[str, CompiledCocoDesktopProfile]:
-    """The `analyst` CoCo Desktop profile, compiled to publish through the registry."""
-
-    def skill(name: str) -> Skill:
-        files = (SkillFile("SKILL.md", f"---\nname: {name}\n---\nBody.\n".encode()),)
-        return Skill(name, f"skills/{name}", name, "d", "Body.\n", files, Origin(f"skills/{name}/SKILL.md"))
-
-    profile = CocoDesktopProfile(
-        name="analyst",
-        directory="coco_desktop_profiles/analyst",
-        description="Analyst.",
-        owner_team="Data",
-        skills=("semantics",),
-        mcp_servers=("dbt",),
-        hooks=("guard",),
-        prompt="Be careful.\n",
-        origin=Origin("coco_desktop_profiles/analyst/coco_desktop_profile.yml", 1),
-    )
-    catalog = CocoDesktopProfileCatalog(
-        (profile,),
-        SharedCocoDesktopProfile(
-            "Shared.\n",
-            (("a.md", "Rule."),),
-            ("common",),
-            Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml"),
-        ),
-        (
-            HookDefinition(
-                "guard", "hooks/guard", "PreToolUse", "bash", SkillFile("guard.sh", b"#!/bin/sh\n"), Origin("h")
-            ),
-        ),
-        (McpConfig("dbt", "mcp-servers/dbt/mcp.json", {"dbt": {"command": "dbt-mcp"}}, Origin("m")),),
-    )
-    skills = SkillCatalog((skill("common"), skill("semantics")))
-    result = CompileCocoDesktopProfiles(
-        catalog,
-        skills,
-        DesktopChannel(PROFILE_STAGE, REGISTRY),
-        catalog_published=frozenset(item.key for item in skills.skills),
-    ).run_result()
-    assert not result.diagnostics.has_errors, result.diagnostics
-    return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
-
-
-def plan_profiles(port: FakeSnowflake, compiled: dict[str, CompiledCocoDesktopProfile], previous: State) -> ChangeSet:
-    """Plan the profiles against `port` through their lifecycle handler."""
-    handler = CocoDesktopProfileLifecycleHandler(port, compiled)
-    rendered = {key: item.rendered_artifact for key, item in compiled.items()}
-    manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
-    return PlanArtifacts(port, lifecycle_handlers={"coco_desktop_profile": handler}).run(
-        rendered, manifest, previous, target(), fetched_at="now"
-    )

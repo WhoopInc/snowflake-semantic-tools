@@ -241,10 +241,11 @@ def _record_observed(
 ) -> None:
     """Record the observed objects no entry names yet, when they carry SST's ownership marker.
 
-    A change that failed without writing keeps its previous entry instead, or records nothing.
+    A change that failed without writing keeps its previous entry instead, or records nothing. A
+    prune that ran is `_record_prune`'s alone: what it observed is the object it then removed.
     """
     for change in changes:
-        if change.key in applied or change.observed is None:
+        if change.key in applied or change.observed is None or _ran_prune(change, failed_without_write):
             continue
         if change.key in failed_without_write:
             if change.key in previous.applied:
@@ -254,6 +255,11 @@ def _record_observed(
         if marker is None:
             continue
         applied[change.key] = _observed_entry(change.observed, marker, stamp)
+
+
+def _ran_prune(change: Change, failed_without_write: set[str]) -> bool:
+    """Whether the change is a prune that removed its object, or tried to and wrote before failing."""
+    return change.action is Action.PRUNE and change.prune_executable and change.key not in failed_without_write
 
 
 def _observed_entry(observed: ObservedArtifact, marker: OwnershipMarker, stamp: EntryStamp) -> AppliedEntry:

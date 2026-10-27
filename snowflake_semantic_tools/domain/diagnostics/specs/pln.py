@@ -325,7 +325,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage",
         demotable=False,
         condition=(
-            "the skill bundle stage, the CoCo Desktop profile stage, or the `apply.agent_spec_stage` stage exists "
+            "the skill bundle stage or the `apply.agent_spec_stage` stage exists "
             "but is not INTERNAL with SNOWFLAKE_SSE encryption"
         ),
         precheck=Precheck.OBSERVE,
@@ -338,29 +338,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         "an earlier publish left a damaged version under this alias; remove the alias in Snowflake, then plan again",
         demotable=False,
         condition="a version alias SST would reuse holds files that differ from the bundle",
-        precheck=Precheck.OBSERVE,
-    ),
-    spec(
-        "SST-PLN028",
-        Severity.ERROR,
-        "Registry row changed since SST last wrote it",
-        "{artifact}: registry row '{value}' has VERSION {found}, and SST last wrote {expected}",
-        "another writer changed the row; reconcile it, then plan again",
-        demotable=False,
-        condition=(
-            "a profile-registry row carries a VERSION state did not record, and content other than this release's"
-        ),
-        precheck=Precheck.OBSERVE,
-    ),
-    spec(
-        "SST-PLN029",
-        Severity.ERROR,
-        "Registry table has the wrong shape",
-        "{artifact}: {value} {detail}",
-        "SST never alters the registry; fix the table or point "
-        "coco_desktop_profiles.+registry_table at a compatible one",
-        demotable=False,
-        condition="the CoCo Desktop profile registry table lacks a column SST writes, or types it differently",
         precheck=Precheck.OBSERVE,
     ),
     spec(

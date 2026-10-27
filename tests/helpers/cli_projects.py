@@ -142,25 +142,26 @@ def skill_project(root: Path) -> Path:
     return project
 
 
-PROFILE_CONFIG = """
-project:
-  target_profile: skills
-coco_desktop_profiles:
-  +stage: PROFILES
+PROFILE_CONFIG = (
+    SKILLS_CONFIG
+    + """plugins:
+  +version_prefix: "SST_"
+  +bundle_stage: SKILL_BUNDLES
+coco_profiles:
+  +database: CORTEX_CODE
+  +schema: CONFIG
 """
+)
 
 
-def profile_with_commands_and_plugin(root: Path) -> Path:
+def profile_with_plugin(root: Path) -> Path:
     project = skill_project(root)
     (project / "sst_config.yml").write_text(OFFLINE_VALIDATION + PROFILE_CONFIG, encoding="utf-8")
     files = {
-        "coco_desktop_profiles/analyst/coco_desktop_profile.yml": (
-            "name: analyst\ndescription: Analyst.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n"
-            "commands: [\"{{ command('sql/check') }}\"]\nplugins: [\"{{ plugin('kit') }}\"]\n"
+        "coco_profiles/analyst/coco_profile.yml": (
+            "name: analyst\ndescription: Analyst.\nskills: [\"{{ skill('month-close') }}\"]\n"
+            "plugins: [\"{{ plugin('kit') }}\"]\n"
         ),
-        "coco_desktop_profiles/shared/coco_desktop_profile.yml": "commands: [\"{{ command('daily') }}\"]\n",
-        "commands/daily.md": "Summarize yesterday.\n",
-        "commands/sql/check.md": "---\ndescription: Check SQL.\n---\nCheck it.\n",
         "plugins/kit/plugin.yml": (
             "name: kit\ndescription: Kit.\nowner_team: Data\nskills: [\"{{ skill('month-close') }}\"]\n"
         ),

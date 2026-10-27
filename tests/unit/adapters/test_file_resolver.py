@@ -14,7 +14,6 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
-from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.discover import discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import load_documents
 from snowflake_semantic_tools.adapters.yaml.fields import read_sidecar, resolve_file
@@ -83,22 +82,10 @@ def _tool(project: Path, value: str) -> Read:
     return Read(tuple(item.code for item in catalog.diagnostics), member.body, sources)
 
 
-def _hook(project: Path, value: str) -> Read:
-    _write(project / "hooks/guard/hook.yml", f"event: PreToolUse\ncommand: bash\nscript: {value}\n")
-    catalog = load_coco_desktop_profile_catalog(
-        project, coco_desktop_profiles_dir="coco_desktop_profiles", hooks_dir="hooks", mcp_servers_dir="mcp-servers"
-    )
-    hook = catalog.hooks[0] if catalog.hooks else None
-    content = hook.script.content.decode("utf-8") if hook is not None else None
-    sources = (hook.script_file,) if hook is not None else ()
-    return Read(tuple(item.code for item in catalog.diagnostics), content, sources)
-
-
 SITES = {
     "agent instruction": Site("agents/router", _agent, bare_refused=False),
     "verified query sql": Site("semantic_models/queries", _verified_query, bare_refused=False),
     "tool body": Site("tools/ops", _tool, bare_refused=True),
-    "hook script": Site("hooks/guard", _hook, bare_refused=True),
 }
 
 

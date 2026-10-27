@@ -2,7 +2,7 @@
 name: sst-agents-and-evals
 description: |-
   Use when writing or changing what SST publishes for Cortex Agents: `agent.yml` files,
-  instructions, tools, the skills and plugins an agent loads, CoWork profiles, CoCo Desktop profiles, and
+  instructions, tools, the skills and plugins an agent loads, CoWork profiles, Cortex Code profiles, and
   agent evals (datasets, run configuration, baselines, gates). Do NOT use for semantic views
   or their members (use sst-semantic-authoring), and do not confuse the project's published
   `skills/` folder with the coding-agent skills of this kit.
@@ -10,13 +10,13 @@ description: |-
 # Agents, tools, published skills, and evals
 
 Guides: @SST_DOCS@/guides/agents.md, @SST_DOCS@/guides/skills.md,
-@SST_DOCS@/guides/plugins-and-coco-desktop-profiles.md, @SST_DOCS@/guides/evals.md, and,
+@SST_DOCS@/guides/plugins-and-coco-profiles.md, @SST_DOCS@/guides/evals.md, and,
 for where each publishes, @SST_DOCS@/guides/configuration.md.
 
 ## Two kinds of skill
 
 - The project's **`skills/` folder** (`project.skills_dir`) holds skills SST **publishes** to
-  Snowflake as Cortex Extensions, for Cortex Agents and CoCo Desktop profiles to load. Each is
+  Snowflake as Cortex Extensions, for Cortex Agents and Cortex Code profiles to load. Each is
   a folder whose `SKILL.md` has `name` and `description` frontmatter (`SST-PRS034`), and the
   folder name must match `name` (`SST-VAL801`). The folder publishes as authored, subfolders
   and nested skill folders included; every Markdown link must name a file or folder in it
@@ -113,45 +113,48 @@ tool:
 - A `tools:` folder route such as `tools: {partner: {+immutable: true}}` covers the members
   under `tools/partner/`; an immutable member must write `relations:` (`SST-VAL606`).
 
-## Plugins and profiles
+## Plugins and Cortex Code profiles
 
-A plugin (`plugins/<name>/plugin.yml`) and a profile (`coco_desktop_profiles/<name>/coco_desktop_profile.yml`) list their
-members as reference calls, one per entry, never bare names (`SST-REF050`):
+A plugin (`plugins/<name>/plugin.yml`) lists its members under `skills:`, and a Cortex Code
+profile (`coco_profiles/<name>/coco_profile.yml`, a Snowflake private preview) lists
+`skills:` and `plugins:`, as reference calls, one per entry, never bare names (`SST-REF050`):
 
 ```yaml
+# coco_profiles/sales_analyst/coco_profile.yml
+description: "Sales analysts: order, revenue, and month-close questions."
+model: auto
 skills:
   - "{{ skill('sales-semantics') }}"
 plugins:
   - "{{ plugin('sales-toolkit') }}"
-commands:
-  - "{{ command('sql/check') }}"
-mcp_servers:
-  - "{{ mcp_server('sales-docs') }}"
-hooks:
-  - "{{ hook('sql-guard') }}"
 ```
 
-A plugin's members are only `skills:`. A command is named by its path under `commands/` without
-`.md`. A command's frontmatter names the skill it runs as `skill: "{{ skill('<name>') }}"`,
-which SST publishes as the bare name Desktop reads. A hook's `script:` is
-`"{{ file('<path>') }}"`, relative to its `hook.yml`; without one, its folder must hold exactly
-one other file.
+A Cortex Code profile publishes an AGENT whose specification holds only
+`models.orchestration`, `instructions.response`, and `skills`, each skill pinned to its
+extension's version alias as an agent's is (`SST-VAL856` when there is none). Its folder name
+is `[a-z][a-z0-9_]*` (`SST-VAL801`); `default/` publishes as `DEFAULT`, the profile a role
+that sees several is given (`SST-VAL893`). `model` must be in
+`snowflake.orchestration_models` (`SST-VAL894`). `hooks`, `mcp_servers`, `commands`,
+`owner_team`, and `allowed_roles` are refused (`SST-VAL851`). `coco_profiles/shared/` is
+reserved: its `skills:` are pinned in every profile (repeating one is `SST-VAL845`), and its
+`AGENTS.md` and `rules/*.md` lead every profile's instructions, before the profile's own
+`AGENTS.md`. A leftover `coco_desktop_profiles/` folder is `SST-VAL895`.
 
-A skill (in its `SKILL.md` frontmatter), a plugin, and a profile set their own settings under
-`config:`: the `skills:`, `plugins:`, or `coco_desktop_profiles:` `+` keys of `sst_config.yml` without the `+`.
-A skill or plugin publishes as an extension only where `bundle_stage` resolves for it, and a
-profile only where `stage` does; `config: {certified: true}` certifies one skill alone. Folder
-routes under those blocks name folders below `skills_dir`, `plugins_dir`, and `coco_desktop_profiles_dir`
-(`SST-CFG041` for one that names none).
+A skill (in its `SKILL.md` frontmatter), a plugin, and a Cortex Code profile set their own
+settings under `config:`: the `skills:`, `plugins:`, or `coco_profiles:` `+` keys of
+`sst_config.yml` without the `+`. A skill or plugin publishes as an extension only where
+`bundle_stage` resolves for it; `config: {certified: true}` certifies one skill alone. Folder
+routes under those blocks name folders below `skills_dir`, `plugins_dir`, and
+`coco_profiles_dir` (`SST-CFG041` for one that names none).
 
-CoCo Desktop reads profiles only from `CORTEX_CODE.CONFIG.PROFILE_REGISTRY`, one per account,
-as the signed-in user's roles; that is `+registry_table`'s default, and SST grants nothing, so
-readers need USAGE on the database and schema, SELECT on the table, and READ on the stage.
-Targets that share an account share that registry: give each non-prod target its own
-`coco_desktop_profiles.+name_suffix` (for example
-`"{{ '' if target.name == 'prod' else '-dev' }}"`), or its plan stops on the other
-target's rows (`SST-PLN024`). A row's VERSION is a counter that goes up by one whenever the
-profile's content changes.
+Cortex Code lists only the AGENTs in `CORTEX_CODE.CONFIG` (`SST-VAL891` notes any other
+location as a rehearsal). `coco_profiles.+database` and `+schema` default to the target's, and
+the schema may not be one an agent or CoWork profile publishes to (`SST-VAL892`). SST grants
+nothing: a role needs USAGE on `CORTEX_CODE`, `CORTEX_CODE.CONFIG`, the AGENT, and each
+extension, and the apply role CREATE AGENT on `CORTEX_CODE.CONFIG`. Targets that share
+`CORTEX_CODE.CONFIG` need their own `coco_profiles.+name_suffix` (for example
+`"{{ '' if target.name == 'prod' else '_DEV' }}"`), or a plan stops on the other target's
+AGENT (`SST-PLN024`).
 
 ## CoWork profiles
 

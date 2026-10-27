@@ -2,4 +2,4 @@ $ sst --project-dir <project> --manifest <manifest> test --target dev
 --- exit 0
 --- stdout
 --- stderr
-✓ 42 smoke probes passed · <n>s
+✓ 44 smoke probes passed · <n>s

@@ -26,8 +26,11 @@ PROPERTIES_NAME = "properties"
 PROPERTIES_KEY = f"{PROPERTIES_KIND}:{PROPERTIES_NAME}"
 # Snowflake private preview (PrPr): CoWork profiles
 COWORK_PROPERTIES_KIND = "cowork_profile"
-# Each AGENT object kind's properties member, by its kind: an agent's and a CoWork profile's.
-PROPERTIES_KINDS = (PROPERTIES_KIND, COWORK_PROPERTIES_KIND)
+# Snowflake private preview (PrPr): Cortex Code agent profiles
+COCO_PROPERTIES_KIND = "coco_profile"
+# Each AGENT object kind's properties member, by its kind: an agent's, a CoWork profile's, and a
+# Cortex Code profile's.
+PROPERTIES_KINDS = (PROPERTIES_KIND, COWORK_PROPERTIES_KIND, COCO_PROPERTIES_KIND)
 PROPERTIES_KEYS = frozenset(f"{kind}:{PROPERTIES_NAME}" for kind in PROPERTIES_KINDS)
 
 

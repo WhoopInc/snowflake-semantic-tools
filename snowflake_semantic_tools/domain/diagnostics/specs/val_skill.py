@@ -1,7 +1,7 @@
-"""Validation codes 801-869 (VAL): skills, plugins, and CoCo Desktop profiles.
+"""Validation codes 801-869 (VAL): skills and plugins, and how agents and profiles pin them.
 
-Skill and plugin bundles, their publication channels and stages, and CoCo Desktop
-profiles with the hooks, MCP configs, and commands they name.
+Skill and plugin bundles, the extension versions they publish to, how an agent, CoWork
+profile, or Cortex Code profile pins them, and the profile keys that cannot be published.
 """
 
 from __future__ import annotations
@@ -14,14 +14,14 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-VAL801",
         Severity.ERROR,
-        "Skill, plugin, CoCo Desktop or CoWork profile, or agent folder is misnamed",
+        "Skill, plugin, Cortex Code or CoWork profile, or agent folder is misnamed",
         "'{artifact}': {detail}",
         "rename the folder, keep one manifest spelling, or fix the manifest or SKILL.md name the message names",
         condition=(
-            "a skill, plugin, CoCo Desktop profile or CoWork profile folder is misnamed or its manifest is wrong: a "
+            "a skill, plugin, Cortex Code profile or CoWork profile folder is misnamed or its manifest is wrong: a "
             "skill or plugin "
             "name is not kebab-case or would publish as an extension name that does not start with a "
-            "letter; a profile name is not lowercase letters, digits, '-' or '_', or is 'shared'; a "
+            "letter; a Cortex Code profile name is not lowercase letters, digits and '_' starting with a letter; a "
             "plugin or profile folder has no manifest, or both the .yml and .yaml spellings; an agent "
             "folder holds both agent.yml and agent.yaml, or a CoWork profile folder both "
             "cowork_profile.yml and cowork_profile.yaml; or the SKILL.md frontmatter or manifest "
@@ -63,8 +63,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "{artifact}: version {value} is referenced by no agent",
         "reference it, or stop publishing it",
         condition=(
-            "the project defines agents, and a skill or plugin it publishes is pinned by none of them "
-            "and included in no plugin, CoCo Desktop profile or the shared layer"
+            "the project defines agents, and a skill or plugin it publishes is pinned by none of them, "
+            "by no CoWork or Cortex Code profile, and is included in no plugin"
         ),
         note=(
             "A skill people use directly from the catalog has a consumer SST cannot see, so this is "
@@ -181,26 +181,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Stage PUT target does not end in a separator",
         "skill '{artifact}': PUT target '{path}' does not end in '/'",
         "append a trailing slash",
-        condition="a bundle's or CoCo Desktop profile tree's stage upload location does not end in '/'",
-    ),
-    spec(
-        "SST-VAL822",
-        Severity.ERROR,
-        "Uploaded artifact has no registry pointer",
-        "skill '{artifact}': '{path}' was uploaded with no PROFILE_REGISTRY pointer",
-        "write the pointer as part of the same publish",
-        condition="no pointer in a CoCo Desktop profile's registry row reaches a tree the profile uploads",
-    ),
-    spec(
-        "SST-VAL823",
-        Severity.ERROR,
-        "CoCo Desktop profile content hash does not cover every shipped tree",
-        "skill '{artifact}': hash omits {value}",
-        "include every shipped tree in the hash",
-        condition=(
-            "a CoCo Desktop profile ships a tree whose digest-named prefix is absent from what its VERSION is the "
-            "digest of, so a change there would produce no new version"
-        ),
+        condition="a bundle's stage upload location does not end in '/'",
     ),
     spec(
         "SST-VAL824",
@@ -251,28 +232,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         "skill '{artifact}': {detail}",
         "report per-channel status separately",
         condition=(
-            "apply reports no outcome, or several, for a skill, plugin or CoCo Desktop profile change, so the "
+            "apply reports no outcome, or several, for a skill or plugin change, so the "
             "result would not show that channel's state"
-        ),
-    ),
-    spec(
-        "SST-VAL829",
-        Severity.WARNING,
-        "Channel content hashes diverge",
-        "skill '{artifact}': catalog and stage hashes diverge by {value}",
-        "compare the two bundles",
-        condition="a skill's catalog and stage file sets differ",
-        precheck=Precheck.OBSERVE,
-    ),
-    spec(
-        "SST-VAL830",
-        Severity.WARNING,
-        "Skill reaches neither channel",
-        "skill '{artifact}' is published nowhere",
-        "reference it from a CoCo Desktop profile, or give it a +bundle_stage",
-        condition=(
-            "no `+bundle_stage` resolves for the skill, and no CoCo Desktop profile, plugin a profile names, or the "
-            "shared layer includes it"
         ),
     ),
     spec(
@@ -331,15 +292,18 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL838",
         Severity.ERROR,
         "Version set on a project-published extension",
-        "agent '{artifact}': skill source '{name}' sets version, which SST manages for {kind}('{path}')",
+        "'{artifact}': skill source '{name}' sets version, which SST manages for {kind}('{path}')",
         "delete version; SST pins the published content-hash alias",
-        condition="an agent skill source for a project-published extension sets version",
+        condition=(
+            "an agent's, CoWork profile's or Cortex Code profile's skill source for a project-published extension "
+            "sets version"
+        ),
     ),
     spec(
         "SST-VAL839",
         Severity.ERROR,
         "Skill version pinned to the commit SHA",
-        "agent '{artifact}': skill source '{name}' pins var('sha_version'), which names no published version",
+        "'{artifact}': skill source '{name}' pins var('sha_version'), which names no published version",
         "use skill() or plugin() with no version, or pin a real version of a consumed extension",
         condition="an agent skill source pins var('sha_version'), which names no published version",
     ),
@@ -347,7 +311,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "SST-VAL840",
         Severity.ERROR,
         "Plugin entry name is not one of its members",
-        "agent '{artifact}': plugin entry name {{{{ skill('{name}') }}}} must be {expected}",
+        "'{artifact}': plugin entry name {{{{ skill('{name}') }}}} must be {expected}",
         "name a member as {{ skill('<member>') }}, or remove the name to load every member",
         condition="an agent's `plugin()` entry names a skill that is not a member of the plugin",
     ),
@@ -377,119 +341,30 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="two artifacts of different types publish to one Snowflake name",
     ),
     spec(
-        "SST-VAL844",
-        Severity.ERROR,
-        "CoCo Desktop profile names a skill the project does not have",
-        "CoCo Desktop profile '{artifact}': skill '{name}' is not a skill in this project",
-        "add the skill under the skills directory, or remove it from the CoCo Desktop profile",
-        condition="the shared layer or a CoCo Desktop profile names a skill the project does not have",
-    ),
-    spec(
         "SST-VAL845",
         Severity.WARNING,
-        "CoCo Desktop profile repeats a shared skill or command",
-        "CoCo Desktop profile '{artifact}': {kind} '{name}' already reaches every profile through shared/",
-        "remove it from the CoCo Desktop profile",
-        condition="a CoCo Desktop profile repeats a skill or command the shared layer already carries",
-    ),
-    spec(
-        "SST-VAL846",
-        Severity.ERROR,
-        "CoCo Desktop profile names an unknown hook",
-        "CoCo Desktop profile '{artifact}': hook '{name}' is not defined under the hooks directory",
-        "add the hook, or remove it from the CoCo Desktop profile",
-        condition="a CoCo Desktop profile names a hook not defined under the hooks directory",
-    ),
-    spec(
-        "SST-VAL847",
-        Severity.ERROR,
-        "CoCo Desktop profile names an unknown MCP config",
-        "CoCo Desktop profile '{artifact}': MCP config '{name}' is not defined under the MCP servers directory",
-        "add the config, or remove it from the CoCo Desktop profile",
-        condition="a CoCo Desktop profile names an MCP config not defined under the MCP servers directory",
-    ),
-    spec(
-        "SST-VAL848",
-        Severity.ERROR,
-        "MCP server entry is not a configuration",
-        "CoCo Desktop profile '{artifact}': MCP server '{name}' is not a configuration object",
-        "replace the placeholder with a server definition, or stop referencing the config",
-        condition="an MCP server a CoCo Desktop profile uses is not a configuration object",
-    ),
-    spec(
-        "SST-VAL849",
-        Severity.ERROR,
-        "Two MCP configs define one server",
-        "CoCo Desktop profile '{artifact}': MCP server '{name}' is defined by both '{a}' and '{b}'",
-        "rename one server, or reference only one of the configs",
-        condition="two MCP configs a CoCo Desktop profile uses define one server name",
-    ),
-    spec(
-        "SST-VAL850",
-        Severity.ERROR,
-        "MCP config carries a literal credential",
-        "MCP config '{artifact}': server '{name}' sets '{key}' to a literal value",
-        "use a ${VARIABLE} placeholder; published configs are readable by every CoCo Desktop profile user",
-        condition=(
-            "an MCP config sets a credential-like key to a literal value, or sends an `Authorization`, "
-            "`Proxy-Authorization` or `Cookie` header whose value holds no `${VARIABLE}` placeholder"
-        ),
+        "Cortex Code profile repeats a shared skill",
+        "coco profile '{artifact}': skill '{name}' already reaches every profile through shared/",
+        "remove it from the Cortex Code profile's coco_profile.yml",
+        condition="a Cortex Code profile lists a skill the shared layer already carries; it is pinned once",
     ),
     spec(
         "SST-VAL851",
         Severity.ERROR,
-        "CoCo Desktop profile key is not accepted",
-        "CoCo Desktop profile '{artifact}': '{key}' is not accepted: {reason}",
+        "Cortex Code profile key is not accepted",
+        "coco profile '{artifact}': '{key}' is not accepted: {reason}",
         "delete the key",
-        condition="a CoCo Desktop profile declares a key SST refuses",
-    ),
-    spec(
-        "SST-VAL852",
-        Severity.ERROR,
-        "Hook definition is incomplete or ambiguous",
-        "hook '{artifact}': {detail}",
-        "declare event and command, and name the script with script: \"{{ file('<path>') }}\" "
-        "when the folder holds several files",
-        condition=(
-            "a hook folder has no manifest or both spellings, is not exactly one event/command, or, with "
-            "no `script:`, holds no script or more than one"
-        ),
-        note="A `script:` that names no file is `SST-REF014`; one that is not a `file()` call is `SST-REF050`.",
-    ),
-    spec(
-        "SST-VAL853",
-        Severity.ERROR,
-        "MCP config is not valid",
-        "MCP config '{artifact}': {detail}",
-        'write mcp.json as `{"mcpServers": {"<name>": {...}}}`',
-        condition="an MCP config folder has no mcp.json, or it is not UTF-8 JSON of the mcpServers shape",
-    ),
-    spec(
-        "SST-VAL854",
-        Severity.INFO,
-        "CoCo Desktop profile registry is not the one Desktop reads",
-        "CoCo Desktop profiles publish to {value}; CoCo Desktop reads only {expected}",
-        "unset coco_desktop_profiles.+registry_table to publish where Desktop reads, or keep this for rehearsal",
-        condition=(
-            "CoCo Desktop profiles publish to a registry other than CORTEX_CODE.CONFIG.PROFILE_REGISTRY, the one "
-            "CoCo Desktop reads (`coco_desktop_profiles.+registry_table`, or a profile's own `config:`)"
-        ),
-    ),
-    spec(
-        "SST-VAL855",
-        Severity.ERROR,
-        "CoCo Desktop profile includes a skill or plugin with errors",
-        "CoCo Desktop profile '{artifact}': {kind} '{name}' has errors, so the profile cannot publish",
-        "fix the errors reported for it",
-        condition="a CoCo Desktop profile includes a skill or plugin that has errors",
+        condition="a Cortex Code profile declares a key agent profiles cannot carry, such as hooks or mcp_servers",
     ),
     spec(
         "SST-VAL856",
         Severity.ERROR,
-        "Agent references an extension that cannot publish",
-        "agent '{artifact}': {kind}('{name}') has no version to pin because {reason}",
+        "Agent or Cortex Code profile references an extension that cannot publish",
+        "'{artifact}': {kind}('{name}') has no version to pin because {reason}",
         "fix the diagnostic that names the cause; the reference resolves once the extension publishes",
-        condition="an agent references a declared extension that has no version to pin",
+        condition=(
+            "an agent, CoWork profile or Cortex Code profile references a declared extension that has no version to pin"
+        ),
     ),
     spec(
         "SST-VAL857",
@@ -497,34 +372,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "File name cannot be published to a stage",
         "{artifact}: {value} cannot be staged, because '{found}' is not made only of {expected}",
         "rename the file or folder; a stage rejects any other name, so apply would fail partway through",
-        condition="a skill file, hook script or command path has a name a stage rejects",
-    ),
-    spec(
-        "SST-VAL858",
-        Severity.ERROR,
-        "CoCo Desktop profile names an unknown command",
-        "CoCo Desktop profile '{artifact}': command '{name}' is not a .md file under the commands directory",
-        "name a command by its path below project.commands_dir without .md, such as sql/check",
-        condition=(
-            "the shared layer or a CoCo Desktop profile names a command that is not a .md file under the commands "
-            "directory"
-        ),
-    ),
-    spec(
-        "SST-VAL859",
-        Severity.ERROR,
-        "Command file is invalid",
-        "command '{artifact}': {detail}",
-        "frontmatter is optional; when present it is a YAML mapping of description, allowed-tools, skill, and hidden",
-        condition="a command file is not UTF-8, or its frontmatter is malformed or holds an unknown value",
-    ),
-    spec(
-        "SST-VAL860",
-        Severity.ERROR,
-        "CoCo Desktop profile names an unknown plugin",
-        "CoCo Desktop profile '{artifact}': plugin '{name}' is not a plugin under the plugins directory",
-        "name a plugin folder that has a plugin.yml",
-        condition="a CoCo Desktop profile names a plugin not under the plugins directory",
+        condition="a skill file has a name a stage rejects",
     ),
     spec(
         "SST-VAL861",

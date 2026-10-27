@@ -374,7 +374,7 @@ def resolve_file(
     Args:
         declaring_file: The file holding the call, relative to the project root.
         call: A `file()` call with one argument, as `file_call` returns it.
-        text: Whether the file must be UTF-8 text; a hook script is read as bytes.
+        text: Whether the file must be UTF-8 text; False reads it as bytes.
 
     Returns:
         The file read; or the one diagnostic that refuses it.

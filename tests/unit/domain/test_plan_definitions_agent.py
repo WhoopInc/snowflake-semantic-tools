@@ -7,6 +7,7 @@ import json
 import pytest
 
 from snowflake_semantic_tools.domain.plan.definitions.agent import (
+    COCO_PROPERTIES_KIND,
     COWORK_PROPERTIES_KIND,
     PROPERTIES_KEYS,
     agent_properties,
@@ -121,7 +122,10 @@ def test_a_cowork_profile_s_properties_are_keyed_by_its_own_kind() -> None:
     # CoWork profiles are a Snowflake private preview AGENT; their state never compares with an agent's.
     member = agent_properties(secure=False, kind=COWORK_PROPERTIES_KIND)
     assert member.key == ("cowork_profile", "properties")
-    assert {"agent:properties", "cowork_profile:properties"} == PROPERTIES_KEYS
+    assert {"agent:properties", "cowork_profile:properties", "coco_profile:properties"} == PROPERTIES_KEYS
+    # A Cortex Code profile, a Snowflake private preview AGENT too, is keyed by its own kind as well.
+    assert agent_properties(secure=False, kind=COCO_PROPERTIES_KIND).key == ("coco_profile", "properties")
+    assert is_properties("coco_profile", "properties")
     assert is_properties("cowork_profile", "properties") and is_properties("agent", "properties")
     assert not is_properties("setting", "properties") and not is_properties("agent", "router")
 

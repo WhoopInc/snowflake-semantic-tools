@@ -50,6 +50,7 @@ from snowflake_semantic_tools.domain.diagnostics.specs import (
     rnd,
     sno,
     val_agent,
+    val_coco_profile,
     val_compare,
     val_cowork_profile,
     val_eval,
@@ -238,6 +239,7 @@ RULE_SETS: Mapping[str, tuple[ErrorSpec, ...]] = MappingProxyType(
         "eval": (*val_eval.SPECS, *val_compare.SPECS),
         "skill": val_skill.SPECS,
         "cowork_profile": val_cowork_profile.SPECS,
+        "coco_profile": val_coco_profile.SPECS,
     }
 )
 
@@ -263,6 +265,7 @@ ERROR_REGISTRY = build_registry(
         *val_compare.SPECS,
         *val_skill.SPECS,
         *val_cowork_profile.SPECS,
+        *val_coco_profile.SPECS,
         *rnd.SPECS,
         *pln.SPECS,
         *apl.SPECS,

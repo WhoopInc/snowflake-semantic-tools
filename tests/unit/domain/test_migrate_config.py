@@ -41,29 +41,38 @@ def test_skills_blocks_move_out_and_unset_keys_go() -> None:
         "agents:\n  ops:\n    +schema: OPS\n"
         'skills:\n  +certified: false\n  +version_prefix: "SST_"\n'
         "  # The catalog.\n  +database: DB\n  +schema: S\n  +bundle_stage: SRC\n"
+        "  stage:\n    +database: DB\n    +stage: BUNDLES\n    +registry_table: REG\n"
+        "    +layout: by_type\n    +auto_compress: false\n"
         "\n# The skills catalog published plugins too; they keep its location.\n"
         "plugins:\n  +database: DB\n  +schema: S\n  +bundle_stage: SRC\n"
         '  +certified: false\n  +version_prefix: "SST_"\n'
-        "\ncoco_desktop_profiles:\n  +database: DB\n  +stage: BUNDLES\n  +registry_table: REG\n"
         "\n# Consumed extensions.\nextensions:\n  default_prefix: DB.PARTNER\n"
         "apply:\n  fail_fast: false\n"
     )
-    assert not changes.untouched
+    # The CoCo Desktop profile stage is left for a hand edit: what it published is gone.
+    assert [(item.text, item.reason) for item in changes.untouched] == [
+        ("skills.stage", "delete it, and move each profile to coco_profiles/")
+    ]
 
 
-def test_a_skills_block_left_empty_is_replaced_by_the_blocks_it_held() -> None:
+def test_a_skills_block_holding_only_a_stage_is_left_as_it_is() -> None:
     text = "# Skills.\nskills:\n  stage:\n    +stage: B\nnext: 1\n"
-    assert (
-        applied(text, migrate_config(lines(text), outline(text), (), has_plugins=False))
-        == "coco_desktop_profiles:\n  +stage: B\nnext: 1\n"
-    )
+    changes = migrate_config(lines(text), outline(text), (), has_plugins=False)
+    assert applied(text, changes) == text
+    assert [item.text for item in changes.untouched] == ["skills.stage"]
+
+
+def test_a_skills_block_holding_only_extensions_becomes_the_extensions_block() -> None:
+    # Nothing else is left in `skills:`, so the block and the comment above it are replaced
+    # whole; a key written with no value meant "unset", and goes.
+    text = "# Skills.\nskills:\n  extensions:\n    partner: {}\n    retired:\nnext: 1\n"
+    changes = migrate_config(lines(text), outline(text), (), has_plugins=False)
+    assert applied(text, changes) == "extensions:\n  partner: {}\nnext: 1\n"
+    assert changes.untouched == []
 
 
 def test_moves_that_would_collide_are_reported() -> None:
-    text = (
-        "skills:\n  +database: X\n  catalog:\n    +database: DB\n  stage:\n    +stage: B\n"
-        "  extensions: {a: 1}\ncoco_desktop_profiles:\n  +stage: C\n"
-    )
+    text = "skills:\n  +database: X\n  catalog:\n    +database: DB\n  stage:\n    +stage: B\n  extensions: {a: 1}\n"
     changes = migrate_config(lines(text), outline(text), (), has_plugins=True)
     assert sorted(item.text for item in changes.untouched) == ["skills.catalog", "skills.extensions", "skills.stage"]
     assert not changes.edits

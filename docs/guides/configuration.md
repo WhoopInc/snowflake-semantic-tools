@@ -97,8 +97,7 @@ set, or is set to `""`, falls back to the target's own database, schema, or
 warehouse.
 
 A location key -- `+database` and `+schema` of every block, `+bundle_stage`,
-`+stage`, and `+registry_table`, which may also be written as a three-part
-name, and `agents.+scratch_schema`, which must be a two-part `DATABASE.SCHEMA`
+which may also be written as a three-part name, and `agents.+scratch_schema`, which must be a two-part `DATABASE.SCHEMA`
 -- must name a Snowflake identifier, `{{ target.* }}` standing for the
 target's own: a value of another type is `SST-CFG004`, and text that is no
 identifier, such as `" "` or `A.B` for a schema, is `SST-CFG008`. The key is
@@ -188,8 +187,8 @@ a mistyped route cannot quietly route nothing.
 | `evals` | `agents_dir/` | its agent's folder |
 | `skills` | `skills_dir/` | the skill's own folder |
 | `plugins` | `plugins_dir/` | the plugin's own folder |
-| `cowork_profiles` | `cowork_profiles_dir/` | the profile's own folder |
-| `coco_desktop_profiles` | `coco_desktop_profiles_dir/` | the profile's own folder |
+| `cowork_profiles` | `cowork_profiles_dir/` | the CoWork profile's own folder |
+| `coco_profiles` | `coco_profiles_dir/` | the Cortex Code profile's own folder |
 
 ```yaml
 agents:
@@ -214,7 +213,7 @@ for the group, keeps its old `tools.<group>` keys as they were.
 ## Precedence
 
 Every setting of an artifact -- a semantic view, a tool member, an agent, a
-skill, a plugin, a CoCo Desktop profile, a CoWork profile, or an eval -- resolves through one chain, the same
+skill, a plugin, a Cortex Code profile, a CoWork profile, or an eval -- resolves through one chain, the same
 for every key and every type, closest first:
 
 1. the artifact's own `config:` block;
@@ -258,8 +257,8 @@ nothing sets takes the default.
   view, the `semantic_views:` keys; for a tool member, the `tools:` keys; for
   an agent, the `agents:` keys; for a
   skill, in its `SKILL.md` frontmatter, the `skills:` keys; for a plugin, in
-  `plugin.yml`, the `plugins:` keys; for a profile, in `coco_desktop_profile.yml`, the
-  `coco_desktop_profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any
+  `plugin.yml`, the `plugins:` keys; for a Cortex Code profile, in `coco_profile.yml`, the
+  `coco_profiles:` keys; and for an eval, in its config file, the `evals:` keys. Any
   other key, or one written with its `+`, is an error (`SST-CFG053`). A value
   is checked by the same rules as the `+` key: its type (`SST-CFG004`), its
   choices or bounds (`SST-CFG008`), and a key's own code, such as
@@ -294,8 +293,8 @@ listed item carries them under `settings`.
 | `semantic_views`, `tools`, `agents` | Location and defaults for each type. |
 | `cowork_profiles` | Location and defaults for Snowflake CoWork profiles (a private preview[^preview]); see [CoWork profiles](cowork-profiles.md). |
 | `evals` | Defaults for evaluations; never a location, because evals publish into their agent's schema. |
-| `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
-| `coco_desktop_profiles` | Where each CoCo Desktop profile publishes, if `+stage` resolves for it; see [plugins and profiles](plugins-and-coco-desktop-profiles.md). |
+| `skills`, `plugins` | Where each skill and plugin publishes as a Cortex Extension, if `+bundle_stage` resolves for it; see [skills](skills.md) and [plugins and profiles](plugins-and-coco-profiles.md). |
+| `coco_profiles` | Where each Cortex Code profile publishes, its AGENT name suffix, and whether it is enabled; see [plugins and Cortex Code profiles](plugins-and-coco-profiles.md#how-a-profile-publishes). |
 | `extensions` | Extensions this project consumes but does not publish, which `{{ extension() }}` names. |
 | `apply` | The stages apply uploads agent specs and eval configs through, and whether it stops at the first failure. |
 | `snowflake` | Allowlists, such as the orchestration models agents may name. |
@@ -379,7 +378,7 @@ file alone; an import writes its new files in this form.
 
 ## Projects without dbt
 
-A project that publishes only skills, plugins, and profiles does not need dbt.
+A project that publishes only skills, plugins, and Cortex Code profiles does not need dbt.
 Without a `dbt_project.yml`, SST reads no dbt manifest and takes its
 `profiles.yml` profile from `project.target_profile`:
 

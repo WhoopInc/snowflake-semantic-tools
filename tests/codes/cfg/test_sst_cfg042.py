@@ -11,10 +11,11 @@ def test_sst_cfg042_fires() -> None:
     assert (diagnostic.code, diagnostic.severity) == ("SST-CFG042", Severity.ERROR)
     assert (
         diagnostic.message
-        == "skills: 'stage' is no longer read here; Desktop profiles publish through coco_desktop_profiles:"
+        == "skills: 'stage' is no longer read here; CoCo Desktop profiles are gone: Cortex Code agent profiles "
+        "replaced the registry; move each profile to coco_profiles/ and configure coco_profiles:"
     )
     assert diagnostic.subject == "config:skills.stage"
 
 
 def test_sst_cfg042_silent() -> None:
-    assert validate_config({"skills": {"+bundle_stage": "B"}, "coco_desktop_profiles": {"+stage": "PROFILES"}}) == ()
+    assert validate_config({"skills": {"+bundle_stage": "B"}, "coco_profiles": {"+schema": "CONFIG"}}) == ()

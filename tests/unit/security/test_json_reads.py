@@ -17,9 +17,6 @@ _PARSERS = frozenset({"load", "loads", "JSONDecoder"})
 
 # (module, enclosing function) -> why that parse needs no bound.
 EXEMPT: dict[tuple[str, str], str] = {
-    ("app/desktop_contract.py", "desktop_value"): (
-        "a column value of a row a Snowflake query returned, parsed as Desktop parses it"
-    ),
     ("app/evals/retrieve.py", "_expected_question_map"): (
         "the dataset payload SST rendered with json.dumps from a loaded YAML dataset"
     ),

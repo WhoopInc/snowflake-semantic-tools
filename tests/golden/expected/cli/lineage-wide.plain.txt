@@ -1,13 +1,13 @@
 $ sst --project-dir <project> --manifest <manifest> lineage skill:jaffle-semantics --downstream --wide
 --- exit 0
 --- stdout
-skill:jaffle-semantics                            SST_REF_DEV.JAFFLE.JAFFLE_SEM…
+skill:jaffle-semantics                       SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS
 └── read by
-    ├── agent:jaffle_analytics_agent              SST_REF_DEV.JAFFLE.JAFFLE_ANA…  loads it
-    │   ├── cowork_profile:jaffle_concierge       SST_REF_DEV.PROFILES.JAFFLE_C…  calls it as a tool
-    │   └── eval:jaffle_analytics_agent           SST_REF_DEV.JAFFLE.EVAL_JAFFL…  tests it
-    ├── coco_desktop_profile:jaffle-analyst       SST_REF_DEV.JAFFLE.PROFILE_RE…  includes it
-    └── plugin:jaffle-toolkit                     SST_REF_DEV.JAFFLE.JAFFLE_TOO…  bundles it
-        └── coco_desktop_profile:jaffle-operator  SST_REF_DEV.JAFFLE.PROFILE_RE…  includes it
+    ├── agent:jaffle_analytics_agent         SST_REF_DEV.JAFFLE.JAFFLE_ANALYTIC…  loads it
+    │   ├── cowork_profile:jaffle_concierge  SST_REF_DEV.PROFILES.JAFFLE_CONCIE…  calls it as a tool
+    │   └── eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFFLE_ANA…  tests it
+    ├── coco_profile:jaffle_analyst          SST_REF_DEV.COCO_PROFILES.JAFFLE_A…  loads it
+    └── plugin:jaffle-toolkit                SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT    bundles it
+        └── coco_profile:jaffle_operator     SST_REF_DEV.COCO_PROFILES.JAFFLE_O…  loads it
 --- stderr
 ✓ traced 7 nodes from skill:jaffle-semantics · <n>s

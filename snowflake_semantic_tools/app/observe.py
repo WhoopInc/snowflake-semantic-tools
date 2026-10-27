@@ -95,6 +95,7 @@ def observe(
     absent_schemas: frozenset[tuple[str, str]] = frozenset(),
     kind_targets: Mapping[str, tuple[QualifiedName, ...]] | None = None,
     adopted: frozenset[tuple[str, str, str]] = frozenset(),
+    recorded_keys: Mapping[tuple[str, str, str], str] | None = None,
 ) -> tuple[SnowflakeObservation, DiagnosticBag]:
     """Observe every object of the requested artifact types in the targets' schemas, by artifact key.
 
@@ -120,6 +121,11 @@ def observe(
             object is never observed under two keys; None lists it in every target schema.
         adopted: The folded names of the objects state records as `sst state adopt` left them,
             which carry no marker; each is digested, so plan can tell it changed since.
+        recorded_keys: The artifact key state records for each object, by folded name. An
+            object is keyed as the artifact that renders it, else as state records it, when
+            that key is of the object's type: a Cortex Code profile's AGENT name carries its
+            `+name_suffix`, so its name alone would key another artifact. Otherwise it is keyed
+            by its name.
 
     Diagnostics:
         SST-PLN001: listing an object type in a schema, or reading an object's grants, failed.
@@ -151,7 +157,9 @@ def observe(
     )
     reads = iter(
         readers.map(
-            lambda session, item: _observe_row(session, item[0][0], item[0][1], item[1], desired, options, adopted),
+            lambda session, item: _observe_row(
+                session, item[0][0], item[0][1], item[1], desired, options, adopted, recorded_keys or {}
+            ),
             listed,
         )
     )
@@ -192,6 +200,24 @@ def _active_object_types(
     return tuple(object_type for object_type in configured_object_types if object_type)
 
 
+def _observed_key(
+    kind: str,
+    name: QualifiedName,
+    desired: RenderedArtifact | None,
+    recorded_keys: Mapping[tuple[str, str, str], str],
+) -> str:
+    """Return the key an object of `kind` is observed under: the artifact rendered or recorded at its name.
+
+    Only a key of `kind` is taken, so an object listed under one kind is never keyed as another's.
+    """
+    if desired is not None and desired.artifact_type == kind:
+        return desired.key
+    recorded = recorded_keys.get(name.folded)
+    if recorded is not None and recorded.partition(":")[0] == kind:
+        return recorded
+    return artifact_key(kind, name.artifact_component)
+
+
 def _list_scope(port: CatalogPort, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...] | Diagnostic:
     """List the objects of one type in one schema, in the order SHOW lists them; SST-PLN001 if it fails."""
     try:
@@ -208,10 +234,11 @@ def _observe_row(
     desired: Mapping[_FoldedName, RenderedArtifact],
     options: ObserveOptions,
     adopted: frozenset[tuple[str, str, str]] = frozenset(),
+    recorded_keys: Mapping[tuple[str, str, str], str] | None = None,
 ) -> tuple[ObservedArtifact, tuple[Diagnostic, ...]]:
     """Observe one listed object: its marker, grants, definition, an agent's versions, and its digest."""
     desired_artifact = desired.get(row.qualified_name.folded)
-    key = artifact_key(artifact_type.name, row.qualified_name.artifact_component)
+    key = _observed_key(artifact_type.name, row.qualified_name, desired_artifact, recorded_keys or {})
     grants, diagnostics = (
         _replaceable_grants(port, artifact_type, object_type, row, desired_artifact) if options.grants else (None, ())
     )

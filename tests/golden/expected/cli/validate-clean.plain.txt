@@ -35,4 +35,4 @@ warning[SST-CFG018]: tool member 'partner_invoice_stage' is referenced by nothin
    = sst explain SST-CFG018
 
 ✓ validated 17 artifacts · 0 errors, 6 warnings · <n>s
-  hidden: 58 info (--show-info)
+  hidden: 61 info (--show-info)

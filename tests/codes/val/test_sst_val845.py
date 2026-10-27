@@ -1,44 +1,31 @@
-"""SST-VAL845: profile repeats a shared skill or command.
+"""SST-VAL845: a Cortex Code profile repeats a skill its shared layer already carries.
 
-Fires when a profile repeats a skill the shared layer carries; the nearest legitimate input stays
-quiet.
+Fires when a profile lists a skill `shared/` lists; a profile listing only skills of its own stays
+quiet. The repeated skill is pinned once, where the shared layer names it.
 """
 
 from __future__ import annotations
 
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile
 from snowflake_semantic_tools.domain.diagnostics import Severity
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.validate.coco_desktop_profile import (
-    validate_coco_desktop_profile_catalog,
-)
 from tests.helpers.diagnostic_filters import codes, only
-from tests.helpers.skill_inputs import (
-    profile,
-    profile_catalog,
-    shared,
-    skill,
-)
-
-REF = "---\nname: month-close\ndescription: Does things.\n---\n# Close\nRead {ref}.\n"
-SKILLS = {"month-close": skill()}
-TARGET = QualifiedName.parse("DB.S.KIT")
+from tests.helpers.skill_inputs import compile_profiles, profile, profile_catalog, shared
 
 
 def test_sst_val845_fires() -> None:
-    diagnostic = only(
-        validate_coco_desktop_profile_catalog(profile_catalog(shared=shared(skills=("month-close",))), SKILLS),
-        "SST-VAL845",
-    )
+    result = compile_profiles(profile_catalog(shared=shared(skills=("month-close",))))
+    diagnostic = only(result.diagnostics, "SST-VAL845")
     assert diagnostic.severity is Severity.WARNING
-    assert diagnostic.message == (
-        "CoCo Desktop profile 'analyst': skill 'month-close' already reaches every profile through shared/"
+    assert (
+        diagnostic.message
+        == "coco profile 'analyst': skill 'month-close' already reaches every profile through shared/"
     )
-    assert diagnostic.subject == "coco_desktop_profile:analyst"
+    assert diagnostic.subject == "coco_profile:analyst"
+    [compiled] = result.compiled
+    assert isinstance(compiled, CompiledCocoProfile)
+    assert [skill.path for skill in compiled.resolved.model.skills] == ["DB.S.MONTH_CLOSE"]
 
 
 def test_sst_val845_silent() -> None:
-    assert "SST-VAL845" not in codes(
-        validate_coco_desktop_profile_catalog(
-            profile_catalog(profile(skills=()), shared=shared(skills=("month-close",))), SKILLS
-        )
-    )
+    catalog = profile_catalog(profile(skills=()), shared=shared(skills=("month-close",)))
+    assert "SST-VAL845" not in codes(compile_profiles(catalog).diagnostics)

@@ -38,9 +38,6 @@ The 0.3 spellings `{{ table() }}` and `{{ column() }}` are refused with the
 | `skill` | a skill under `project.skills_dir` | `('<name>')` |
 | `plugin` | a plugin under `project.plugins_dir` | `('<name>')` |
 | `extension` | a consumed Cortex Extension, declared under `extensions:` | `('<name>')` |
-| `command` | a command under `project.commands_dir`, by its path without `.md` | `('<path>')` |
-| `hook` | a hook folder under `project.hooks_dir` | `('<name>')` |
-| `mcp_server` | an MCP config folder under `project.mcp_servers_dir` | `('<name>')` |
 | `eval_dataset`, `eval_config` | an eval file in the agent's own `evals/` folder, by its `name:` | `('<name>')` |
 | `eval_metric` | a custom eval metric under `project.eval_metrics_dir` | `('<name>')` |
 | `tag` | an entry of the `tags:` block of `sst_config.yml` | `('<name>')` |
@@ -124,22 +121,17 @@ or an `agent` tool member, for an agent published elsewhere, with
 | `tool.body` | `file` | see [Files](#files) |
 | `tool.imports` | an opening `tool`; see [Stage paths](#stage-paths) | `SST-REF010` |
 
-### Skills, plugins, and profiles
+### Skills, plugins, and Cortex Code profiles
 
 | Field | Function | A name that resolves to nothing |
 |---|---|---|
 | `plugin.skills` | `skill` | `SST-VAL835` |
-| `coco_desktop_profile.skills` | `skill` | `SST-VAL844` |
-| `coco_desktop_profile.plugins` | `plugin` | `SST-VAL860` |
-| `coco_desktop_profile.commands` | `command` | `SST-VAL858` |
-| `coco_desktop_profile.mcp_servers` | `mcp_server` | `SST-VAL847` |
-| `coco_desktop_profile.hooks` | `hook` | `SST-VAL846` |
-| `hook.script` | `file` | see [Files](#files) |
-| `command.skill` (frontmatter) | `skill` | `SST-REF032` |
+| `coco_profile.skills` | `skill` | `SST-REF032` |
+| `coco_profile.plugins` | `plugin` | `SST-REF036` |
 
-A command's `skill: "{{ skill('<name>') }}"` is published as the bare skill
-name, `skill: <name>`, which is what Desktop reads; every other byte of the
-command is published as written.
+A Cortex Code profile's skills and plugins are pinned to the version alias
+their extensions published, as an agent's are; one with no version to pin is
+`SST-VAL856`.
 
 ## Expressions
 

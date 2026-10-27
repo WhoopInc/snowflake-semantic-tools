@@ -1,0 +1,6 @@
+---
+# A Cortex Code profile that lists hooks, which agent profiles cannot carry.
+edits:
+  coco_profiles/jaffle_analyst/coco_profile.yml:
+    - old: "model: auto\n"
+      new: "model: auto\nhooks:\n  - sql-guard\n"

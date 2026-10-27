@@ -1,1 +1,1 @@
-"""Composite lifecycle handlers for evals, extensions, and Desktop profiles, and their shared base."""
+"""Composite lifecycle handlers for evals and extensions, and their shared base."""

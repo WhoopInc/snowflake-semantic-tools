@@ -45,12 +45,15 @@ DROPPED, REJECTED, ABSENT, REFUSED = "dropped", "rejected", "absent", "refused"
 # The object type of a skill's or plugin's extension, which state alone vouches for.
 EXTENSION = "CORTEX EXTENSION"
 # The artifact types whose live specifications name the objects a drop may break, each with how
-# the warning names one: an agent, and a CoWork profile, which names each agent it routes to.
+# the warning names one: an agent, a CoWork profile, which names each agent it routes to, and a
+# Cortex Code profile, which names each extension it loads skills from.
 _AGENT_OBJECTS: Mapping[str, str] = MappingProxyType(
     {
         "agent": "agent",
         # Snowflake private preview (PrPr): CoWork profiles
         "cowork_profile": "cowork profile",
+        # Snowflake private preview (PrPr): Cortex Code agent profiles
+        "coco_profile": "coco profile",
     }
 )
 _DEFAULT_LOCK_POLICY = LockPolicy()

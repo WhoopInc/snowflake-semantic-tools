@@ -46,6 +46,8 @@ _SPEC_TYPES = frozenset(
         "agent",
         # Snowflake private preview (PrPr): CoWork profiles
         "cowork_profile",
+        # Snowflake private preview (PrPr): Cortex Code agent profiles
+        "coco_profile",
     )
 )
 

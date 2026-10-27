@@ -16,7 +16,7 @@ SST started as a way to keep a Snowflake semantic layer as code. It now covers
 the whole path from a dbt model to an agent people talk to: the semantic views
 that describe your data, the search services and procedures an agent calls, the
 agents themselves, the evals that decide whether a change ships, and the skills
-and desktop profiles that put it all in front of people.
+and Cortex Code profiles that put it all in front of people.
 
 Every piece is a file in your repository, reviewed like code, and published the
 way infrastructure is: validate offline, review a plan of exactly what changes in
@@ -36,8 +36,8 @@ One project publishes eight artifact types:
   on the result;
 - **skills** and **plugins**, published as Cortex Extensions and versioned by
   their content;
-- **CoCo Desktop profiles** that bundle skills, a system prompt, MCP servers, and
-  hooks.
+- **Cortex Code profiles**[^preview]: Cortex Code agent profiles, an AGENT in
+  `CORTEX_CODE.CONFIG` holding a model, instructions, and pinned skills.
 
 It records the lineage between them as it compiles, from each dbt source,
 through the models built on it, to the view members, tools, agents and evals
@@ -119,7 +119,7 @@ result on stdout.
   [agents](docs/guides/agents.md), [CoWork profiles](docs/guides/cowork-profiles.md),
   [evals](docs/guides/evals.md), [asking an agent](docs/guides/ask.md),
   [skills](docs/guides/skills.md),
-  [plugins and profiles](docs/guides/plugins-and-coco-desktop-profiles.md),
+  [plugins and profiles](docs/guides/plugins-and-coco-profiles.md),
   [configuration](docs/guides/configuration.md),
   [references](docs/guides/references.md), [lineage](docs/guides/lineage.md),
   [CI/CD](docs/guides/ci-cd.md),
@@ -137,7 +137,7 @@ result on stdout.
 - Python 3.11–3.13
 - A Snowflake account
 - A dbt project on the Snowflake adapter, for semantic views, tools, agents, and
-  evals. A project that publishes only skills, plugins, and profiles does not
+  evals. A project that publishes only skills, plugins, and Cortex Code profiles does not
   need dbt (see [projects without dbt](docs/guides/configuration.md#projects-without-dbt)).
 
 ---

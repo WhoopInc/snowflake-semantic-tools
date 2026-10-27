@@ -27,7 +27,6 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
     (
         "agent",
         "column",
-        "command",
         "custom_instructions",
         "eval_config",
         "eval_dataset",
@@ -35,8 +34,6 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
         "extension",
         "file",
         "filter",
-        "hook",
-        "mcp_server",
         "metric",
         "plugin",
         "ref",

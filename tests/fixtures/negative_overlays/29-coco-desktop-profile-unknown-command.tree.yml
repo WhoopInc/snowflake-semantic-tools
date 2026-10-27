@@ -1,6 +1,0 @@
----
-# A Desktop profile that lists a command commands/ does not hold.
-edits:
-  coco_desktop_profiles/jaffle-operator/coco_desktop_profile.yml:
-    - old: "  - \"{{ command('ops/month-check') }}\"\n"
-      new: "  - \"{{ command('ops/month-check') }}\"\n  - \"{{ command('ops/restock') }}\"\n"

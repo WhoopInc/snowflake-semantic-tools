@@ -16,19 +16,15 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile, for_coco_publication
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile, for_cowork_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
 from snowflake_semantic_tools.app.compile.staged_agent import agent_spec_stage
 from snowflake_semantic_tools.app.fanout import Fanout
-from snowflake_semantic_tools.app.lifecycle.channels import channel_divergence
-from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import (
-    CocoDesktopProfileLifecycleHandler,
-    CocoDesktopProfilePublicationPort,
-)
 from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
 from snowflake_semantic_tools.app.observation_age import seconds_between
 from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions
@@ -252,8 +248,8 @@ class PreparePlan:
             SST-PLN018: observing and planning took longer than the observation stays current.
             SST-PLN032: with `--partial`, an artifact with errors, or one the plan blocked, is left out.
             SST-PLN033: with `--partial`, a validation error names no artifact.
-            Those of validation, of `read_state`, and of `PlanArtifacts`, then
-            `channel_divergence`'s, then the plan's `change_summary` and `plan_notices`.
+            Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
+            `change_summary` and `plan_notices`.
         """
         validated = self._validated_selection(candidates, port, target, readers, validate, models)
         if isinstance(validated, PlanRefused):
@@ -294,7 +290,7 @@ class PreparePlan:
         # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
         recorded = RecordedObservation(target, reading.observation, state, reading.preflight, "", reading.attachment)
         leading = (*state_diagnostics, *((stale,) if stale else ()))
-        trailing = (*channel_divergence(port, result), *unread)
+        trailing = tuple(unread)
         ready = _ready(candidates, result, manifest, state, changeset, handlers, held, leading, trailing, uncommitted)
         return replace(ready, recorded=None if reading.failures.has_errors else recorded)
 
@@ -407,7 +403,7 @@ class PreparePlan:
 
         Each agent is staged under `apply.agent_spec_stage`, in the target's database and
         schema unless the block names others, beneath a folder for the project's commit, and
-        each CoWork profile under its own folder of that stage; each eval's dataset version
+        each CoWork profile and Cortex Code profile under its own folder of that stage; each eval's dataset version
         records that commit. The upload names the stage, so the preflight checks it and apply
         creates it when it is absent. Each carries its members' fingerprints, which apply
         records in state. With `dirty`, each version names its commit `<sha>-dirty`. A profile
@@ -422,6 +418,9 @@ class PreparePlan:
                 # Snowflake private preview (PrPr): CoWork profiles
                 else for_cowork_publication(item, stage=stage, git_sha=git_sha, dirty=dirty)
                 if isinstance(item, CompiledCoworkProfile)
+                # Snowflake private preview (PrPr): Cortex Code agent profiles
+                else for_coco_publication(item, stage=stage, git_sha=git_sha, dirty=dirty)
+                if isinstance(item, CompiledCocoProfile)
                 # A dataset version records the commit in its METADATA.
                 else replace(item, git_sha=git_sha)
                 if isinstance(item, CompiledEval)
@@ -594,19 +593,17 @@ def stale_observation(target: TargetIdentity, elapsed_ms: int) -> Diagnostic | N
 
 
 def _lifecycle_handlers(
-    port: CocoDesktopProfilePublicationPort, full: CompileResult, apply_config: Mapping[str, object]
+    port: CatalogPublicationPort, full: CompileResult, apply_config: Mapping[str, object]
 ) -> dict[str, CompositeLifecycleHandler]:
     """Build each composite artifact type's handler over everything that compiled, by type."""
     eval_stage_config = config_block(apply_config.get("eval_config_stage"))
     releases = {item.artifact_key: item.release for item in full.compiled if isinstance(item, CompiledExtension)}
-    profiles = {item.artifact_key: item for item in full.compiled if isinstance(item, CompiledCocoDesktopProfile)}
     return {
         "eval": EvalLifecycleHandler(
             port, EvalLifecycleConfig(str(eval_stage_config.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
         ),
         "skill": ExtensionLifecycleHandler(port, releases, "skill"),
         "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
-        "coco_desktop_profile": CocoDesktopProfileLifecycleHandler(port, profiles),
     }
 
 

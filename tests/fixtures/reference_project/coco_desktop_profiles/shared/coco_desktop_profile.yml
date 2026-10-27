@@ -1,8 +1,0 @@
-# THE RESERVED `shared/` PROFILE. Its skills and commands reach EVERY profile,
-# each published once as its own content-addressed tree (`skills/shared/<H>/...`,
-# `commands/shared/<H>/...`) instead of being copied into each profile's tree.
-# Only `skills:` and `commands:` are accepted here.
-skills:
-  - "{{ skill('jaffle-catalogue') }}"
-commands:
-  - "{{ command('daily-summary') }}"

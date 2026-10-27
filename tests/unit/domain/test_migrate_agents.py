@@ -1,13 +1,11 @@
-"""`sst migrate refs` for agents, eval files, hook manifests and commands."""
+"""`sst migrate refs` for agents and eval files."""
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.migrate.agents import (
     agent_references,
     agent_structure,
-    command_skill,
     eval_structure,
-    hook_references,
 )
 from snowflake_semantic_tools.domain.migrate.tools import ToolInfo
 from tests.helpers.migrate_outline import applied, lines, outline
@@ -125,18 +123,3 @@ def test_eval_files_lose_agent_and_move_settings() -> None:
     assert applied(novariant, eval_structure(lines(novariant), outline(novariant))) == "run:\n  label: x\n"
     plain = "name: d\nrun:\n  retention: audit\n"
     assert eval_structure(lines(plain), outline(plain)).edits == []
-
-
-def test_hook_script_and_command_skill() -> None:
-    hook = "event: PreToolUse\nscript: guard.sh\n"
-    assert applied(hook, hook_references(outline(hook))) == "event: PreToolUse\nscript: \"{{ file('guard.sh') }}\"\n"
-    assert hook_references(outline("script: \"{{ file('a') }}\"\n")).edits == []
-    assert hook_references(outline("event: x\n")).edits == []
-    command = "---\ndescription: d\nskill: 'jaffle-ops'  \n---\nbody\nskill: other\n"
-    result = command_skill(command)
-    assert result.text == "---\ndescription: d\nskill: \"{{ skill('jaffle-ops') }}\"  \n---\nbody\nskill: other\n"
-    assert result.rewrites[0].line == 3
-    assert command_skill("---\nskill: \"{{ skill('x') }}\"\n---\n").rewrites == ()
-    assert command_skill("no frontmatter\nskill: x\n").rewrites == ()
-    assert command_skill("").text == ""
-    assert command_skill("---\ndescription: d\n").rewrites == ()

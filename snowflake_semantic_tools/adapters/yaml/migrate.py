@@ -14,7 +14,6 @@ from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates, 
 from snowflake_semantic_tools.domain.diagnostics import D
 from snowflake_semantic_tools.domain.migrate.refs import FilterSite
 
-_HOOK_MANIFESTS = frozenset(("hook.yml", "hook.yaml"))
 _AGENT_FILES = frozenset(("agent.yml", "agent.yaml"))
 
 
@@ -57,12 +56,6 @@ def agent_files(project_dir: Path, agents_dir: str) -> tuple[dict[str, str], dic
     agents = {path: text for path, text in found.items() if path.rsplit("/", 1)[-1] in _AGENT_FILES}
     evals = {path: text for path, text in found.items() if path.split("/")[-2:-1] == ["evals"]}
     return agents, evals
-
-
-def hook_files(project_dir: Path, hooks_dir: str) -> dict[str, str]:
-    """Return each hook manifest under `hooks_dir`."""
-    found = files_under(project_dir, hooks_dir, YAML_SUFFIXES)
-    return {path: text for path, text in found.items() if path.rsplit("/", 1)[-1] in _HOOK_MANIFESTS}
 
 
 def create_file(project_dir: Path, path: str, text: str, *, crlf: bool) -> None:

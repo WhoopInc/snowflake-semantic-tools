@@ -24,7 +24,7 @@ def test_sst_val856_fires() -> None:
         "SST-VAL856",
     )
     assert diagnostic.severity is Severity.ERROR
-    assert diagnostic.message == "agent 'router': plugin('ghost-kit') has no version to pin because it has errors"
+    assert diagnostic.message == "'router': plugin('ghost-kit') has no version to pin because it has errors"
     assert diagnostic.subject == "agent:router"
 
 

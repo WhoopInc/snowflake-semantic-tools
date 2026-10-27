@@ -14,8 +14,9 @@ for INT, so it does not shadow the builtin), except VAL, which is split by hundr
 - `val_tool`: 6xx, tools
 - `val_eval`: 700-769, evals
 - `val_compare`: 770-789, comparing orchestration models on an eval
-- `val_skill`: 801-869, skills, plugins, and CoCo Desktop profiles
+- `val_skill`: 801-869, skills and plugins, and how agents and profiles pin them
 - `val_cowork_profile`: 870-889, Snowflake CoWork profiles, a Snowflake private preview
+- `val_coco_profile`: 890-899, Cortex Code agent profiles, a Snowflake private preview
 
 A new code goes in the module for its prefix, or its band for VAL. The package `__init__`
 builds `ERROR_REGISTRY` from every module's `SPECS`, through the checks in

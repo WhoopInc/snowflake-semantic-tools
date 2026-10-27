@@ -8,16 +8,16 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
+from snowflake_semantic_tools.adapters.yaml.coco_profiles import load_coco_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.semantic.relationships import _Conditions, _parse_conditions
 from snowflake_semantic_tools.app.compile import CompiledView, CompileResult
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.evals.gate import capture_baseline
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
-from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.enrich import Component, WarehouseColumn, enrich_model, resolve_options
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import EnrichmentConfig
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.eval import EvalBaselineRecord
@@ -82,16 +82,10 @@ def baseline() -> EvalBaselineRecord:
     return capture_baseline(gated_eval(), runs, reason="initial", captured_at="2026-09-01T00:00:00Z")
 
 
-def load_profiles(root: Path, files: Mapping[str, str | bytes]) -> CocoDesktopProfileCatalog:
-    """Write `files` below `root` and load the profile catalog there."""
+def load_profiles(root: Path, files: Mapping[str, str | bytes]) -> tuple[CocoProfileCatalog, DiagnosticBag]:
+    """Write `files` below `root` and load the Cortex Code profile catalog there."""
     write_tree(root, files)
-    return load_coco_desktop_profile_catalog(
-        root,
-        coco_desktop_profiles_dir="coco_desktop_profiles",
-        hooks_dir="hooks",
-        mcp_servers_dir="mcp-servers",
-        commands_dir="commands",
-    )
+    return load_coco_profile_catalog(root, coco_profiles_dir="coco_profiles")
 
 
 ORIGIN = Origin("relationships.yml", 1, 1)

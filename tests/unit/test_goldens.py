@@ -42,7 +42,7 @@ pytestmark = pytest.mark.slow
 
 
 # Every artifact type has a golden route, and the reference project declares each one.
-_TYPES = {"agent", "cowork_profile", "eval", "plugin", "coco_desktop_profile", "semantic_view", "skill", "tool"}
+_TYPES = {"agent", "coco_profile", "cowork_profile", "eval", "plugin", "semantic_view", "skill", "tool"}
 
 
 @pytest.fixture(scope="module")

@@ -124,7 +124,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "create the file, or correct the path",
         condition=(
             "a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's "
-            "`body:` or a hook's `script:` -- names, relative to its own file's folder, a file that does "
+            "`body:` -- names, relative to its own file's folder, a file that does "
             "not exist"
         ),
     ),
@@ -204,7 +204,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "use a path inside the project",
         condition=(
             "a `file()` reference -- an agent instruction, a verified query's `sql:`, a tool member's "
-            "`body:` or a hook's `script:` -- is an absolute path, or climbs out of the project"
+            "`body:` -- is an absolute path, or climbs out of the project"
         ),
     ),
     spec(
@@ -335,7 +335,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "a field that names a file or a member, and so is read only as a template call, holds a bare "
             "value: a view's scope entry, a metric's `using_relationships` or non-additive `ref`, an "
             "agent's tool, skill, tag or eval reference, a defined tool member's column or `body:`, a "
-            "plugin's or CoCo Desktop profile's member, a hook's `script:` or a command's `skill:`"
+            "plugin's or Cortex Code profile's member"
         ),
         note="The References guide lists every reference field, the function it takes, and the fields left literal.",
     ),

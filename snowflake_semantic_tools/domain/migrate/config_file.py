@@ -3,8 +3,8 @@
 - `skills.catalog`'s keys move to the `skills:` root, and a `plugins:` block takes the same
   location (`+database`, `+schema`, `+bundle_stage`) with the root's `+certified` and
   `+version_prefix`, since the catalog published plugins too;
-- `skills.stage` becomes the top-level `coco_desktop_profiles:` block, and `skills.extensions` the top-level
-  `extensions:` block;
+- `skills.extensions` becomes the top-level `extensions:` block, and `skills.stage`, the CoCo
+  Desktop profile stage Cortex Code agent profiles replaced, is left for a hand edit;
 - the always-fixed keys `+flatten`, `+prune_deleted`, `+auto_compress` and `+layout`, and the
   removed `+registry_table` of the catalog, go;
 - a routed block's `+key` written with no value meant "unset", which is now an absent key, so
@@ -29,7 +29,7 @@ _FIXED = frozenset(("+flatten", "+prune_deleted", "+auto_compress", "+layout"))
 _CATALOG_REMOVED = _FIXED | {"+registry_table"}
 _PLUGIN_KEYS = ("+database", "+schema", "+bundle_stage")
 _PLUGIN_ROOT_KEYS = ("+certified", "+version_prefix")
-_ROUTED = ("semantic_views", "agents", "tools", "evals", "skills", "plugins", "coco_desktop_profiles")
+_ROUTED = ("semantic_views", "agents", "tools", "evals", "skills", "plugins", "coco_profiles")
 
 
 def migrate_config(
@@ -55,7 +55,9 @@ def migrate_config(
 
 
 def _skills(lines: Sequence[str], root: Node, skills: Entry, changes: Changes, *, has_plugins: bool) -> set[str]:
-    """Move `catalog`, `stage` and `extensions` out of `skills:`; return the keys moved.
+    """Move `catalog` and `extensions` out of `skills:`; return the keys moved.
+
+    A `stage` is left in place for a hand edit: the CoCo Desktop profiles it published are gone.
 
     When nothing else is left in `skills:`, the whole block is replaced by the blocks that
     left it, so no edit inside it is needed.
@@ -64,7 +66,7 @@ def _skills(lines: Sequence[str], root: Node, skills: Entry, changes: Changes, *
     inner = Changes()
     blocks: list[str] = []
     handled: set[str] = set()
-    remaining = [entry for entry in block.entries if entry.key not in ("catalog", "stage", "extensions")]
+    remaining = [entry for entry in block.entries if entry.key not in ("catalog", "extensions")]
     catalog = block.entry("catalog")
     if catalog is not None:
         moved = _catalog(lines, block, catalog, inner)
@@ -73,7 +75,10 @@ def _skills(lines: Sequence[str], root: Node, skills: Entry, changes: Changes, *
             remaining.extend(moved)
             if has_plugins and root.entry("plugins") is None:
                 blocks.append(_plugins(lines, block, catalog))
-    for key, top in (("stage", "coco_desktop_profiles"), ("extensions", "extensions")):
+    stage = block.entry("stage")
+    if stage is not None:
+        changes.leave(stage.line, stage.col, "skills.stage", "delete it, and move each profile to coco_profiles/")
+    for key, top in (("extensions", "extensions"),):
         entry = block.entry(key)
         if entry is None:
             continue
@@ -82,8 +87,7 @@ def _skills(lines: Sequence[str], root: Node, skills: Entry, changes: Changes, *
             continue
         handled.add(key)
         start = comments_above(lines, entry.line, entry.col)
-        drop = _FIXED if key == "stage" else frozenset()
-        body = "".join(_moved_entry(lines, child, 2, drop) for child in entry.value.entries)
+        body = "".join(_moved_entry(lines, child, 2) for child in entry.value.entries)
         blocks.append("\n" + shift("".join(lines[start : entry.line]), -entry.col) + f"{top}:\n" + body)
         inner.add(lines_edit(start, entry_span(lines, entry)[1], ""), f"skills.{key}", top, "setting")
     changes.untouched.extend(inner.untouched)
@@ -110,16 +114,14 @@ def _catalog(lines: Sequence[str], skills: Node, catalog: Entry, changes: Change
         changes.leave(catalog.line, catalog.col, "skills.catalog", f"skills: already sets {', '.join(clash)}")
         return None
     start = comments_above(lines, catalog.line, catalog.col)
-    text = "".join(lines[start : catalog.line]) + "".join(
-        _moved_entry(lines, entry, catalog.col, _CATALOG_REMOVED) for entry in kept
-    )
+    text = "".join(lines[start : catalog.line]) + "".join(_moved_entry(lines, entry, catalog.col) for entry in kept)
     changes.add(lines_edit(start, entry_span(lines, catalog)[1], text), "skills.catalog", "skills", "setting")
     return kept
 
 
-def _moved_entry(lines: Sequence[str], entry: Entry, col: int, drop: frozenset[str]) -> str:
-    """Return an entry with its comments, re-indented to `col`; '' for a key in `drop` or unset."""
-    if entry.key in drop or entry.value.null:
+def _moved_entry(lines: Sequence[str], entry: Entry, col: int) -> str:
+    """Return an entry with its comments, re-indented to `col`; '' for one written with no value."""
+    if entry.value.null:
         return ""
     start = comments_above(lines, entry.line, entry.col)
     return _ended(shift("".join(lines[start : entry_span(lines, entry)[1]]), col - entry.col))

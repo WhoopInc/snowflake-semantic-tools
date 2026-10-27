@@ -18,7 +18,11 @@ from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, Com
 from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
 from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, settled_agent
 from snowflake_semantic_tools.app.compile.base import CompileResult
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompileCocoDesktopProfiles, DesktopChannel
+from snowflake_semantic_tools.app.compile.coco_profiles import (
+    CompileCocoProfiles,
+    CompiledCocoProfile,
+    pinned_by_profiles,
+)
 from snowflake_semantic_tools.app.compile.cowork_profiles import (
     CompiledCoworkProfile,
     compile_cowork_profiles,
@@ -35,13 +39,8 @@ from snowflake_semantic_tools.app.compile.tools import CompileTools, ToolPlaceme
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.diagnostics.policy import apply_overrides
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key, view_key
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
-    DESKTOP_REGISTRY,
-    NAME_SUFFIX_PATTERN,
-    CocoDesktopProfile,
-    CocoDesktopProfileCatalog,
-)
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.coco_profile import NAME_SUFFIX_PATTERN, CocoProfileModel
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
     KeyKind,
@@ -67,6 +66,7 @@ from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.resolve.stage_path import stage_member
 from snowflake_semantic_tools.domain.resolve.tags import declared_tags
+from snowflake_semantic_tools.domain.validate.coco_profile import schema_problems
 from snowflake_semantic_tools.domain.validate.config import (
     NAME_KINDS,
     config_tool_calls,
@@ -89,15 +89,15 @@ class Publishing:
 
     Attributes:
         skills: The skills and plugins, as extension versions.
-        profiles: The Desktop profiles; empty when no profile has a stage.
-        desktop_consumed: The artifact keys of the skills and plugins a profile carries, which
+        profiles: The Cortex Code agent profiles.
+        profile_consumed: The artifact keys of the skills and plugins a profile pins, which
             have a consumer even when no agent references them.
         unpublished: Why each declared skill or plugin has no version, by artifact key.
     """
 
     skills: CompileResult
     profiles: CompileResult
-    desktop_consumed: frozenset[str]
+    profile_consumed: frozenset[str]
     unpublished: Mapping[str, str]
 
 
@@ -217,7 +217,7 @@ class CompileProject:
 
         1. Read `sst_config.yml` and the dbt target.
         2. Resolve the extensions agents consume, from `extensions:`.
-        3. Compile skills and plugins, then Desktop profiles, each where its settings place it.
+        3. Compile skills and plugins, then Cortex Code agent profiles, each where its settings place it.
         4. With a dbt project, compile the semantic views, the tools, the agents, the CoWork
            profiles (a Snowflake private preview), and then the evals; each reads what the
            compilers before it produced.
@@ -234,7 +234,7 @@ class CompileProject:
         target = self._inputs.target()
         settings = _Settings(config.tree, target.identity, config.file)
         consumed, consumed_diagnostics = consumed_extensions(config.tree, target.identity, file=config.file)
-        publishing = self._publishing(settings)
+        publishing = self._publishing(settings, consumed)
         # A reference to an entry that cannot be qualified names that cause, not "undeclared".
         unpublished = {
             **publishing.unpublished,
@@ -266,24 +266,18 @@ class CompileProject:
         # Each code reports at the severity the project sets for it from here on.
         return replace(merged, diagnostics=apply_overrides(merged.diagnostics, severity_overrides(config.tree)))
 
-    def _publishing(self, settings: _Settings) -> Publishing:
-        """Compile skills, plugins, and Desktop profiles, each where its resolved settings place it.
+    def _publishing(self, settings: _Settings, consumed: Mapping[str, QualifiedName]) -> Publishing:
+        """Compile skills, plugins, and Cortex Code agent profiles, each where its resolved settings place it.
 
         A skill or plugin publishes where its `+bundle_stage` resolves, and a profile where its
-        `+stage` does. The catalogs are read whatever is configured, so every declared skill and
-        plugin can be reported as unpublished with its reason. When no block of the three is
-        written and no item places itself, nothing compiles; profiles compile when the
-        `coco_desktop_profiles:` block is written or a profile has a stage.
+        `coco_profiles:` settings place it, pinning the extensions the skills compiled to. The
+        catalogs are read whatever is configured, so every declared skill and plugin can be
+        reported as unpublished with its reason. When no `skills:` or `plugins:` block is
+        written and no item places itself, no skill compiles.
         """
         catalog = self._inputs.skill_catalog(
             skills_dir=settings.directory("skills_dir", "skills"),
             plugins_dir=settings.directory("plugins_dir", "plugins"),
-        )
-        profiles_catalog = self._inputs.coco_desktop_profile_catalog(
-            coco_desktop_profiles_dir=settings.directory("coco_desktop_profiles_dir", "coco_desktop_profiles"),
-            hooks_dir=settings.directory("hooks_dir", "hooks"),
-            mcp_servers_dir=settings.directory("mcp_servers_dir", "mcp-servers"),
-            commands_dir=settings.directory("commands_dir", "commands"),
         )
         channels = {
             item.key: channel
@@ -291,28 +285,44 @@ class CompileProject:
             for item in items
             if (channel := _catalog_channel(settings, block, item)) is not None
         }
-        desktop = {
-            profile.key: place
-            for profile in profiles_catalog.profiles
-            if (place := _desktop_channel(settings, profile)) is not None
-        }
-        written = {name for name in ("skills", "plugins", "coco_desktop_profiles") if name in settings.tree}
-        if not (written or channels or desktop):
-            empty = CompileResult(())
-            return Publishing(empty, empty, frozenset(), unpublished_reasons(catalog, empty, frozenset()))
-        skills = CompileSkills(catalog, channels, config_file=settings.file).run_result()
+        written = {name for name in ("skills", "plugins") if name in settings.tree}
+        skills = (
+            CompileSkills(catalog, channels, config_file=settings.file).run_result()
+            if written or channels
+            else CompileResult(())
+        )
         unpublished = unpublished_reasons(catalog, skills, frozenset(channels))
-        if not desktop and "coco_desktop_profiles" not in written:
+        profile_catalog, profile_diagnostics = self._inputs.coco_profile_catalog(
+            coco_profiles_dir=settings.directory("coco_profiles_dir", "coco_profiles")
+        )
+        if not profile_catalog.profiles and not profile_diagnostics:
             return Publishing(skills, CompileResult(()), frozenset(), unpublished)
-        profiles = CompileCocoDesktopProfiles(
-            profiles_catalog,
-            catalog,
-            desktop,
-            catalog_published=frozenset(channels),
-            blocked_skills=_blocked(skills, "skill"),
-            blocked_plugins=_blocked(skills, "plugin"),
-        ).run_result()
-        return Publishing(skills, profiles, _carried_by_profiles(profiles_catalog), unpublished)
+        named = tuple(_published_profile(settings, model) for model in profile_catalog.profiles)
+        profile_catalog = replace(profile_catalog, profiles=named)
+        targets = {
+            model.key: QualifiedName.from_parts(
+                *settings.place(model.settings, "coco_profiles", model.key), model.published_name
+            )
+            for model in named
+        }
+        skill_pins, plugin_pins, _ = extension_pins(skills)
+        context = AgentCompileContext(
+            {},
+            ToolCatalog((), settings.target.name, frozenset()),
+            {},
+            consumed,
+            _skill_variables(settings.tree, self._inputs.git_sha()),
+            settings.target.database.folded,
+            settings.target.schema.folded,
+            None,
+            None,
+            allowed_models=_allowed_models(settings),
+            skills=skill_pins,
+            plugins=plugin_pins,
+            unpublished=MappingProxyType(dict(unpublished)),
+        )
+        profiles = CompileCocoProfiles(profile_catalog, profile_diagnostics, context, targets).run_result()
+        return Publishing(skills, profiles, pinned_by_profiles(profile_catalog), unpublished)
 
     def _dbt_artifacts(
         self,
@@ -393,6 +403,7 @@ class CompileProject:
                 (
                     *config_tool_references(settings.tree, tool_catalog),
                     *unreferenced_tool_members(tool_catalog, calls),
+                    *_profile_schemas(publishing, agents, cowork),
                 )
             ),
         )
@@ -452,10 +463,7 @@ class CompileProject:
                 which have a consumer even when no agent references them.
         """
         defaults = settings.block("agents")
-        raw_models = settings.block("snowflake").get("orchestration_models")
-        allowed_models = (
-            frozenset(str(value) for value in raw_models) if isinstance(raw_models, list) else frozenset(("auto",))
-        )
+        allowed_models = _allowed_models(settings)
         skill_pins, plugin_pins, plugin_members = extension_pins(publishing.skills)
         semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
         database, schema = settings.location("agents")
@@ -472,7 +480,7 @@ class CompileProject:
             allowed_models=allowed_models,
             skills=skill_pins,
             plugins=plugin_pins,
-            consumed=plugin_members | publishing.desktop_consumed | profile_pins,
+            consumed=plugin_members | publishing.profile_consumed | profile_pins,
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
             avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
@@ -485,6 +493,23 @@ class CompileProject:
                 }
             ),
         )
+
+
+def _profile_schemas(publishing: Publishing, agents: CompileResult, cowork: CompileResult) -> tuple[Diagnostic, ...]:
+    """Report each Cortex Code profile that publishes to a schema a compiled agent or CoWork profile does.
+
+    Diagnostics:
+        Every code `schema_problems` lists.
+    """
+    # Snowflake private preview (PrPr): a Cortex Code agent profile keeps a schema of its own.
+    return schema_problems(
+        [(item.name, item.rendered_artifact.target) for result in (agents, cowork) for item in result.compiled],
+        [
+            (item.resolved.model, item.target)
+            for item in publishing.profiles.compiled
+            if isinstance(item, CompiledCocoProfile)
+        ],
+    )
 
 
 def _skill_variables(tree: Mapping[str, object], sha: str) -> dict[str, str]:
@@ -663,42 +688,23 @@ def _catalog_channel(settings: _Settings, block: str, item: Skill | Plugin) -> C
     )
 
 
-def _desktop_channel(settings: _Settings, profile: CocoDesktopProfile) -> DesktopChannel | None:
-    """Return where a profile publishes, from the settings it resolves; None without a `+stage`.
-
-    Its settings resolve over the `coco_desktop_profiles:` route of its folder and the block root, below its
-    own `config:`. The stage is qualified in its database and schema unless written qualified;
-    the registry defaults to the one Desktop reads, and a bare name is qualified the same way.
+def _published_profile(settings: _Settings, model: CocoProfileModel) -> CocoProfileModel:
+    """Return the profile with the AGENT name its `+name_suffix` gives and its location settings rendered.
 
     Diagnostics:
-        SST-CFG008: `+name_suffix` holds more than letters, digits, `_`, and `-`; no suffix is used.
+        SST-CFG008: `+name_suffix` holds more than letters, digits, and `_`; no suffix is used.
     """
-    resolved = resolve_settings(settings.tree.get("coco_desktop_profiles"), (profile.name,), profile.config)
-    if not isinstance(setting_value(resolved, "stage"), str):
-        return None
-    stage = settings.setting(resolved, "stage", "", "coco_desktop_profiles", profile.key, KeyKind.OBJECT_NAME)
-    if not stage:
-        return None
-    target = settings.target
-    database, schema = settings.place(resolved, "coco_desktop_profiles", profile.key)
-    registry = settings.setting(
-        resolved, "registry_table", DESKTOP_REGISTRY, "coco_desktop_profiles", profile.key, KeyKind.OBJECT_NAME
-    )
-    defaults: dict[str, object] = {
-        "database": database,
-        "schema": schema,
-        "registry_table": DESKTOP_REGISTRY,
-        "name_suffix": "",
-    }
-    return DesktopChannel(
-        stage=_object_in(stage, database, schema),
-        registry=_object_in(registry, database, schema),
-        name_suffix=_name_suffix(settings, resolved, profile),
-        settings=_rendered("coco_desktop_profiles", resolved, target, defaults),
+    database, schema = settings.place(model.settings, "coco_profiles", model.key)
+    defaults: dict[str, object] = {"database": database, "schema": schema, "enabled": True, "name_suffix": ""}
+    rendered = {item.key: item for item in _rendered("coco_profiles", model.settings, settings.target, defaults)}
+    return replace(
+        model,
+        published_name=model.name + _name_suffix(settings, model.settings, model.key),
+        settings=MappingProxyType(rendered),
     )
 
 
-def _name_suffix(settings: _Settings, resolved: Mapping[str, Setting], profile: CocoDesktopProfile) -> str:
+def _name_suffix(settings: _Settings, resolved: Mapping[str, Setting], subject: str) -> str:
     setting = resolved.get("name_suffix")
     if setting is None:
         return ""
@@ -706,40 +712,24 @@ def _name_suffix(settings: _Settings, resolved: Mapping[str, Setting], profile: 
     if re.fullmatch(NAME_SUFFIX_PATTERN, suffix):
         return suffix
     own = setting.source == CONFIG_SOURCE
-    key = _setting_key("coco_desktop_profiles", setting)
+    key = _setting_key("coco_profiles", setting)
     settings.problems.append(
         D(
             "SST-CFG008",
             origin=None if own else Origin(settings.file),
-            subject=profile.key if own else f"config:{key}",
+            subject=subject if own else f"config:{key}",
             key=key,
             found=repr(suffix),
-            expected="up to 64 letters, digits, underscores, or hyphens",
+            expected="up to 64 letters, digits, or underscores",
         )
     )
     return ""
 
 
-def _blocked(skills: CompileResult, kind: str) -> frozenset[str]:
-    """Name the skills, or the plugins, that an error keeps from compiling."""
-    prefix = artifact_key(kind, "")
-    return frozenset(
-        split_artifact_key(str(item.subject))[1]
-        for item in skills.diagnostics
-        if item.blocks and str(item.subject or "").startswith(prefix)
-    )
-
-
-def _carried_by_profiles(catalog: CocoDesktopProfileCatalog) -> frozenset[str]:
-    """Return the artifact keys of the skills and plugins some profile, or the shared profile, carries."""
-    skills = {
-        *(catalog.shared.skills if catalog.shared is not None else ()),
-        *(name for item in catalog.profiles for name in item.skills),
-    }
-    plugins = {name for item in catalog.profiles for name in item.plugins}
-    return frozenset(
-        (*(artifact_key("skill", name) for name in skills), *(artifact_key("plugin", name) for name in plugins))
-    )
+def _allowed_models(settings: _Settings) -> frozenset[str]:
+    """Return `snowflake.orchestration_models`, else just `auto`."""
+    raw_models = settings.block("snowflake").get("orchestration_models")
+    return frozenset(str(value) for value in raw_models) if isinstance(raw_models, list) else frozenset(("auto",))
 
 
 def _tool_placements(settings: _Settings, catalog: ToolCatalog) -> dict[str, ToolPlacement]:

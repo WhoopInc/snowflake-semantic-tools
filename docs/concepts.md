@@ -13,7 +13,7 @@ An **artifact** is one thing SST publishes and tracks. There are eight types:
 | `tool` | a `tool:` file, or a `tools:` list entry, that writes no `relations:` | a Cortex Search service, procedure, function, or stage |
 | `skill` | a `SKILL.md` folder | a version of a skill-type Cortex Extension |
 | `plugin` | `plugin.yml` | a version of a plugin-type Cortex Extension |
-| `coco_desktop_profile` | `coco_desktop_profile.yml` | a CoCo Desktop profile: stage trees and one registry row |
+| `coco_profile` | `coco_profile.yml` | a Cortex Code agent profile: an AGENT in `CORTEX_CODE.CONFIG` ([Snowflake private preview](guides/plugins-and-coco-profiles.md#cortex-code-profiles)) |
 | `agent` | `agent.yml` | a Cortex Agent |
 | `cowork_profile` | `cowork_profile.yml` | a Snowflake CoWork profile: an AGENT with an `agent_router` tool ([Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)[^preview]) |
 | `eval` | the dataset and config files an agent's or CoWork profile's `evals:` names | an evaluation table, dataset, and run configuration |
@@ -40,7 +40,8 @@ flowchart LR
     cowork_profile -.->|pins the version of| plugin
     evals["eval (400)"] --> agent
     evals --> cowork_profile
-    coco_desktop_profile["coco_desktop_profile (270)"]
+    coco_profile["coco_profile (270)"] -.->|pins the version of| skill
+    coco_profile -.->|pins the version of| plugin
 ```
 
 Drawn from: [registry.py](../snowflake_semantic_tools/domain/model/registry.py).
@@ -72,9 +73,7 @@ How a change reaches Snowflake depends on the type:
 - a **skill** or **plugin** gets a new extension version, whose alias is the
   version prefix and a digest of the bundle, so a published version is never
   rewritten;
-- a **profile** uploads its trees under content-addressed prefixes, then
-  switches its registry row to them;
-- an **agent** is created once, from a specification staged on the
+- an **agent**, **CoWork profile**, or **Cortex Code profile** is created once, from a specification staged on the
   `apply.agent_spec_stage` stage, which is only ever created when absent; each
   change to its specification adds a version;
 - an **eval** publishes a new table and dataset when its questions change,
@@ -141,12 +140,11 @@ and SST resolves the name for the target being built:
 | `{{ tag('name') }}` | a tag from `tags:` in `sst_config.yml` | the `name` of a view's or an agent's `config.tags` entry |
 | `{{ semantic_view('name') }}`, `{{ agent('name') }}` | the published object | agent specs |
 | `{{ tool('name') }}` | a tool member | agent specs, and the opening of a stage path |
-| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin and profile members, a command's `skill:` |
-| `{{ command('path') }}`, `{{ mcp_server('name') }}`, `{{ hook('name') }}` | a command, MCP config or hook the project holds | profile members |
+| `{{ skill('name') }}`, `{{ plugin('name') }}` | a skill or plugin this project publishes, pinned to its current version | agent skill sources, plugin members, a Cortex Code profile's `skills:` and `plugins:` |
 | `{{ extension('name') }}` | an extension another project publishes, from `extensions:` | agent skill sources |
 | `{{ eval_dataset('name') }}`, `{{ eval_config('name') }}` | the dataset or config file of that `name:` in the agent's `evals/` folder | an agent's `evals:` |
 | `{{ eval_metric('name') }}` | a custom judge metric | eval configs |
-| `{{ file('path') }}` | the contents of a file, relative to the file that names it | agent instructions, a verified query's `sql:`, a tool member's `body:`, a hook's `script:` |
+| `{{ file('path') }}` | the contents of a file, relative to the file that names it | agent instructions, a verified query's `sql:`, a tool member's `body:` |
 
 A reference that does not resolve is an error, and so is a bare name where a
 call belongs (`SST-REF050`). SST's `ref()` resolves against the dbt manifest, so
@@ -168,7 +166,7 @@ semantic_views:
 
 Keys that start with `+` set a default for everything below them. In every
 artifact block -- `semantic_views:`, `tools:`, `agents:`, `cowork_profiles:`, `evals:`,
-`skills:`, `plugins:` and `coco_desktop_profiles:` -- an unprefixed key names a folder below that
+`skills:`, `plugins:` and `coco_profiles:` -- an unprefixed key names a folder below that
 type's directory (for views, the semantic models directory itself, as a `models:` key
 names a folder of `models/` in dbt), and its `+` keys apply to what is in that folder (`SST-CFG041` when
 the folder does not exist). An artifact's own `config:` block overrides every
@@ -395,11 +393,6 @@ strong as the ownership marker:
   bytes prove the content, not the alias. An extension holding only an older
   alias is not recovered; one the release certifies but that is not certified
   yet is, and the next apply certifies it.
-- A profile: the registry has every column SST writes, and the row under the
-  profile's name shows Desktop exactly the release's twelve columns, `VERSION`
-  included, on a server-side encrypted stage. A row that is inactive is
-  recovered, and the next apply reactivates it; an older or edited row is not,
-  and neither is a name more than one row carries.
 - An eval: every table and dataset it mints exists, and the dataset holds the
   version this eval adds, whose `METADATA` records its agent, source table and
   full questions' digest; one that does not mint proves nothing besides its
@@ -413,8 +406,8 @@ record it (`SST-APL033`). Recover rebuilds deploy state only: it never writes an
 object, and never rebuilds the eval baselines kept beside the state table.
 Measured on a live project of 29 artifacts with its state deleted, the recover
 that read markers only recorded the 20 that carry one -- semantic views, tools
-and agents -- and left the 9 others unmanaged. Recovering the skills, plugin,
-profile and evals from their content is tested offline, against a fake target
+and agents -- and left the 9 others unmanaged. Recovering the skills, plugin
+and evals from their content is tested offline, against a fake target
 the reference project is applied to in full, and not yet measured live.
 
 **`sst state convert --to hybrid|standard`** rebuilds both tables as the other
@@ -439,8 +432,8 @@ service -- and verifies them afterwards. `plan` warns of the grants a replace
 would drop (`SST-PLN013`).
 
 `--prune` extends a plan to managed artifacts whose source was deleted. What
-happens depends on the type: semantic views, agents, and CoWork profiles are
-dropped, and CoCo Desktop profiles are deactivated. Skills, plugins, and evals are **report-only**: the
+happens depends on the type: semantic views, agents, CoWork profiles, and Cortex Code
+profiles are dropped. Skills, plugins, and evals are **report-only**: the
 plan lists them (`SST-PLN034`, an info diagnostic), but they are never removed,
 because an agent elsewhere may still pin a version, or a run or baseline may
 still reference an evaluation. A report-only prune never makes `--strict` fail.
@@ -547,17 +540,16 @@ longer renders:
 ```mermaid
 flowchart TD
     gone["an artifact the project no longer renders"] --> which{"its type"}
-    which -->|"semantic_view, agent or cowork_profile"| mark{"SST ownership marker?"}
+    which -->|"semantic_view, agent, cowork_profile or coco_profile"| mark{"SST ownership marker?"}
     mark -- no --> s3["skipped: SST-PLN003"]
     mark -- yes --> agree{"state recorded exactly this object?"}
     agree -- no --> s4["skipped: SST-PLN004"]
     agree -- yes --> drop["PRUNE: dropped"]
     which -->|"skill, plugin or eval"| report["PRUNE, report-only: SST-PLN034"]
-    which -- coco_desktop_profile --> deactivate["PRUNE: its row deactivated"]
     which -- tool --> kept["never pruned"]
 ```
 
-Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py), [coco_desktop_profiles.py](../snowflake_semantic_tools/app/lifecycle/coco_desktop_profiles.py).
+Drawn from: [prune.py](../snowflake_semantic_tools/domain/plan/prune.py), [composite.py](../snowflake_semantic_tools/app/lifecycle/composite.py).
 
 Then blocking spreads: a write whose dependency the project compiles, the plan
 leaves out, and Snowflake lacks is blocked (`SST-PLN038`), and so, last, is

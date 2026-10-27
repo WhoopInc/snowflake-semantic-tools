@@ -7,12 +7,10 @@ from types import MappingProxyType
 import pytest
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, Origin
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CommandFile
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.parse.template import TemplateCall
-from snowflake_semantic_tools.domain.render.coco_desktop_profile import render_command
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS, reference_functions
@@ -60,7 +58,8 @@ def test_a_bare_value_is_told_to_use_the_fields_first_function() -> None:
 
 
 def test_every_reference_field_names_known_functions_and_suggests_one_first() -> None:
-    assert reference_functions("command.skill") == ("skill",)
+    assert reference_functions("coco_profile.skills") == ("skill",)
+    assert reference_functions("coco_profile.plugins") == ("plugin",)
     assert all(functions for functions in REFERENCE_FIELDS.values())
     with pytest.raises(KeyError):
         reference_functions("agent.name")
@@ -166,27 +165,6 @@ def test_a_tag_name_resolves_to_the_tag_it_declares(text: str, result: str) -> N
         text, tags, ORIGIN, reference="agent.config.tags.name", field="config.tags[0].name", artifact="agent:a"
     )
     assert (_code(found) or found) == result
-
-
-def _command(content: str, skill: str | None) -> CommandFile:
-    return CommandFile("sql/check.md", content.encode("utf-8"), "commands/sql/check.md", Origin("x"), skill)
-
-
-def test_a_command_publishes_with_its_skill_call_rendered_to_the_skill_name() -> None:
-    written = "---\ndescription: Check.\nskill: >-\n  {{ skill('sql-author') }}\n  \nhidden: false\n---\nBody\n"
-    assert render_command(_command(written, "sql-author")) == (
-        b"---\ndescription: Check.\nskill: sql-author\nhidden: false\n---\nBody\n"
-    )
-    crlf = "---\r\nskill: \"{{ skill('sql-author') }}\"\r\n---\r\nBody\r\n"
-    assert render_command(_command(crlf, "sql-author")) == b"---\r\nskill: sql-author\r\n---\r\nBody\r\n"
-
-
-def test_a_command_that_names_no_skill_publishes_as_written() -> None:
-    plain = "---\ndescription: Check.\n---\nBody\n"
-    assert render_command(_command(plain, None)) == plain.encode("utf-8")
-    # A skill the loader read from a form no frontmatter line starts with is left as written.
-    flow = "---\n{description: Check., skill: x}\n---\n"
-    assert render_command(_command(flow, "x")) == flow.encode("utf-8")
 
 
 def test_a_column_entry_that_is_a_one_argument_ref_names_no_column() -> None:

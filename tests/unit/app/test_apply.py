@@ -1079,6 +1079,64 @@ def test_a_report_only_prune_of_an_object_gone_from_snowflake_keeps_its_entry() 
     assert store.state.applied[artifact.key] == recorded
 
 
+def test_an_applied_prune_forgets_its_entry_though_it_observed_the_marked_object() -> None:
+    # The prune observed SST's marker on the object it then dropped, so recording observed
+    # objects must not write the entry back.
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    artifact = rendered()
+    ownership = marker(artifact)
+    entry = AppliedEntry(
+        artifact.fingerprint,
+        artifact.target.sql,
+        "now",
+        "prior",
+        "applied",
+        artifact.fingerprint,
+        ownership.manifest_id,
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: entry}))
+    use_case, port, store, _ = runner()
+    port.markers[artifact.target.sql] = ownership
+    port.remote_state = prior.applied
+
+    result = use_case.run(
+        changeset(change(artifact, Action.PRUNE, live=observed(artifact, ownership=ownership))),
+        prior,
+        ApplyOptions(allow_prune=True),
+    )
+
+    assert result.success and port.scripts[-1][0].startswith("DROP SEMANTIC VIEW")
+    assert store.state is not None and artifact.key not in store.state.applied
+
+
+def test_a_composite_prune_that_ran_leaves_a_deactivated_tombstone() -> None:
+    # A composite type whose prune leaves its object in place keeps the entry, to reactivate it.
+    from typing import cast
+
+    from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after
+    from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+    from snowflake_semantic_tools.domain.state import DEACTIVATED, AppliedEntry
+
+    artifact = rendered()
+    entry = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "before", "prior", "applied", artifact.fingerprint, "a" * 64
+    )
+    previous = replace(state(), applied=MappingProxyType({artifact.key: entry}))
+    prune = change(artifact, Action.PRUNE)
+    handlers = {prune.artifact_type: cast(CompositeLifecycleHandler, object())}
+
+    applied = _applied_after(
+        changeset(prune),
+        previous,
+        (ApplyOutcome(prune.key, Action.PRUNE, OutcomeStatus.APPLIED, 1, 0, "", write_succeeded=True),),
+        EntryStamp("run", "now", "abc1234"),
+        handlers,
+    )
+
+    assert (applied[artifact.key].outcome, applied[artifact.key].run_id) == (DEACTIVATED, "run")
+
+
 def test_outcomes_that_do_not_account_for_every_change_report_apl900() -> None:
     artifact = rendered()
     use_case, port, _, _ = runner()

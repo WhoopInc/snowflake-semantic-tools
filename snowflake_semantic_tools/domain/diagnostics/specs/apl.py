@@ -230,32 +230,11 @@ SPECS: tuple[ErrorSpec, ...] = (
         "read the detail: when a statement failed, fix its cause and apply again; when what was "
         "written does not read back as rendered, restore it or drop the object by hand, then apply",
         condition=(
-            "a composite publish (an eval, a skill or plugin, or a CoCo Desktop profile) wrote part of "
+            "a composite publish (an eval, or a skill or plugin) wrote part of "
             "what it publishes, then a statement failed or what it wrote did not read back as "
             "rendered"
         ),
         note="State keeps the partial write, so the next plan publishes the artifact again.",
-        precheck=Precheck.RUNTIME,
-    ),
-    spec(
-        "SST-APL017",
-        Severity.ERROR,
-        "Per-channel publish reported aggregate success",
-        "{artifact}: {detail}",
-        "report per-channel status separately",
-        condition=(
-            "a CoCo Desktop profile's registry row was written, but a stage pointer it carries does not "
-            "resolve to a tree the stage holds"
-        ),
-        precheck=Precheck.RUNTIME,
-    ),
-    spec(
-        "SST-APL018",
-        Severity.ERROR,
-        "Registry pointer write failed after an upload",
-        "{artifact}: uploaded {path}, pointer write failed: {detail}",
-        "re-run apply; the publish is half complete",
-        condition="a CoCo Desktop profile's trees were uploaded to its stage, then writing its registry row failed",
         precheck=Precheck.RUNTIME,
     ),
     spec(
@@ -345,22 +324,6 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.RUNTIME,
     ),
     spec(
-        "SST-APL027",
-        Severity.ERROR,
-        "Metadata table absent or the wrong shape",
-        "{value}: {detail}",
-        "re-run sst extract, then apply",
-        condition=(
-            "the CoCo Desktop profile registry table SST created is absent afterwards, or lacks the "
-            "columns Desktop's query reads"
-        ),
-        note=(
-            "There is no `sst extract` command in 1.0: check that the role may create the table in "
-            "the registry's schema and that nothing else defines it with other columns, then re-apply."
-        ),
-        precheck=Precheck.RUNTIME,
-    ),
-    spec(
         "SST-APL028",
         Severity.ERROR,
         "Eval config stage has the wrong FILE FORMAT",
@@ -425,8 +388,8 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition=(
             "`sst state recover` ran: each artifact state did not record whose live objects prove "
             "they hold the compiled definition under the compiled name -- by the ownership marker "
-            "on a semantic view, tool or agent, and by the content of a skill's or plugin's "
-            "version and bundle prefix, a CoCo Desktop profile's registry row, or an eval's dataset version and "
+            "on a semantic view, tool, agent, CoWork profile or Cortex Code profile, and by the content of a "
+            "skill's or plugin's version and bundle prefix, or an eval's dataset version and "
             "staged config -- was recorded, without writing the object"
         ),
         precheck=Precheck.RUNTIME,
@@ -442,7 +405,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "`sst state recover` found an artifact state does not record whose live content is not "
             "the compiled definition: the object is absent, carries no marker, or carries one for "
             "another definition; a skill's or plugin's version or bundle prefix is missing or holds "
-            "other files; a CoCo Desktop profile's registry row shows Desktop other columns; an eval's dataset "
+            "other files; an eval's dataset "
             "version records other provenance, or its staged config other bytes; or Snowflake "
             "would not report the objects"
         ),
@@ -611,15 +574,16 @@ SPECS: tuple[ErrorSpec, ...] = (
     spec(
         "SST-APL106",
         Severity.INFO,
-        "CoWork profile left out of a temporary run",
-        "{artifact}: skipped, because --temporary publishes no CoWork profile",
-        "apply without --temporary to publish the CoWork profile",
+        "CoWork or Cortex Code profile left out of a temporary run",
+        "{artifact}: skipped, because --temporary publishes no CoWork or Cortex Code profile",
+        "apply without --temporary to publish the CoWork or Cortex Code profile",
         condition=(
-            "`apply --temporary` would publish a CoWork profile, a Snowflake private preview feature: a "
-            "temporary profile has not been measured on Snowflake, and a permanent one would route to agents "
-            "that end with the run's session, so the profile is neither published nor recorded"
+            "`apply --temporary` would publish a CoWork profile or a Cortex Code agent profile, each a Snowflake "
+            "private preview feature: a temporary profile has not been measured on Snowflake, a permanent CoWork "
+            "profile would route to agents that end with the run's session, and a Cortex Code profile would be "
+            "listed to no one once the session ends, so the profile is neither published nor recorded"
         ),
-        note="The agents the CoWork profile routes to still publish, as temporary agents.",
+        note="The agents a CoWork profile routes to, and the skills a Cortex Code profile pins, still publish.",
     ),
     spec(
         "SST-APL107",

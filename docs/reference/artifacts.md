@@ -13,7 +13,7 @@ another artifact with `{{ <function>('<name>') }}`.
 | [`tool`](#tool) | 200 | a `tool:` file, or an entry of a `tools:` list, under `project.tools_dir` | CORTEX SEARCH SERVICE, PROCEDURE, FUNCTION, or STAGE | `tool()` |
 | [`skill`](#skill) | 250 | a `SKILL.md` folder in `project.skills_dir` | CORTEX EXTENSION (TYPE = 'SKILL') and its bundle stage | `skill()` |
 | [`plugin`](#plugin) | 260 | `plugin.yml` in `project.plugins_dir` | CORTEX EXTENSION (TYPE = 'PLUGIN') and its bundle stage | `plugin()` |
-| [`coco_desktop_profile`](#coco_desktop_profile) | 270 | `coco_desktop_profile.yml` in `project.coco_desktop_profiles_dir` | profile stage trees and one profile registry row | none |
+| [`coco_profile`](#coco_profile) | 270 | `coco_profile.yml` in `project.coco_profiles_dir` | AGENT in CORTEX_CODE.CONFIG | none |
 | [`agent`](#agent) | 300 | `agent.yml` in `project.agents_dir` | AGENT | `agent()` |
 | [`cowork_profile`](#cowork_profile) | 350 | `cowork_profile.yml` in `project.cowork_profiles_dir` | AGENT with an agent_router tool | none |
 | [`eval`](#eval) | 400 | the dataset and config files an agent's or CoWork profile's `evals:` names, by convention in `evals/` | TABLE, DATASET, and a staged run configuration | none |
@@ -60,15 +60,17 @@ A named set of project skills, published together as a version of one plugin-typ
 - Grants: never touched: the object is not replaced
 - `--prune`: never drops it
 
-## coco_desktop_profile
+## coco_profile
 
-A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees on a stage, behind one row of the profile registry table. `--prune` deactivates the row; nothing is deleted.
+A Cortex Code agent profile (Snowflake private preview): an AGENT whose specification holds only an orchestration model, response instructions, and skills pinned to this project's extensions. It publishes and versions like an agent; the Cortex Code CLI, Desktop, and Snowsight list the profiles in CORTEX_CODE.CONFIG that a role can use.
 
 - Position: 270
-- Lifecycle: composite -- several objects, reconciled together
+- Lifecycle: one Snowflake object
 - On update: altered or re-versioned in place
 - Grants: never touched: the object is not replaced
-- `--prune`: never drops it
+- `--prune`: drops it once its source is deleted
+- Applied after: `skill`, `plugin`
+- Pins the published version of: `skill`, `plugin` -- so a change to it plans only together with them
 
 ## agent
 

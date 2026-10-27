@@ -1,30 +1,17 @@
-"""Skills and Desktop profiles compiled and published through their lifecycle handlers, for code tests.
+"""Skills compiled and published through their lifecycle handler, for code tests.
 
-`publish_skill` plans and applies one skill against a recorded Snowflake; `publish_profile`
-does the same for one Desktop profile. Each returns the changeset, the apply result, and the
-state the run left.
+`publish_skill` plans and applies one skill against a recorded Snowflake. It returns the
+changeset, the apply result, and the state the run left.
 """
 
 from __future__ import annotations
 
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
-from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import (
-    CompileCocoDesktopProfiles,
-    CompiledCocoDesktopProfile,
-    DesktopChannel,
-)
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
-from snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles import CocoDesktopProfileLifecycleHandler
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
-from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
-    CocoDesktopProfile,
-    CocoDesktopProfileCatalog,
-    SharedCocoDesktopProfile,
-)
+from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ApplyResult, ChangeSet
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
@@ -36,8 +23,6 @@ from tests.helpers.clocks import FixedClock
 from tests.helpers.snowflake_fake import FakeSnowflake
 
 SKILL_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
-PROFILE_STAGE = QualifiedName.parse("DB.S.PROFILES")
-PROFILE_REGISTRY = QualifiedName.parse("DB.S.PROFILE_REGISTRY")
 
 
 def skill(name: str = "month-close", steps: bytes = b"steps\n") -> Skill:
@@ -86,54 +71,3 @@ def publish_skill(
         {compiled.artifact_key: compiled.rendered_artifact},
         previous or empty_state(dict(port.remote_state or {})),
     )
-
-
-def compiled_profile(*shipped: Skill) -> CompiledCocoDesktopProfile:
-    """Compile the `analyst` profile, shipping each skill given."""
-    profiles = CocoDesktopProfileCatalog(
-        (
-            CocoDesktopProfile(
-                name="analyst",
-                directory="coco_desktop_profiles/analyst",
-                description="Analyst.",
-                owner_team="Data",
-                skills=tuple(item.name for item in shipped),
-                mcp_servers=(),
-                hooks=(),
-                prompt="Be careful.\n",
-                origin=Origin("coco_desktop_profiles/analyst/coco_desktop_profile.yml", 1),
-            ),
-        ),
-        SharedCocoDesktopProfile("Shared.\n", (), (), Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml")),
-        (),
-        (),
-    )
-    result = CompileCocoDesktopProfiles(
-        profiles,
-        SkillCatalog(shipped),
-        DesktopChannel(PROFILE_STAGE, PROFILE_REGISTRY),
-        catalog_published=frozenset(item.key for item in shipped),
-    ).run_result()
-    assert not result.diagnostics.has_errors, result.diagnostics
-    [compiled] = [item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)]
-    return compiled
-
-
-def publish_profile(port: FakeSnowflake, compiled: CompiledCocoDesktopProfile) -> tuple[ChangeSet, ApplyResult, State]:
-    handler = CocoDesktopProfileLifecycleHandler(port, {compiled.artifact_key: compiled})
-    return _run(
-        port,
-        {"coco_desktop_profile": handler},
-        {compiled.artifact_key: compiled.rendered_artifact},
-        empty_state(dict(port.remote_state or {})),
-    )
-
-
-def both_channels_published() -> tuple[FakeSnowflake, CompileResult]:
-    """Publish the skill and the profile carrying it; return the port and both compiled artifacts."""
-    port = FakeSnowflake(existing=())
-    extension = compiled_skill()
-    profile = compiled_profile(skill())
-    publish_skill(port, extension)
-    publish_profile(port, profile)
-    return port, CompileResult((extension, profile), DiagnosticBag())

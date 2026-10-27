@@ -74,28 +74,28 @@ MEMBER_OWNING_TYPES = frozenset({"semantic_view"})
 # loader for `file`, `skill`, `plugin` and a skill source's `extension`; agent tool resolution for
 # `semantic_view`, `tool` and `agent`; the eval config reader for `eval_metric`; and the agent
 # loader for `eval_dataset` and `eval_config`, which the eval catalog resolves; and the plugin
-# and profile loaders for `skill`, `plugin`, `command`, `mcp_server` and `hook` members.
+# and profile loaders for `skill` and `plugin` members.
 RESOLVED_FUNCTIONS = frozenset(
     {
         *("ref", "table", "column", "source", "metric", "var", "tag", "custom_instructions", "file"),
         *("eval_metric", "semantic_view", "tool", "agent", "skill", "plugin", "extension"),
-        *("eval_dataset", "eval_config", "command", "mcp_server", "hook"),
+        *("eval_dataset", "eval_config"),
         *("filter", "relationship", "verified_query"),
     }
 )
 # Resolved functions that address something outside this registry: dbt models, columns and
 # sources, project variables and files, tags, the shared eval metrics, an agent's eval dataset and
-# config files, a profile's commands, MCP servers and hooks, and extensions published elsewhere.
+# config files, and extensions published elsewhere.
 NON_ARTIFACT_FUNCTIONS = frozenset(
     {
         *("ref", "table", "column", "source", "var", "tag", "file", "eval_metric", "eval_dataset", "eval_config"),
-        *("command", "mcp_server", "hook", "extension"),
+        *("extension",),
     }
 )
-# Artifact types nothing references, by design: an eval, a Desktop profile, and a CoWork profile
+# Artifact types nothing references, by design: an eval, a Cortex Code profile, and a CoWork profile
 # are leaves, so they need no template function. Named rather than inferred, so a type that
 # forgot one still fails.
-DELIBERATELY_UNREFERENCED = frozenset({"eval", "coco_desktop_profile", "cowork_profile"})
+DELIBERATELY_UNREFERENCED = frozenset({"eval", "coco_profile", "cowork_profile"})
 
 
 class RegistryBuilder:
@@ -495,28 +495,30 @@ ARTIFACT_REGISTRY = build_registry(
             dir_key="plugins_dir",
             routed_block="plugins",
         ),
+        # Snowflake private preview (PrPr): Cortex Code agent profiles
         ArtifactType(
-            name="coco_desktop_profile",
+            name="coco_profile",
             root_key=None,
             singular_root=None,
             ddl_position=270,
             ref_function=None,
             member_types=(),
-            object_type="",
-            prunable=False,
+            object_type="AGENT",
             replaces_on_update=False,
             grant_preservation=GrantPreservation.NONE,
-            lifecycle=ArtifactLifecycle.COMPOSITE,
+            dependency_types=("skill", "plugin"),
+            pins_versions_of=("skill", "plugin"),
             summary=(
-                "A CoCo Desktop profile: content-addressed skill, prompt, MCP, and hook trees on a stage, "
-                "behind one row of the profile registry table. `--prune` deactivates the row; nothing "
-                "is deleted."
+                "A Cortex Code agent profile (Snowflake private preview): an AGENT whose specification "
+                "holds only an orchestration model, response instructions, and skills pinned to this "
+                "project's extensions. It publishes and versions like an agent; the Cortex Code CLI, "
+                "Desktop, and Snowsight list the profiles in CORTEX_CODE.CONFIG that a role can use."
             ),
-            authored_in="`coco_desktop_profile.yml` in `project.coco_desktop_profiles_dir`",
-            publishes="profile stage trees and one profile registry row",
-            validation_rules=("shared", "skill"),
-            dir_key="coco_desktop_profiles_dir",
-            routed_block="coco_desktop_profiles",
+            authored_in="`coco_profile.yml` in `project.coco_profiles_dir`",
+            publishes="AGENT in CORTEX_CODE.CONFIG",
+            validation_rules=("shared", "coco_profile"),
+            dir_key="coco_profiles_dir",
+            routed_block="coco_profiles",
         ),
         ArtifactType(
             name="agent",

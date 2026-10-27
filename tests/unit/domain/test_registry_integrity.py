@@ -134,7 +134,7 @@ def test_a_registry_without_faults_freezes_through_every_check() -> None:
         artifact("skill", 250, dependency_types=("semantic_view",), **COMPOSITE),
         artifact("agent", 300, dependency_types=("tool", "skill"), pins_versions_of=("skill",)),
         artifact(
-            "coco_desktop_profile",
+            "coco_profile",
             400,
             root_key=None,
             singular_root=None,
@@ -152,7 +152,7 @@ def test_a_registry_without_faults_freezes_through_every_check() -> None:
         ),
     )
     registry = freeze(diamond)
-    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "coco_desktop_profile", "search"]
+    assert list(registry.artifacts) == ["semantic_view", "tool", "skill", "agent", "coco_profile", "search"]
     search = registry.artifacts["search"]
     assert search.grant_preservation_of("STAGE") is GrantPreservation.NONE
     assert search.grant_preservation_of("TABLE") is None
@@ -242,11 +242,14 @@ def test_a_subsystem_other_than_the_area_and_an_unreferenced_type_are_refused() 
         freeze((VIEW, artifact("tool", 200, ref_function=None)))
 
 
-# Three kinds of profile reach a diagnostic: a CoCo Desktop profile, a CoWork profile, and the dbt
-# profile SST signs in with (an agent's `profile:` is a fourth). A bare "profile" leaves the reader
+# Three kinds of profile reach a diagnostic: a Cortex Code profile, a CoWork profile, and the dbt
+# profile SST signs in with (an agent's `profile:` is a fourth; the CoCo Desktop profile it replaced, a
+# fifth, is named only to say it is gone). A bare "profile" leaves the reader
 # to guess which, so the first mention in each field names its kind; a later one may refer back.
 _PROFILE_WORD = re.compile(r"(?<![\w.$-])profiles?(?![\w-])", re.IGNORECASE)
-_PROFILE_KIND = re.compile(r"(?:CoCo Desktop|CoWork|dbt|agent(?:'s)?|profiles\.yml)\s+$", re.IGNORECASE)
+_PROFILE_KIND = re.compile(
+    r"(?:CoCo Desktop|Cortex Code(?: agent)?|coco|CoWork|dbt|agent(?:'s)?|profiles\.yml)\s+$", re.IGNORECASE
+)
 
 
 def _unqualified_profile(text: str) -> str | None:

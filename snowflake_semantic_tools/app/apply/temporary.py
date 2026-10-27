@@ -41,12 +41,12 @@ def temporary_notes(changeset: ChangeSet, *, temporary: bool = False) -> tuple[D
     """Report each temporary artifact whose alias the publish ignores, then each eval and profile it skips.
 
     Args:
-        temporary: The run is `apply --temporary`, which leaves every CoWork profile out.
+        temporary: The run is `apply --temporary`, which leaves every CoWork and Cortex Code profile out.
 
     Diagnostics:
         SST-APL015: one per temporary artifact that declares an alias.
         SST-APL105: one per eval `temporary_evals` skips, naming its agent.
-        SST-APL106: one per CoWork profile `temporary_profiles` skips.
+        SST-APL106: one per profile `temporary_profiles` skips.
     """
     ignored = tuple(
         D("SST-APL015", artifact=change.key)
@@ -91,16 +91,15 @@ def temporary_evals(changeset: ChangeSet) -> frozenset[str]:
 
 
 def temporary_profiles(changeset: ChangeSet, *, temporary: bool) -> frozenset[str]:
-    """Return the key of each CoWork profile a `--temporary` run would publish; none for a permanent run.
+    """Return the key of each CoWork or Cortex Code profile a `--temporary` run would publish.
 
-    A temporary run publishes no profile, as the module says, whatever agents it routes to.
+    A permanent run skips none; a temporary run publishes no such profile, as the module says,
+    whatever agents a CoWork profile routes to.
     """
     if not temporary:
         return frozenset()
     return frozenset(
-        change.key
-        for change in changeset.changes
-        if change.artifact_type == _COWORK_PROFILE and change.action in _WRITES
+        change.key for change in changeset.changes if change.artifact_type in _PROFILES and change.action in _WRITES
     )
 
 
@@ -110,5 +109,6 @@ def temporary_skips(changeset: ChangeSet, *, temporary: bool) -> frozenset[str]:
 
 
 _WRITES = frozenset((Action.CREATE, Action.UPDATE))
-# Snowflake private preview (PrPr): CoWork profiles
-_COWORK_PROFILE = "cowork_profile"
+# Snowflake private preview (PrPr): CoWork profiles and Cortex Code agent profiles; a temporary
+# profile in CORTEX_CODE.CONFIG would be listed to no one once its session ends.
+_PROFILES = frozenset(("cowork_profile", "coco_profile"))

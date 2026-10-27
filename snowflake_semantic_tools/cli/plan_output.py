@@ -256,7 +256,7 @@ _PLAN_FILE = re.compile(r"(?P<type>[a-z_]+)__.+\.(?:sql|json|yaml)")
 
 def _stale_files(output: Path, written: set[str]) -> list[str]:
     """The files in `output` an earlier run wrote and this one did not: regular files, never a link."""
-    types = frozenset(SEMANTIC_REGISTRY.artifacts) | {"coco_desktop_profile"}
+    types = frozenset(SEMANTIC_REGISTRY.artifacts)
     stale = []
     for entry in sorted(output.iterdir()):
         match = _PLAN_FILE.fullmatch(entry.name)
@@ -323,7 +323,7 @@ def write_plan_diff(project_dir: Path, path: Path, text: str) -> Path:
 
 def artifact_suffix(render_dialect: str) -> str:
     """Return the file suffix for a payload rendered in `render_dialect`: `.json`, `.yaml`, or `.sql`."""
-    if render_dialect in ("json", "bundle_json", "coco_desktop_profile_json"):
+    if render_dialect in ("json", "bundle_json"):
         return ".json"
     if render_dialect == "eval_yaml":
         return ".yaml"

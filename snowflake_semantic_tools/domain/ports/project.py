@@ -15,7 +15,7 @@ from typing import Any, Protocol
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtNode
@@ -150,15 +150,13 @@ class ProjectInputs(SemanticViewSource, Protocol):
         """
         ...
 
-    def coco_desktop_profile_catalog(
-        self, *, coco_desktop_profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
-    ) -> CocoDesktopProfileCatalog:
-        """Return the Desktop profiles, and the hooks, MCP configs, and commands they can name.
+    def coco_profile_catalog(self, *, coco_profiles_dir: str) -> tuple[CocoProfileCatalog, DiagnosticBag]:
+        """Return the Cortex Code agent profiles and their shared layer, with what reading them reported.
 
         A directory that does not exist contributes nothing.
 
         Raises:
-            ProjectError: a profile input cannot be read.
+            ProjectError: a profile file cannot be read.
         """
         ...
 

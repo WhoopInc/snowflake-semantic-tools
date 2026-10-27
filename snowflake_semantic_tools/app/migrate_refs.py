@@ -1,6 +1,6 @@
 """Orchestrate `sst migrate refs` over a project's files.
 
-It reads semantic model, tool, agent, eval, hook and command files, and the configuration file.
+It reads semantic model, tool, agent and eval files, and the configuration file.
 """
 
 from __future__ import annotations
@@ -11,9 +11,7 @@ from dataclasses import dataclass, field
 from snowflake_semantic_tools.domain.migrate.agents import (
     agent_references,
     agent_structure,
-    command_skill,
     eval_structure,
-    hook_references,
 )
 from snowflake_semantic_tools.domain.migrate.calls import tool_arity
 from snowflake_semantic_tools.domain.migrate.changes import Changes, merged
@@ -92,8 +90,6 @@ class RefsFiles:
     tools: Mapping[str, str] = field(default_factory=dict)
     agents: Mapping[str, str] = field(default_factory=dict)
     evals: Mapping[str, str] = field(default_factory=dict)
-    hooks: Mapping[str, str] = field(default_factory=dict)
-    commands: Mapping[str, str] = field(default_factory=dict)
     config: Mapping[str, str] = field(default_factory=dict)
 
 
@@ -130,13 +126,10 @@ class MigrateRefs:
             migrated.append(FileMigration(path, add_filter_labels(result, self._locate(result.text, path))))
         for path, result in tools.items():
             migrated.append(FileMigration(path, self._passes(result, "tools", path, index)))
-        for kind, group in (("agents", files.agents), ("evals", files.evals), ("hooks", files.hooks)):
+        for kind, group in (("agents", files.agents), ("evals", files.evals)):
             migrated.extend(
                 FileMigration(path, self._passes(tool_arity(text), kind, path, index)) for path, text in group.items()
             )
-        for path, text in files.commands.items():
-            arity = tool_arity(text)
-            migrated.append(FileMigration(path, _chained(arity, command_skill(arity.text))))
         migrated.extend(FileMigration(path, tool_arity(text)) for path, text in files.config.items())
         return MigrationReport(tuple(sorted(migrated, key=lambda item: item.path)))
 
@@ -167,7 +160,7 @@ def _references(kind: str, lines: list[str], root: Node, path: str, index: Mappi
         return tool_references(lines, root, path, index)
     if kind == "agents":
         return agent_references(root, lines, index)
-    return hook_references(root) if kind == "hooks" else Changes()
+    return Changes()
 
 
 def _structure(kind: str, lines: list[str], root: Node) -> Changes:

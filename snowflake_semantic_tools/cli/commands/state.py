@@ -72,10 +72,10 @@ def recover(
 
     Plans the target, then records, under the run lock and without writing any object, each
     artifact state does not record whose live objects prove they hold the compiled definition,
-    so `sst plan` then shows it unchanged. A semantic view, tool or agent proves it by the
+    so `sst plan` then shows it unchanged. A semantic view, tool, agent or profile proves it by the
     marker in its comment; a skill or plugin by its aliased version's files and the bundle
-    prefix they came from, read back byte for byte; a profile by its registry row as Desktop
-    reads it; an eval by its dataset version's provenance and its staged config's bytes.
+    prefix they came from, read back byte for byte; an eval by its dataset version's
+    provenance and its staged config's bytes.
     Every other unrecorded artifact is listed with what the next apply will do: one SST cannot
     prove stays unmanaged (SST-PLN024), and one that holds another definition is published
     again. Eval baselines are not recovered.

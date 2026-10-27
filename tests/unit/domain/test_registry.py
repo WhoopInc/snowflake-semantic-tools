@@ -30,7 +30,7 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         "tool",
         "skill",
         "plugin",
-        "coco_desktop_profile",
+        "coco_profile",
         "agent",
         "cowork_profile",
         "eval",
@@ -45,15 +45,16 @@ def test_registry_has_m4_artifacts_and_all_seven_semantic_member_types() -> None
         350,
         400,
     ]
-    assert SEMANTIC_REGISTRY.artifacts["coco_desktop_profile"].ref_function is None
+    assert SEMANTIC_REGISTRY.artifacts["coco_profile"].ref_function is None
     assert SEMANTIC_REGISTRY.artifacts["tool"].dependency_types == ("semantic_view",)
     assert SEMANTIC_REGISTRY.artifacts["agent"].dependency_types == ("semantic_view", "tool", "skill", "plugin")
-    pinning = ("agent", "cowork_profile")
+    pinning = ("agent", "cowork_profile", "coco_profile")
     for name in pinning:
         assert SEMANTIC_REGISTRY.artifacts[name].pins_versions_of == ("skill", "plugin")
     assert all(not value.pins_versions_of for name, value in SEMANTIC_REGISTRY.artifacts.items() if name not in pinning)
     assert SEMANTIC_REGISTRY.artifacts["cowork_profile"].dependency_types == ("agent", "tool", "skill", "plugin")
     assert SEMANTIC_REGISTRY.artifacts["cowork_profile"].ref_function is None
+    assert SEMANTIC_REGISTRY.artifacts["coco_profile"].dependency_types == ("skill", "plugin")
     for name in ("skill", "plugin"):
         assert SEMANTIC_REGISTRY.artifacts[name].lifecycle is ArtifactLifecycle.COMPOSITE
         assert SEMANTIC_REGISTRY.artifacts[name].ref_function == name
@@ -174,10 +175,10 @@ def test_registry_allows_types_without_root_keys_or_reference_functions() -> Non
     registry = freeze(
         (
             artifact("semantic_view"),
-            artifact("coco_desktop_profile", 200, root_key=None, singular_root=None, ref_function=None),
+            artifact("coco_profile", 200, root_key=None, singular_root=None, ref_function=None),
         )
     )
-    assert registry.artifacts["coco_desktop_profile"].root_key is None
+    assert registry.artifacts["coco_profile"].root_key is None
 
 
 def test_a_builder_freezes_once_and_its_registry_is_read_only() -> None:

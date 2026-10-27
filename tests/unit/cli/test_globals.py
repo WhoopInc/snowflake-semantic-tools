@@ -146,7 +146,7 @@ def test_a_baseline_marks_and_counts_what_it_holds_and_never_drops_it(tmp_path: 
         and "2 baselined (--show-baselined)" in human.output
     )
     shown = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--show-baselined", "--show-info"])
-    assert shown.output.count("warning[SST-CFG018]") == 2 and "info[SST-VAL854]" in shown.output
+    assert shown.output.count("warning[SST-CFG018]") == 2 and "info[SST-VAL890]" in shown.output
 
 
 def test_a_baseline_keeps_the_target_and_overrides_the_invocation_resolved(tmp_path: Path) -> None:

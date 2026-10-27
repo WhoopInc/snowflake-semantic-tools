@@ -110,7 +110,7 @@ tests/
   integration/        # live: apply in a real account
   e2e/                # the CLI end to end: the offline negative corpus, and the live lifecycle
   fixtures/           # reference_project (+ its dbt manifest), v1_dialect, negative_overlays, scoped_views
-  golden/expected/    # ddl, agent, tool, cowork_profile, eval, skill, plugin, coco_desktop_profile, enrich, cli
+  golden/expected/    # ddl, agent, tool, cowork_profile, eval, skill, plugin, coco_profile, enrich, cli
   helpers/            # shared test support, imported as tests.helpers.<module>
 ```
 

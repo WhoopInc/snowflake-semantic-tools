@@ -304,7 +304,7 @@ domain/
 ├── parse/        # scanners: the template dialect, and the paths a skill's Markdown names
 ├── resolve/      # template calls, member attachment, and eval name templates
 ├── validate/     # every offline check, one module per subject
-├── render/       # DDL, agent and tool specs, eval payloads, skill bundles, and Desktop profiles
+├── render/       # DDL, agent and tool specs, eval payloads, skill bundles, and Cortex Code profiles
 ├── plan/         # what apply must change, and in what order
 ├── state/        # the manifest, the applied state, and saved plans
 ├── enrich/       # the rules `sst enrich` derives column metadata by

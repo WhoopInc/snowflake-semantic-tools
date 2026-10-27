@@ -1,6 +1,6 @@
 """Where each skill, plugin, and profile publishes, resolved per item through the one precedence chain.
 
-A skill or plugin publishes where its `+bundle_stage` resolves, a profile where its `+stage` does:
+A skill or plugin publishes where its `+bundle_stage` resolves, a profile where its `+database` and `+schema` do:
 its own `config:`, then the closest folder route over its folder, then its block's root. So one
 item can be placed or certified alone, and each reports the settings it took and where from.
 """
@@ -8,17 +8,19 @@ item can be placed or certified alone, and each reports the settings it took and
 from __future__ import annotations
 
 from dataclasses import replace
+from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompileResult
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.compile.skills import CompiledExtension
-from snowflake_semantic_tools.domain.diagnostics import Origin
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfile, CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileModel
 from snowflake_semantic_tools.domain.model.identifier import TargetIdentity
+from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog
 from tests.helpers.compile_builders import plugin, skill
 from tests.helpers.project_inputs import InMemoryProjectInputs, dev_target
+from tests.helpers.skill_inputs import profile, profile_catalog
 
 
 def _compiled(tree: dict[str, object], *skills: Skill, **inputs: object) -> CompileResult:
@@ -32,10 +34,14 @@ def _extensions(result: CompileResult) -> dict[str, CompiledExtension]:
     return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
 
 
-def _profile(name: str, **config: object) -> CocoDesktopProfile:
-    return CocoDesktopProfile(
-        name, f"coco_desktop_profiles/{name}", "P.", "Data", (), (), (), None, Origin("p"), config=config
-    )
+def _profile(name: str, **settings: tuple[object, str]) -> CocoProfileModel:
+    """A profile pinning nothing, its settings as loading resolved them: `key=(value, source)`."""
+    resolved = {key: Setting(key, value, source) for key, (value, source) in settings.items()}
+    return profile(name, skills=(), settings=MappingProxyType(resolved))
+
+
+def _profiles(result: CompileResult) -> dict[str, CompiledCocoProfile]:
+    return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoProfile)}
 
 
 def test_one_skill_certifies_and_places_itself_while_the_others_take_the_root() -> None:
@@ -113,32 +119,31 @@ def test_a_plugin_publishes_from_its_own_block_whatever_its_members_do() -> None
     assert set(_extensions(_compiled({"skills": {"+bundle_stage": "B"}}, catalog=catalog))) == {"skill:close"}
 
 
-def test_each_profile_publishes_through_its_own_stage_and_each_registry_is_noted_once() -> None:
-    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", schema="OPS"), _profile("x")))
-    tree: dict[str, object] = {"coco_desktop_profiles": {"+stage": "TREES", "x": {"+registry_table": "OTHER"}}}
-    result = _compiled(tree, profiles=profiles)
+def test_each_profile_publishes_where_its_own_settings_place_it_and_reports_where_from() -> None:
+    profiles = profile_catalog(
+        _profile("analyst", database=("CORTEX_CODE", "root"), schema=("CONFIG", "root")),
+        _profile("operator", database=("CORTEX_CODE", "root"), schema=("OPS", "config")),
+        _profile("x"),
+    )
+    compiled = _profiles(_compiled({}, profiles=profiles))
 
-    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
-    assert {key: item.channel.stage.sql for key, item in compiled.items()} == {
-        "coco_desktop_profile:analyst": "DB.SCH.TREES",
-        "coco_desktop_profile:operator": "DB.OPS.TREES",
-        "coco_desktop_profile:x": "DB.SCH.TREES",
+    assert {key: item.target.sql for key, item in compiled.items()} == {
+        "coco_profile:analyst": "CORTEX_CODE.CONFIG.ANALYST",
+        "coco_profile:operator": "CORTEX_CODE.OPS.OPERATOR",
+        "coco_profile:x": "DB.SCH.X",
     }
-    assert compiled["coco_desktop_profile:x"].channel.registry.sql == "DB.SCH.OTHER"
-    # By default every profile publishes where Desktop reads; only the rehearsal registry is noted.
-    assert {item.channel.registry.sql for key, item in compiled.items() if not key.endswith(":x")} == {
-        "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
+    settings = {item.key: (item.value, item.source) for item in compiled["coco_profile:operator"].settings}
+    assert settings == {
+        "database": ("CORTEX_CODE", "root"),
+        "enabled": (True, "default"),
+        "name_suffix": ("", "default"),
+        "schema": ("OPS", "config"),
     }
-    notes = [item.context["value"] for item in result.diagnostics if item.code == "SST-VAL854"]
-    assert notes == ["DB.SCH.OTHER"]
-    settings = {item.key: (item.value, item.source) for item in compiled["coco_desktop_profile:x"].settings}
-    assert settings["registry_table"] == ("OTHER", "route:x")
 
 
-def test_a_profile_no_stage_reaches_is_checked_and_does_not_publish() -> None:
-    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", stage="TREES")))
-    result = _compiled({"coco_desktop_profiles": {"+registry_table": "R"}}, profiles=profiles)
-    assert [item.artifact_key for item in result.compiled] == ["coco_desktop_profile:operator"]
+def test_a_disabled_profile_is_placed_but_does_not_publish() -> None:
+    profiles = profile_catalog(_profile("analyst"), replace(_profile("operator"), enabled=False))
+    assert list(_profiles(_compiled({}, profiles=profiles))) == ["coco_profile:analyst"]
 
 
 def _unnamed_warehouse() -> TargetIdentity:
@@ -180,35 +185,21 @@ def test_a_location_already_refused_where_it_was_written_is_not_reported_again()
     assert [item.release.target.schema.folded for item in _extensions(result).values()] == ["SCH"]
 
 
-def test_a_profile_stage_or_registry_that_renders_to_no_name_is_refused() -> None:
-    profiles = CocoDesktopProfileCatalog(
-        (_profile("analyst"), _profile("operator", registry_table="{{ target.warehouse }}"))
+def test_a_profile_location_or_suffix_that_renders_to_no_name_is_refused_once() -> None:
+    profiles = profile_catalog(
+        _profile("analyst", schema=("{{ target.warehouse }}", "route:ops")),
+        _profile("operator", database=("{{ target.warehouse }}", "config"), name_suffix=("bad suffix!", "config")),
     )
-    tree: dict[str, object] = {
-        "coco_desktop_profiles": {"+stage": "TREES", "analyst": {"+stage": "{{ target.warehouse }}"}}
-    }
-    result = _compiled(tree, profiles=profiles, identity=_unnamed_warehouse())
+    result = _compiled({}, profiles=profiles, identity=_unnamed_warehouse())
+
     refused = [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"]
     assert refused == [
-        ("config:coco_desktop_profiles.analyst.+stage", "coco_desktop_profiles.analyst.+stage"),
-        ("coco_desktop_profile:operator", "config.registry_table"),
+        ("config:coco_profiles.ops.+schema", "coco_profiles.ops.+schema"),
+        ("coco_profile:operator", "config.database"),
+        ("coco_profile:operator", "config.name_suffix"),
     ]
-    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
-    # The stage leaves analyst nowhere to publish; operator keeps the default registry.
-    assert list(compiled) == ["coco_desktop_profile:operator"]
-    assert compiled["coco_desktop_profile:operator"].channel.registry.sql == "CORTEX_CODE.CONFIG.PROFILE_REGISTRY"
-
-
-def test_a_name_suffix_names_each_row_and_one_that_is_no_name_is_refused() -> None:
-    profiles = CocoDesktopProfileCatalog((_profile("analyst"), _profile("operator", name_suffix="bad suffix!")))
-    tree: dict[str, object] = {"coco_desktop_profiles": {"+stage": "TREES", "+name_suffix": "-dev"}}
-    result = _compiled(tree, profiles=profiles)
-    compiled = {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledCocoDesktopProfile)}
-    analyst = compiled["coco_desktop_profile:analyst"]
-    assert (analyst.config_name, analyst.release.row["CONFIG_NAME"]) == ("analyst-dev", "analyst-dev")
-    # The trees keep the profile's own name, so only the row is the target's.
-    assert all("/analyst/" in tree.prefix or "/shared/" in tree.prefix for tree in analyst.release.trees)
-    assert compiled["coco_desktop_profile:operator"].config_name == "operator"
-    assert [(item.subject, item.context["key"]) for item in result.diagnostics if item.code == "SST-CFG008"] == [
-        ("coco_desktop_profile:operator", "config.name_suffix")
-    ]
+    # The target's own location stands in, and no suffix is used.
+    assert {key: item.target.sql for key, item in _profiles(result).items()} == {
+        "coco_profile:analyst": "DB.SCH.ANALYST",
+        "coco_profile:operator": "DB.SCH.OPERATOR",
+    }

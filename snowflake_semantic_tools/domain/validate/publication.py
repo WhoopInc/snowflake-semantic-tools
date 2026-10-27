@@ -1,8 +1,8 @@
-"""Guard what SST is about to publish for skills, plugins, profiles and evals.
+"""Guard what SST is about to publish for skills, plugins and evals.
 
 Each condition here is one SST's own compile and publishers rule out: a version is named by
 its content, every extension lands in the one catalog schema, every PUT targets a directory,
-a profile row points at and hashes every tree it ships, the publisher sends neither a grant
+the publisher sends neither a grant
 nor raw text, every channel reports its own outcome, and a dataset version's METADATA and
 COMMENT hold identifiers and digests only. Compile, plan and apply call these on what they
 are about to publish, so a change that broke one of those rules is reported, not published.
@@ -33,7 +33,7 @@ _SENSITIVE = (
     ("a payment card number", re.compile(r"\b(?:\d[ -]?){12,18}\d\b")),
 )
 # The channel each multi-channel artifact type publishes through.
-_CHANNELS: Mapping[str, str] = {"skill": "catalog", "plugin": "catalog", "coco_desktop_profile": "stage"}
+_CHANNELS: Mapping[str, str] = {"skill": "catalog", "plugin": "catalog"}
 _GRANT = re.compile(r"\s*GRANT\s", re.IGNORECASE)
 _ROLE_TYPE = re.compile(r"\bTO\s+(?:DATABASE\s+)?ROLE\s", re.IGNORECASE)
 
@@ -110,41 +110,6 @@ def put_target_diagnostics(key: str, artifact: str, targets: Iterable[str]) -> t
     )
 
 
-def registry_pointer_diagnostics(
-    key: str, artifact: str, uploads: Iterable[str], pointers: Sequence[str]
-) -> tuple[Diagnostic, ...]:
-    """Report each tree a profile uploads that no pointer in its registry row reaches.
-
-    Args:
-        uploads: Each tree's stage location, `@<stage>/<prefix>`.
-        pointers: Every stage location the row's columns point Desktop at.
-
-    Diagnostics:
-        SST-VAL822: no pointer starts with the tree's location.
-    """
-    return tuple(
-        D("SST-VAL822", subject=key, artifact=artifact, path=upload)
-        for upload in uploads
-        if not any(pointer.startswith(upload) for pointer in pointers)
-    )
-
-
-def version_coverage_diagnostics(
-    key: str, artifact: str, prefixes: Iterable[str], hashed: str
-) -> tuple[Diagnostic, ...]:
-    """Report each tree a profile ships whose digest-named prefix is absent from what VERSION hashes.
-
-    Args:
-        hashed: The text VERSION is the digest of.
-
-    Diagnostics:
-        SST-VAL823: a tree's prefix does not occur in `hashed`.
-    """
-    return tuple(
-        D("SST-VAL823", subject=key, artifact=artifact, value=prefix) for prefix in prefixes if prefix not in hashed
-    )
-
-
 def statement_diagnostic(key: str, statement: object, *, certification_pending: bool) -> Diagnostic | None:
     """Report a statement a publisher must not send: raw text, or a grant out of order or untyped.
 
@@ -197,7 +162,7 @@ def channel_outcome_diagnostics(
             are ignored.
 
     Diagnostics:
-        SST-VAL828: a skill, plugin or profile change has no outcome, or more than one.
+        SST-VAL828: a skill or plugin change has no outcome, or more than one.
     """
     found: list[Diagnostic] = []
     for key, artifact_type in changes:

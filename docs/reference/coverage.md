@@ -8,13 +8,13 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 836
+- Codes: 820
 - Raised from no module: 0
 - Without a complete test file: 0
 
 | Code | Area | Severity | Pre-check | Raised from | Test |
 |---|---|---|---|---|---|
-| [`SST-APL001`](error-codes.md#sst-apl001) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one`<br>`snowflake_semantic_tools.app.apply.stages`<br>`snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles`<br>`snowflake_semantic_tools.app.lifecycle.composite`<br>`snowflake_semantic_tools.app.lifecycle.eval_run`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl001.py` |
+| [`SST-APL001`](error-codes.md#sst-apl001) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one`<br>`snowflake_semantic_tools.app.apply.stages`<br>`snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.lifecycle.composite`<br>`snowflake_semantic_tools.app.lifecycle.eval_run`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl001.py` |
 | [`SST-APL002`](error-codes.md#sst-apl002) | APL | warning | runtime | `snowflake_semantic_tools.app.apply.waves` | `tests/codes/apl/test_sst_apl002.py` |
 | [`SST-APL003`](error-codes.md#sst-apl003) | APL | error | local | `snowflake_semantic_tools.app.apply.run` | `tests/codes/apl/test_sst_apl003.py` |
 | [`SST-APL004`](error-codes.md#sst-apl004) | APL | error | local | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one` | `tests/codes/apl/test_sst_apl004.py` |
@@ -25,20 +25,17 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-APL009`](error-codes.md#sst-apl009) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one` | `tests/codes/apl/test_sst_apl009.py` |
 | [`SST-APL010`](error-codes.md#sst-apl010) | APL | warning | runtime | `snowflake_semantic_tools.app.apply.lock` | `tests/codes/apl/test_sst_apl010.py` |
 | [`SST-APL011`](error-codes.md#sst-apl011) | APL | error | runtime | `snowflake_semantic_tools.app.apply.lock`<br>`snowflake_semantic_tools.app.apply.run`<br>`snowflake_semantic_tools.app.apply.waves`<br>`snowflake_semantic_tools.app.drop` | `tests/codes/apl/test_sst_apl011.py` |
-| [`SST-APL012`](error-codes.md#sst-apl012) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one`<br>`snowflake_semantic_tools.app.apply.run`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles`<br>`snowflake_semantic_tools.app.lifecycle.evals`<br>`snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.app.publication`<br>`snowflake_semantic_tools.domain.state.saved_plan` | `tests/codes/apl/test_sst_apl012.py` |
+| [`SST-APL012`](error-codes.md#sst-apl012) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.apply.one`<br>`snowflake_semantic_tools.app.apply.run`<br>`snowflake_semantic_tools.app.lifecycle.evals`<br>`snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.app.publication`<br>`snowflake_semantic_tools.domain.state.saved_plan` | `tests/codes/apl/test_sst_apl012.py` |
 | [`SST-APL013`](error-codes.md#sst-apl013) | APL | error | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl013.py` |
 | [`SST-APL014`](error-codes.md#sst-apl014) | APL | warning | runtime | `snowflake_semantic_tools.app.apply.waves` | `tests/codes/apl/test_sst_apl014.py` |
 | [`SST-APL015`](error-codes.md#sst-apl015) | APL | warning | local | `snowflake_semantic_tools.app.apply.temporary` | `tests/codes/apl/test_sst_apl015.py` |
-| [`SST-APL016`](error-codes.md#sst-apl016) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles`<br>`snowflake_semantic_tools.app.lifecycle.composite`<br>`snowflake_semantic_tools.app.lifecycle.eval_run`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl016.py` |
-| [`SST-APL017`](error-codes.md#sst-apl017) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles` | `tests/codes/apl/test_sst_apl017.py` |
-| [`SST-APL018`](error-codes.md#sst-apl018) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles` | `tests/codes/apl/test_sst_apl018.py` |
+| [`SST-APL016`](error-codes.md#sst-apl016) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.composite`<br>`snowflake_semantic_tools.app.lifecycle.eval_run`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl016.py` |
 | [`SST-APL019`](error-codes.md#sst-apl019) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl019.py` |
 | [`SST-APL020`](error-codes.md#sst-apl020) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl020.py` |
 | [`SST-APL021`](error-codes.md#sst-apl021) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/apl/test_sst_apl021.py` |
 | [`SST-APL022`](error-codes.md#sst-apl022) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.eval_run` | `tests/codes/apl/test_sst_apl022.py` |
 | [`SST-APL023`](error-codes.md#sst-apl023) | APL | error | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/apl/test_sst_apl023.py` |
 | [`SST-APL024`](error-codes.md#sst-apl024) | APL | warning | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/apl/test_sst_apl024.py` |
-| [`SST-APL027`](error-codes.md#sst-apl027) | APL | error | runtime | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles` | `tests/codes/apl/test_sst_apl027.py` |
 | [`SST-APL028`](error-codes.md#sst-apl028) | APL | error | observe | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.lifecycle.eval_rules` | `tests/codes/apl/test_sst_apl028.py` |
 | [`SST-APL029`](error-codes.md#sst-apl029) | APL | warning | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/apl/test_sst_apl029.py` |
 | [`SST-APL030`](error-codes.md#sst-apl030) | APL | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.lock_table` | `tests/codes/apl/test_sst_apl030.py` |
@@ -202,7 +199,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-INT900`](error-codes.md#sst-int900) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.__init__` | `tests/codes/int/test_sst_int900.py` |
 | [`SST-INT901`](error-codes.md#sst-int901) | INT | error | local | `snowflake_semantic_tools.domain.diagnostics.__init__` | `tests/codes/int/test_sst_int901.py` |
 | [`SST-INT902`](error-codes.md#sst-int902) | INT | error | local | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.app.compile.base` | `tests/codes/int/test_sst_int902.py` |
-| [`SST-LOD001`](error-codes.md#sst-lod001) | LOD | error | local | `snowflake_semantic_tools.adapters.roundtrip`<br>`snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles`<br>`snowflake_semantic_tools.adapters.yaml.compose`<br>`snowflake_semantic_tools.adapters.yaml.config`<br>`snowflake_semantic_tools.adapters.yaml.format`<br>`snowflake_semantic_tools.adapters.yaml.skills` | `tests/codes/lod/test_sst_lod001.py` |
+| [`SST-LOD001`](error-codes.md#sst-lod001) | LOD | error | local | `snowflake_semantic_tools.adapters.roundtrip`<br>`snowflake_semantic_tools.adapters.yaml.coco_profiles`<br>`snowflake_semantic_tools.adapters.yaml.compose`<br>`snowflake_semantic_tools.adapters.yaml.config`<br>`snowflake_semantic_tools.adapters.yaml.format`<br>`snowflake_semantic_tools.adapters.yaml.skills` | `tests/codes/lod/test_sst_lod001.py` |
 | [`SST-LOD002`](error-codes.md#sst-lod002) | LOD | error | local | `snowflake_semantic_tools.adapters.dbt.profiles`<br>`snowflake_semantic_tools.adapters.yaml.parse`<br>`snowflake_semantic_tools.adapters.yaml.skills` | `tests/codes/lod/test_sst_lod002.py` |
 | [`SST-LOD003`](error-codes.md#sst-lod003) | LOD | warning | local | `snowflake_semantic_tools.adapters.yaml.compose` | `tests/codes/lod/test_sst_lod003.py` |
 | [`SST-LOD004`](error-codes.md#sst-lod004) | LOD | error | local | `snowflake_semantic_tools.adapters.yaml.parse`<br>`snowflake_semantic_tools.adapters.yaml.semantic.phases`<br>`snowflake_semantic_tools.domain.resolve.calls` | `tests/codes/lod/test_sst_lod004.py` |
@@ -290,12 +287,10 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PLN021`](error-codes.md#sst-pln021) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.prune` | `tests/codes/pln/test_sst_pln021.py` |
 | [`SST-PLN022`](error-codes.md#sst-pln022) | PLN | error | local | `snowflake_semantic_tools.domain.plan.order` | `tests/codes/pln/test_sst_pln022.py` |
 | [`SST-PLN023`](error-codes.md#sst-pln023) | PLN | warning | observe | `snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln023.py` |
-| [`SST-PLN024`](error-codes.md#sst-pln024) | PLN | error | observe | `snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles`<br>`snowflake_semantic_tools.app.lifecycle.evals`<br>`snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln024.py` |
+| [`SST-PLN024`](error-codes.md#sst-pln024) | PLN | error | observe | `snowflake_semantic_tools.app.drop`<br>`snowflake_semantic_tools.app.lifecycle.evals`<br>`snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln024.py` |
 | [`SST-PLN025`](error-codes.md#sst-pln025) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.evals`<br>`snowflake_semantic_tools.domain.plan.classify` | `tests/codes/pln/test_sst_pln025.py` |
-| [`SST-PLN026`](error-codes.md#sst-pln026) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles`<br>`snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln026.py` |
+| [`SST-PLN026`](error-codes.md#sst-pln026) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.extensions`<br>`snowflake_semantic_tools.domain.plan.preflight` | `tests/codes/pln/test_sst_pln026.py` |
 | [`SST-PLN027`](error-codes.md#sst-pln027) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/pln/test_sst_pln027.py` |
-| [`SST-PLN028`](error-codes.md#sst-pln028) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles` | `tests/codes/pln/test_sst_pln028.py` |
-| [`SST-PLN029`](error-codes.md#sst-pln029) | PLN | error | observe | `snowflake_semantic_tools.app.lifecycle.coco_desktop_profiles` | `tests/codes/pln/test_sst_pln029.py` |
 | [`SST-PLN030`](error-codes.md#sst-pln030) | PLN | error | local | `snowflake_semantic_tools.domain.plan.prune` | `tests/codes/pln/test_sst_pln030.py` |
 | [`SST-PLN032`](error-codes.md#sst-pln032) | PLN | info | local | `snowflake_semantic_tools.app.partial`<br>`snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.cli.wiring.plan` | `tests/codes/pln/test_sst_pln032.py` |
 | [`SST-PLN033`](error-codes.md#sst-pln033) | PLN | warning | local | `snowflake_semantic_tools.app.partial` | `tests/codes/pln/test_sst_pln033.py` |
@@ -320,7 +315,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRS001`](error-codes.md#sst-prs001) | PRS | warning | local | `snowflake_semantic_tools.domain.parse.records` | `tests/codes/prs/test_sst_prs001.py` |
 | [`SST-PRS002`](error-codes.md#sst-prs002) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.agents`<br>`snowflake_semantic_tools.adapters.yaml.cowork_profiles`<br>`snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.adapters.yaml.evals.dataset`<br>`snowflake_semantic_tools.adapters.yaml.evals.metrics`<br>`snowflake_semantic_tools.adapters.yaml.evals.readers`<br>`snowflake_semantic_tools.adapters.yaml.semantic.file_reads`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.adapters.yaml.tool_members`<br>`snowflake_semantic_tools.domain.validate.eval_dataset`<br>`snowflake_semantic_tools.domain.validate.semantic.shape`<br>`snowflake_semantic_tools.domain.validate.skill`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs002.py` |
 | [`SST-PRS003`](error-codes.md#sst-prs003) | PRS | error | local | `snowflake_semantic_tools.adapters.dbt.manifest`<br>`snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.documents`<br>`snowflake_semantic_tools.adapters.yaml.evals.config`<br>`snowflake_semantic_tools.adapters.yaml.evals.dataset`<br>`snowflake_semantic_tools.adapters.yaml.evals.metrics`<br>`snowflake_semantic_tools.adapters.yaml.evals.readers`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.adapters.yaml.semantic.build`<br>`snowflake_semantic_tools.adapters.yaml.semantic.nodes`<br>`snowflake_semantic_tools.adapters.yaml.tool_members`<br>`snowflake_semantic_tools.adapters.yaml.tools`<br>`snowflake_semantic_tools.app.compile.agents.settled`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt`<br>`snowflake_semantic_tools.domain.validate.semantic.scope`<br>`snowflake_semantic_tools.domain.validate.semantic.shape`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs003.py` |
-| [`SST-PRS004`](error-codes.md#sst-prs004) | PRS | warning | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.domain.parse.fields`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/prs/test_sst_prs004.py` |
+| [`SST-PRS004`](error-codes.md#sst-prs004) | PRS | warning | local | `snowflake_semantic_tools.adapters.yaml.coco_profiles`<br>`snowflake_semantic_tools.adapters.yaml.fields`<br>`snowflake_semantic_tools.domain.parse.fields`<br>`snowflake_semantic_tools.domain.validate.semantic.dbt` | `tests/codes/prs/test_sst_prs004.py` |
 | [`SST-PRS005`](error-codes.md#sst-prs005) | PRS | error | local | `snowflake_semantic_tools.domain.resolve.template`<br>`snowflake_semantic_tools.domain.validate.agent`<br>`snowflake_semantic_tools.domain.validate.sql`<br>`snowflake_semantic_tools.domain.validate.tool` | `tests/codes/prs/test_sst_prs005.py` |
 | [`SST-PRS006`](error-codes.md#sst-prs006) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.build` | `tests/codes/prs/test_sst_prs006.py` |
 | [`SST-PRS007`](error-codes.md#sst-prs007) | PRS | error | local | `snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/prs/test_sst_prs007.py` |
@@ -427,7 +422,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-REF029`](error-codes.md#sst-ref029) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.phases`<br>`snowflake_semantic_tools.domain.resolve.template` | `tests/codes/ref/test_sst_ref029.py` |
 | [`SST-REF030`](error-codes.md#sst-ref030) | REF | error | local | `snowflake_semantic_tools.domain.resolve.template` | `tests/codes/ref/test_sst_ref030.py` |
 | [`SST-REF031`](error-codes.md#sst-ref031) | REF | error | local | `snowflake_semantic_tools.domain.resolve.template` | `tests/codes/ref/test_sst_ref031.py` |
-| [`SST-REF032`](error-codes.md#sst-ref032) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills`<br>`snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/ref/test_sst_ref032.py` |
+| [`SST-REF032`](error-codes.md#sst-ref032) | REF | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/ref/test_sst_ref032.py` |
 | [`SST-REF033`](error-codes.md#sst-ref033) | REF | error | local | `snowflake_semantic_tools.domain.resolve.calls` | `tests/codes/ref/test_sst_ref033.py` |
 | [`SST-REF034`](error-codes.md#sst-ref034) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.phases`<br>`snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/ref/test_sst_ref034.py` |
 | [`SST-REF035`](error-codes.md#sst-ref035) | REF | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.phases`<br>`snowflake_semantic_tools.domain.resolve.calls`<br>`snowflake_semantic_tools.domain.validate.semantic.authored_keys` | `tests/codes/ref/test_sst_ref035.py` |
@@ -779,7 +774,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL774`](error-codes.md#sst-val774) | VAL | info | runtime | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val774.py` |
 | [`SST-VAL775`](error-codes.md#sst-val775) | VAL | info | observe | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val775.py` |
 | [`SST-VAL776`](error-codes.md#sst-val776) | VAL | info | local | `snowflake_semantic_tools.domain.evaluate.compare_notices` | `tests/codes/val/test_sst_val776.py` |
-| [`SST-VAL801`](error-codes.md#sst-val801) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.domain.validate.coco_desktop_profile`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val801.py` |
+| [`SST-VAL801`](error-codes.md#sst-val801) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.agent_fields`<br>`snowflake_semantic_tools.adapters.yaml.coco_profiles`<br>`snowflake_semantic_tools.adapters.yaml.skills`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val801.py` |
 | [`SST-VAL802`](error-codes.md#sst-val802) | VAL | error | local | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val802.py` |
 | [`SST-VAL803`](error-codes.md#sst-val803) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val803.py` |
 | [`SST-VAL804`](error-codes.md#sst-val804) | VAL | info | local | `snowflake_semantic_tools.domain.validate.agent` | `tests/codes/val/test_sst_val804.py` |
@@ -794,15 +789,11 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL815`](error-codes.md#sst-val815) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.skill_files` | `tests/codes/val/test_sst_val815.py` |
 | [`SST-VAL816`](error-codes.md#sst-val816) | VAL | info | local | `snowflake_semantic_tools.domain.render.skill_bundle` | `tests/codes/val/test_sst_val816.py` |
 | [`SST-VAL820`](error-codes.md#sst-val820) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val820.py` |
-| [`SST-VAL822`](error-codes.md#sst-val822) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val822.py` |
-| [`SST-VAL823`](error-codes.md#sst-val823) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val823.py` |
 | [`SST-VAL824`](error-codes.md#sst-val824) | VAL | error | local | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val824.py` |
 | [`SST-VAL825`](error-codes.md#sst-val825) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val825.py` |
 | [`SST-VAL826`](error-codes.md#sst-val826) | VAL | error | local | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val826.py` |
 | [`SST-VAL827`](error-codes.md#sst-val827) | VAL | error | local | `snowflake_semantic_tools.app.apply.errors`<br>`snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val827.py` |
 | [`SST-VAL828`](error-codes.md#sst-val828) | VAL | error | local | `snowflake_semantic_tools.domain.validate.publication` | `tests/codes/val/test_sst_val828.py` |
-| [`SST-VAL829`](error-codes.md#sst-val829) | VAL | warning | observe | `snowflake_semantic_tools.app.lifecycle.channels` | `tests/codes/val/test_sst_val829.py` |
-| [`SST-VAL830`](error-codes.md#sst-val830) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val830.py` |
 | [`SST-VAL831`](error-codes.md#sst-val831) | VAL | info | local | `snowflake_semantic_tools.app.compile.skills` | `tests/codes/val/test_sst_val831.py` |
 | [`SST-VAL832`](error-codes.md#sst-val832) | VAL | error | local | `snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val832.py` |
 | [`SST-VAL834`](error-codes.md#sst-val834) | VAL | error | local | `snowflake_semantic_tools.domain.render.skill_bundle` | `tests/codes/val/test_sst_val834.py` |
@@ -814,23 +805,10 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL840`](error-codes.md#sst-val840) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/val/test_sst_val840.py` |
 | [`SST-VAL841`](error-codes.md#sst-val841) | VAL | warning | observe | `snowflake_semantic_tools.app.lifecycle.extension_versions` | `tests/codes/val/test_sst_val841.py` |
 | [`SST-VAL843`](error-codes.md#sst-val843) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.targets` | `tests/codes/val/test_sst_val843.py` |
-| [`SST-VAL844`](error-codes.md#sst-val844) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val844.py` |
-| [`SST-VAL845`](error-codes.md#sst-val845) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val845.py` |
-| [`SST-VAL846`](error-codes.md#sst-val846) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val846.py` |
-| [`SST-VAL847`](error-codes.md#sst-val847) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val847.py` |
-| [`SST-VAL848`](error-codes.md#sst-val848) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val848.py` |
-| [`SST-VAL849`](error-codes.md#sst-val849) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val849.py` |
-| [`SST-VAL850`](error-codes.md#sst-val850) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val850.py` |
-| [`SST-VAL851`](error-codes.md#sst-val851) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles` | `tests/codes/val/test_sst_val851.py` |
-| [`SST-VAL852`](error-codes.md#sst-val852) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles` | `tests/codes/val/test_sst_val852.py` |
-| [`SST-VAL853`](error-codes.md#sst-val853) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles` | `tests/codes/val/test_sst_val853.py` |
-| [`SST-VAL854`](error-codes.md#sst-val854) | VAL | info | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val854.py` |
-| [`SST-VAL855`](error-codes.md#sst-val855) | VAL | error | local | `snowflake_semantic_tools.app.compile.coco_desktop_profiles` | `tests/codes/val/test_sst_val855.py` |
+| [`SST-VAL845`](error-codes.md#sst-val845) | VAL | warning | local | `snowflake_semantic_tools.domain.validate.coco_profile` | `tests/codes/val/test_sst_val845.py` |
+| [`SST-VAL851`](error-codes.md#sst-val851) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_profiles` | `tests/codes/val/test_sst_val851.py` |
 | [`SST-VAL856`](error-codes.md#sst-val856) | VAL | error | local | `snowflake_semantic_tools.app.compile.agents.resolve_skills` | `tests/codes/val/test_sst_val856.py` |
-| [`SST-VAL857`](error-codes.md#sst-val857) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile`<br>`snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val857.py` |
-| [`SST-VAL858`](error-codes.md#sst-val858) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val858.py` |
-| [`SST-VAL859`](error-codes.md#sst-val859) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles` | `tests/codes/val/test_sst_val859.py` |
-| [`SST-VAL860`](error-codes.md#sst-val860) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_desktop_profile` | `tests/codes/val/test_sst_val860.py` |
+| [`SST-VAL857`](error-codes.md#sst-val857) | VAL | error | local | `snowflake_semantic_tools.domain.validate.skill` | `tests/codes/val/test_sst_val857.py` |
 | [`SST-VAL861`](error-codes.md#sst-val861) | VAL | info | observe | `snowflake_semantic_tools.app.lifecycle.extensions` | `tests/codes/val/test_sst_val861.py` |
 | [`SST-VAL870`](error-codes.md#sst-val870) | VAL | info | local | `snowflake_semantic_tools.app.compile.cowork_profiles.__init__` | `tests/codes/val/test_sst_val870.py` |
 | [`SST-VAL871`](error-codes.md#sst-val871) | VAL | error | local | `snowflake_semantic_tools.domain.validate.cowork_profile` | `tests/codes/val/test_sst_val871.py` |
@@ -850,3 +828,9 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-VAL886`](error-codes.md#sst-val886) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val886.py` |
 | [`SST-VAL887`](error-codes.md#sst-val887) | VAL | info | local | `snowflake_semantic_tools.domain.validate.eval_subject` | `tests/codes/val/test_sst_val887.py` |
 | [`SST-VAL888`](error-codes.md#sst-val888) | VAL | error | local | `snowflake_semantic_tools.domain.validate.eval_config` | `tests/codes/val/test_sst_val888.py` |
+| [`SST-VAL890`](error-codes.md#sst-val890) | VAL | info | local | `snowflake_semantic_tools.app.compile.coco_profiles` | `tests/codes/val/test_sst_val890.py` |
+| [`SST-VAL891`](error-codes.md#sst-val891) | VAL | info | local | `snowflake_semantic_tools.domain.validate.coco_profile` | `tests/codes/val/test_sst_val891.py` |
+| [`SST-VAL892`](error-codes.md#sst-val892) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_profile` | `tests/codes/val/test_sst_val892.py` |
+| [`SST-VAL893`](error-codes.md#sst-val893) | VAL | info | local | `snowflake_semantic_tools.domain.validate.coco_profile` | `tests/codes/val/test_sst_val893.py` |
+| [`SST-VAL894`](error-codes.md#sst-val894) | VAL | error | local | `snowflake_semantic_tools.domain.validate.coco_profile` | `tests/codes/val/test_sst_val894.py` |
+| [`SST-VAL895`](error-codes.md#sst-val895) | VAL | error | local | `snowflake_semantic_tools.adapters.yaml.coco_profiles` | `tests/codes/val/test_sst_val895.py` |

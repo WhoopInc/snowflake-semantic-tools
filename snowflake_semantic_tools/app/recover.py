@@ -13,8 +13,8 @@ definition being planned:
 - A composite artifact, whose objects carry no marker, when its lifecycle handler proves from
   their content that they are the compiled definition (`CompositeLifecycleHandler.recover`):
   a skill or plugin by its aliased version's files and the bundle prefix they were added from,
-  read back byte for byte; a profile by its registry row, as Desktop reads it; an eval by its
-  dataset version's provenance and its staged config's bytes.
+  read back byte for byte; an eval by its dataset version's provenance and its staged config's
+  bytes.
 
 Each entry is the one apply records for that object, so the plan that follows reads them as
 unchanged. Everything else that state does not record is reported with what the next apply

@@ -47,8 +47,11 @@ _BLOCK = KeyKind.BLOCK
 # A location part a block's objects are created in; a stage or table may be written qualified.
 _ID = KeyKind.IDENTIFIER
 _OBJ = KeyKind.OBJECT_NAME
-# The CoCo Desktop profiles block, and the folder its profiles are read from by default.
-_DESKTOP = "coco_desktop_profiles"
+# The CoCo Desktop profile registry SST published to before Cortex Code agent profiles replaced it.
+_RETIRED_DESKTOP = (
+    "CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; "
+    "move each profile to coco_profiles/ and configure coco_profiles:"
+)
 _SCH = KeyKind.SCHEMA_NAME
 
 CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
@@ -60,26 +63,27 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     _key(
         "project.skills_dir",
         _S,
-        "`SKILL.md` folders, published as Cortex Extensions and inside Desktop profiles.",
+        "`SKILL.md` folders, published as Cortex Extensions that agents and profiles pin.",
         default="skills",
     ),
     _key("project.plugins_dir", _S, "Plugin manifests, each grouping skills into one extension.", default="plugins"),
-    _key("project.coco_desktop_profiles_dir", _S, "CoCo Desktop profiles and their shared layer.", default=_DESKTOP),
-    _removed("project.profiles_dir", "renamed project.coco_desktop_profiles_dir"),
+    _key(
+        "project.coco_profiles_dir",
+        _S,
+        "Cortex Code agent profiles (Snowflake private preview) and their shared layer.",
+        default="coco_profiles",
+    ),
+    _removed("project.coco_desktop_profiles_dir", _RETIRED_DESKTOP),
+    _removed("project.profiles_dir", _RETIRED_DESKTOP),
     _key(
         "project.cowork_profiles_dir",
         _S,
         "Snowflake CoWork profiles (Snowflake private preview), each routing questions to agents.",
         default="cowork_profiles",
     ),
-    _key("project.hooks_dir", _S, "Hook definitions and their scripts, referenced by profiles.", default="hooks"),
-    _key("project.mcp_servers_dir", _S, "MCP server configs, referenced by profiles.", default="mcp-servers"),
-    _key(
-        "project.commands_dir",
-        _S,
-        "Desktop slash commands (`*.md`, nested folders allowed), referenced by profiles.",
-        default="commands",
-    ),
+    _removed("project.hooks_dir", "Cortex Code agent profiles cannot carry hooks"),
+    _removed("project.mcp_servers_dir", "Cortex Code agent profiles cannot carry MCP servers"),
+    _removed("project.commands_dir", "Cortex Code agent profiles cannot carry commands; make each one a skill"),
     _key(
         "project.target_profile",
         _S,
@@ -553,7 +557,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "set +bundle_stage, +database and +schema on skills: and plugins: themselves",
         code="SST-CFG042",
     ),
-    _removed("skills.stage", "Desktop profiles publish through coco_desktop_profiles:", code="SST-CFG042"),
+    _removed("skills.stage", _RETIRED_DESKTOP, code="SST-CFG042"),
     _removed("skills.extensions", "consumed extensions are the top-level extensions: block", code="SST-CFG042"),
     _key("skills.<route>", _BLOCK, "Folder route: overrides for the skills under that directory."),
     _key(
@@ -584,35 +588,41 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
     ),
     _key("plugins.<route>", _BLOCK, "Folder route: overrides for the plugins under that directory."),
     _key(
-        "coco_desktop_profiles",
+        "coco_profiles",
         _BLOCK,
-        "Defaults for CoCo Desktop profiles, overridable per folder and by a profile's own `config:`. A "
-        "profile publishes only when `+stage` resolves for it.",
+        "Defaults for Cortex Code agent profiles (Snowflake private preview), overridable per folder and by a "
+        "profile's own `config:`. The Cortex Code CLI, Desktop, and Snowsight list only the profiles in "
+        "CORTEX_CODE.CONFIG.",
         children=ChildPolicy.ROUTES,
     ),
-    _key(f"{_DESKTOP}.+database", _ID, "Database of the profile stage and registry.", default="the target database"),
-    _key(f"{_DESKTOP}.+schema", _ID, "Schema of the profile stage and registry.", default="the target schema"),
     _key(
-        "coco_desktop_profiles.+stage",
-        _OBJ,
-        "Internal stage that holds profile trees; created when absent. Unset, the profile does not publish.",
+        "coco_profiles.+database",
+        _ID,
+        "Database for Cortex Code profiles; Cortex Code lists only the profiles in CORTEX_CODE.CONFIG.",
+        default="the target database",
     ),
     _key(
-        "coco_desktop_profiles.+registry_table",
-        _OBJ,
-        "Profile registry table; the default is the only one Desktop reads. A bare name is "
-        "qualified in `+database`.`+schema`, for rehearsal.",
-        default="CORTEX_CODE.CONFIG.PROFILE_REGISTRY",
+        "coco_profiles.+schema",
+        _ID,
+        "Schema for Cortex Code profiles; Cortex Code lists only the profiles in CORTEX_CODE.CONFIG.",
+        default="the target schema",
     ),
     _key(
-        "coco_desktop_profiles.+name_suffix",
+        "coco_profiles.+enabled",
+        _B,
+        "Whether Cortex Code profiles are compiled; false leaves them out of the project.",
+        default="true",
+    ),
+    _key(
+        "coco_profiles.+name_suffix",
         _S,
-        "Appended to each profile's name to make its row's `CONFIG_NAME`, so targets sharing one "
-        "registry write separate rows; letters, digits, `_`, and `-`.",
+        "Appended to each profile's name to make its AGENT's, so targets sharing CORTEX_CODE.CONFIG publish "
+        "separate profiles; letters, digits, and `_`.",
         default="",
     ),
-    _key("coco_desktop_profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
-    _removed("profiles", "renamed coco_desktop_profiles:"),
+    _key("coco_profiles.<route>", _BLOCK, "Folder route: overrides for the profile in that directory."),
+    _removed("coco_desktop_profiles", _RETIRED_DESKTOP),
+    _removed("profiles", _RETIRED_DESKTOP),
     _key(
         "extensions",
         _BLOCK,

@@ -24,7 +24,7 @@ registry, configuration, discovery, parsing, loading, references, membership, va
 rendering, manifest and state, planning, apply, unpublished runs, Snowflake, external systems, and internal.
 
 `VAL` is the largest area, so its hundreds digit is a band, and each band is its own module, but
-for `VAL7xx` and `VAL8xx`, which two modules each share by range:
+for `VAL7xx` and `VAL8xx`, which several modules each share by range:
 
 | Band | Checks | Module |
 |---|---|---|
@@ -37,8 +37,9 @@ for `VAL7xx` and `VAL8xx`, which two modules each share by range:
 | `VAL6xx` | tools | `val_tool` |
 | `VAL7xx`, 700-769 | evals | `val_eval` |
 | `VAL7xx`, 770-789 | comparing orchestration models on an eval's published subject | `val_compare` |
-| `VAL8xx`, 801-869 | skills, plugins, and CoCo Desktop profiles | `val_skill` |
+| `VAL8xx`, 801-869 | skills and plugins, and the profile checks Cortex Code profiles share with them | `val_skill` |
 | `VAL8xx`, 870-889 | Snowflake CoWork profiles, a Snowflake private preview[^preview] | `val_cowork_profile` |
+| `VAL8xx`, 890-899 | Cortex Code agent profiles, a Snowflake private preview | `val_coco_profile` |
 
 An artifact or member type's `validation_rules` names the bands that check it, and `RULE_SETS` maps
 each name to its band.

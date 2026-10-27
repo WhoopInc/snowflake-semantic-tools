@@ -364,6 +364,7 @@ class PlanArtifacts:
             ),
             kind_targets=kind_targets if kind_targets is not None else targets_by_kind(rendered.values(), state),
             adopted=adopted_names(state),
+            recorded_keys=recorded_keys(state),
         )
         if self._observe_options.grants:
             observation, unread = observe_replaced_tags(
@@ -606,6 +607,20 @@ def targets_by_kind(rendered: Iterable[RenderedArtifact], state: State) -> Mappi
             continue
         found.setdefault(kind, {})[name] = None
     return MappingProxyType({kind: tuple(targets) for kind, targets in found.items()})
+
+
+def recorded_keys(state: State) -> Mapping[tuple[str, str, str], str]:
+    """Return the artifact key state records for each object, by its folded name.
+
+    An entry whose name does not parse is left out, as `adopted_names` leaves one out.
+    """
+    keys: dict[tuple[str, str, str], str] = {}
+    for key, entry in state.applied.items():
+        try:
+            keys.setdefault(QualifiedName.parse(entry.qualified_name).folded, key)
+        except ValueError:
+            continue
+    return MappingProxyType(keys)
 
 
 def adopted_names(state: State) -> frozenset[tuple[str, str, str]]:

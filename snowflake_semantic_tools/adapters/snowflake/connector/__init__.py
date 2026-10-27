@@ -2,7 +2,7 @@
 
 `session` owns the connection, its lock, SQL execution, and the translation of driver
 failures into `SnowflakePortError`. `catalog`, `preflight` (built on `catalog`), `stage`,
-`profile_registry`, `state_table` and `run_lock` each implement one role protocol on that
+`state_table` and `run_lock` each implement one role protocol on that
 session, as `profiler` and `cortex` implement the ones `sst enrich` reads through, and
 `cortex_models` the one connected validation checks orchestration models through,
 `agent_run` the one unpublished evals run an agent through, `agent_stream` the REST one
@@ -22,7 +22,6 @@ from snowflake_semantic_tools.adapters.snowflake.connector.cortex_models import 
 from snowflake_semantic_tools.adapters.snowflake.connector.importing import ImportMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.pool import ConnectorPool
 from snowflake_semantic_tools.adapters.snowflake.connector.preflight import PreflightMethods
-from snowflake_semantic_tools.adapters.snowflake.connector.profile_registry import ProfileRegistryMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.profiler import ProfilerMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.run_lock import RunLockMethods
 from snowflake_semantic_tools.adapters.snowflake.connector.stage import StageMethods
@@ -34,7 +33,6 @@ class SnowflakeConnector(
     PreflightMethods,
     ImportMethods,
     StageMethods,
-    ProfileRegistryMethods,
     StateConvertMethods,
     StateTableMethods,
     RunLockMethods,

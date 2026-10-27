@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest
+from snowflake_semantic_tools.app.manifest import _changed_section, manifest_for, stale_manifest
 from snowflake_semantic_tools.domain.diagnostics import D
 from tests.helpers.compile_builders import compiled, with_diagnostics
 from tests.helpers.project_inputs import EMPTY_SOURCES
@@ -37,6 +37,12 @@ def test_with_the_same_inputs_the_first_differing_section_and_key_are_named() ->
     assert _reason(digest, now) == "the project compiles to another manifest now: project.dbt_digest differs"
     added = manifest_for(compiled("SALES", "OTHER"), EMPTY_SOURCES)
     assert _reason(base, added).endswith("artifacts.semantic_view:other is new")
+
+
+def test_a_section_that_is_not_a_mapping_on_both_sides_is_named_whole() -> None:
+    assert _changed_section({"warnings": ["a"]}, {"warnings": ["b"]}) == "warnings differs"
+    assert _changed_section({"project": {"a": 1}}, {"project": None}) == "project differs"
+    assert _changed_section({"project": {"a": 1}}, {"project": {"a": 1}}) is None
 
 
 def test_a_note_that_the_deferred_manifest_was_reused_does_not_change_the_manifest_id() -> None:

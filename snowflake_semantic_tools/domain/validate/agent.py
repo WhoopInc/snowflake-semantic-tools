@@ -40,6 +40,20 @@ SPEC_WARNING_BYTES = 80_000
 PROFILE_LIMIT_BYTES = 1_000
 
 
+class SpecOwner(Protocol):
+    """What the spec-size rule reads of the AGENT object whose spec it measures."""
+
+    @property
+    def name(self) -> str:
+        """Return the object's name, as written."""
+        ...
+
+    @property
+    def key(self) -> str:
+        """Return the object's artifact key, which each diagnostic names as its subject."""
+        ...
+
+
 class PublishedAgent(Protocol):
     """What the rules every published AGENT object shares read: an agent's, or a CoWork profile's."""
 
@@ -342,10 +356,11 @@ def token_budget(agent: AgentModel) -> tuple[Diagnostic, ...]:
     return (D("SST-VAL547", artifact=agent.name, subject=agent.key),)
 
 
-def spec_size(model: PublishedAgent, payload: str) -> tuple[Diagnostic, ...]:
+def spec_size(model: SpecOwner, payload: str) -> tuple[Diagnostic, ...]:
     """Report a rendered spec at or over `SPEC_LIMIT_BYTES`, else one at or over `SPEC_WARNING_BYTES`.
 
-    An agent's spec and a CoWork profile's are held to the same limits: both publish an AGENT.
+    An agent's, a CoWork profile's, and a Cortex Code profile's spec are held to the same limits:
+    each publishes an AGENT.
 
     Diagnostics:
         SST-VAL511: the rendered spec is over the 100,000-byte limit.

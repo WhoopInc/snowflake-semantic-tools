@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from snowflake_semantic_tools.domain.model.coco_desktop_profile.model import CocoDesktopProfileRelease
 from snowflake_semantic_tools.domain.model.pii_shape import pii_shape
 from snowflake_semantic_tools.domain.plan.definitions.semantic_view import live_view_from_yaml
 from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
@@ -66,9 +65,3 @@ def test_a_metric_names_over_only_as_a_window_outside_quotes_and_words() -> None
     assert "expression" in members[("metric", "quoted")]
     assert "expression" in members[("metric", "worded")]
     assert "window_expression" in members[("metric", "windowed")]
-
-
-def test_a_coco_desktop_release_without_a_config_name_takes_its_profile_name() -> None:
-    release = CocoDesktopProfileRelease(name="analyst", content="c", trees=(), row={}, source_files=())
-    assert release.config_name == "analyst"
-    assert CocoDesktopProfileRelease("analyst", "c", (), {}, (), config_name="analyst_dev").config_name == "analyst_dev"

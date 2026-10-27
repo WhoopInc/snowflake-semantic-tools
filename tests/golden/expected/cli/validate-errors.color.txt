@@ -52,5 +52,5 @@ $ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-synt
    [34m[1m=[0m [2msst explain SST-CFG018[0m
 
 [31m[1m✗[0m [1mvalidate failed[0m: 1 error, 7 warnings · <n>s
-[2m  hidden: 58 info (--show-info), 1 cascade (--show-cascade)[0m
+[2m  hidden: 61 info (--show-info), 1 cascade (--show-cascade)[0m
   [36mnext:[0m fix the error, then run `sst validate` again

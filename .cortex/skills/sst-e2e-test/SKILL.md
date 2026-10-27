@@ -7,7 +7,7 @@ description: "End-to-end QA for SST on the in-repo reference project: the test s
 
 ## Purpose
 
-This skill checks that the `sst` CLI works end to end after a change. The offline phases use `tests/fixtures/reference_project`, a dbt + SST project with 16 artifacts of all eight types, compiled from its vendored dbt manifest, so they need no Snowflake account. They also exercise `sst migrate refs` on the 0.3 dialect corpus in `tests/fixtures/v1_dialect`.
+This skill checks that the `sst` CLI works end to end after a change. The offline phases use `tests/fixtures/reference_project`, a dbt + SST project with 17 artifacts of all eight types, compiled from its vendored dbt manifest, so they need no Snowflake account. They also exercise `sst migrate refs` on the 0.3 dialect corpus in `tests/fixtures/v1_dialect`.
 
 The connected phase publishes to a scratch schema, and it runs only when the user asks for it.
 
@@ -52,7 +52,7 @@ poetry run sst -o human validate --project-dir $P --manifest $M --no-strict --no
 
 ### Pass Criteria
 - Exit code 0
-- stderr ends with `✓ validated 16 artifacts · 0 errors, 7 warnings · <time>` and `hidden: 55 info (--show-info)`
+- stderr ends with `✓ validated 17 artifacts · 0 errors, 7 warnings · <time>` and `hidden: 61 info (--show-info)`
 - The warnings and the info codes match `expected-outputs.md`: the six expected artifact warnings, plus `SST-CFG034`, which `--no-strict` itself raises because it contradicts the fixture's `validation.strict: true`
 
 Without `--no-strict`, exit 1 is expected: the fixture's `validation.strict: true` promotes the five warnings to errors (`5 errors; 0 warnings; 51 info`).
@@ -68,7 +68,7 @@ ls -R "$OUT"
 ```
 
 ### Pass Criteria
-- Exit code 0, with `wrote sst_target/manifest.json` and `wrote 16 files to <dir>` on stdout, and `✓ compiled 16 artifacts · 0 errors, 6 warnings` on stderr
+- Exit code 0, with `wrote sst_target/manifest.json` and `wrote 17 files to <dir>` on stdout, and `✓ compiled 17 artifacts · 0 errors, 6 warnings` on stderr
 - The file names match `expected-outputs.md`
 - The rendered files reflect the change under test (for example, read `$OUT/semantic_view/jaffle_sales.sql` after a semantic view change)
 
@@ -80,7 +80,7 @@ ls -R "$OUT"
 poetry run pytest tests/unit/test_goldens.py
 ```
 
-The goldens are the engine's own test tooling, not an `sst test` run. This compiles a copy of the reference project from its vendored manifest and compares every artifact's payloads with its golden under `tests/golden/expected/` (`ddl/`, `agent/`, `tool/`, `cowork_profile/`, `eval/`, `skill/`, `plugin/`, `coco_desktop_profile/`), and checks that compiling twice reports the same diagnostic fingerprints. Phase 1 already runs it; run it alone to see the diffs.
+The goldens are the engine's own test tooling, not an `sst test` run. This compiles a copy of the reference project from its vendored manifest and compares every artifact's payloads with its golden under `tests/golden/expected/` (`ddl/`, `agent/`, `tool/`, `cowork_profile/`, `eval/`, `skill/`, `plugin/`, `coco_profile/`), and checks that compiling twice reports the same diagnostic fingerprints. Phase 1 already runs it; run it alone to see the diffs.
 
 ### Pass Criteria
 - Every test passes (`9 passed`), exit 0
@@ -160,9 +160,9 @@ Compile results from all phases into a summary:
 Phase               | Status | Details
 ----------------------------------------------
 1. Test suite       | ...    | all gates / failing gate
-2. Validate         | ...    | 16 artifacts, 0 errors, 7 warnings (6 + SST-CFG034)
-3. Compile          | ...    | 16 payload files
-4. Goldens          | ...    | 16 artifacts match
+2. Validate         | ...    | 17 artifacts, 0 errors, 7 warnings (6 + SST-CFG034)
+3. Compile          | ...    | 17 payload files
+4. Goldens          | ...    | 17 artifacts match
 5. migrate refs     | ...    | 4 files pending, round trip matches
 6. Connected        | ...    | SKIPPED unless requested
 ----------------------------------------------

@@ -40,7 +40,7 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
-from snowflake_semantic_tools.adapters.yaml.coco_desktop_profiles import load_coco_desktop_profile_catalog
+from snowflake_semantic_tools.adapters.yaml.coco_profiles import load_coco_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
 from snowflake_semantic_tools.adapters.yaml.cowork_profiles import load_cowork_profiles
 from snowflake_semantic_tools.adapters.yaml.discover import directory_refused, discover_yaml
@@ -54,7 +54,7 @@ from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import (
     config_block,
     config_bool,
@@ -472,16 +472,9 @@ class YamlProjectInputs(ProjectInputs):
             self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir, config=self.config().tree
         )
 
-    def coco_desktop_profile_catalog(
-        self, *, coco_desktop_profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
-    ) -> CocoDesktopProfileCatalog:
-        return load_coco_desktop_profile_catalog(
-            self._project_dir,
-            coco_desktop_profiles_dir=coco_desktop_profiles_dir,
-            hooks_dir=hooks_dir,
-            mcp_servers_dir=mcp_servers_dir,
-            commands_dir=commands_dir,
-            config=self.config().tree,
+    def coco_profile_catalog(self, *, coco_profiles_dir: str) -> tuple[CocoProfileCatalog, DiagnosticBag]:
+        return load_coco_profile_catalog(
+            self._project_dir, coco_profiles_dir=coco_profiles_dir, config=self.config().tree
         )
 
     def dbt_catalog(self) -> DbtCatalog:
@@ -624,8 +617,8 @@ def _file_checksums(
     """Checksum every input file the manifest records, by project-relative path.
 
     With a dbt project, each semantic model document discovery finds; then every file under the
-    tools, agents, CoWork profiles, and eval metric roots; then under the skill, plugin, profile, hook, MCP
-    server, and command roots. Those bundled roots skip what publication skips: hidden entries
+    tools, agents, CoWork profiles, and eval metric roots; then under the skill, plugin, and Cortex
+    Code profile roots. Those bundled roots skip what publication skips: hidden entries
     and caches.
 
     A symbolic link, or a file reached through one, is skipped, as every loader refuses it: no
@@ -651,10 +644,7 @@ def _file_checksums(
     bundled = (
         configured_dir(config, "skills_dir", "skills"),
         configured_dir(config, "plugins_dir", "plugins"),
-        configured_dir(config, "coco_desktop_profiles_dir", "coco_desktop_profiles"),
-        configured_dir(config, "hooks_dir", "hooks"),
-        configured_dir(config, "mcp_servers_dir", "mcp-servers"),
-        configured_dir(config, "commands_dir", "commands"),
+        configured_dir(config, "coco_profiles_dir", "coco_profiles"),
     )
     for directory in (*directories, *bundled):
         root = project_dir / directory

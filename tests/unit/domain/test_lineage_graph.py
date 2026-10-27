@@ -41,7 +41,6 @@ def test_a_manifest_s_lineage_runs_from_dbt_through_members_to_artifacts() -> No
     assert graph.parents["metric:per_order"] == ("metric:revenue",)
     assert graph.parents["dimension:events.kind"] == ("source:raw.events",)
     assert graph.parents["agent:helper"] == ("semantic_view:sales", "tool:status", "tool_ref:partner")
-    assert graph.parents["coco_desktop_profile:p"] == ("agent:helper",)
     assert graph.parents["snapshot:history"] == ("model:shared",)
 
 
@@ -72,7 +71,7 @@ def test_a_walk_goes_as_far_as_its_operators_say() -> None:
     }
     assert graph.reach(("model:orders", "nope"), upstream=True, depth=1) == {"model:orders": 0, "model:stg_orders": 1}
     downstream = graph.walk(("model:orders",), GraphSelector("model:orders", downstream=None))
-    assert {"metric:per_order", "agent:helper", "coco_desktop_profile:p"} <= downstream
+    assert {"metric:per_order", "agent:helper"} <= downstream
     assert "model:stg_orders" not in downstream
     both = graph.walk(("metric:revenue",), GraphSelector("metric:revenue", upstream=1, downstream=1))
     assert both == {"metric:revenue", "model:orders", "metric:per_order", "semantic_view:sales"}
@@ -128,8 +127,7 @@ def test_each_edge_records_how_its_reader_uses_what_it_reads() -> None:
     assert graph.kind("tool:status", "agent:helper") == "calls"
     assert graph.kind("tool_ref:partner", "agent:helper") == "calls"
     assert graph.kind("semantic_view:sales", "agent:helper") == "calls"
-    # No phrase is recorded for a profile reading an agent, and none for a pair with no edge.
-    assert graph.kind("agent:helper", "coco_desktop_profile:p") == "depends"
+    # No phrase is recorded for a pair with no edge.
     assert graph.kind("model:orders", "agent:helper") == "depends"
     assert set(graph.kinds.values()) <= set(EDGE_KINDS)
 
@@ -165,6 +163,23 @@ def test_a_cowork_profile_calls_the_agents_it_routes_to_and_loads_its_skills() -
     assert graph.kind("tool_ref:partner", _PROFILE) == "calls"
     assert graph.kind("skill:notes", _PROFILE) == "loads"
     assert set(graph.kinds.values()) <= set(EDGE_KINDS)
+
+
+def test_a_cortex_code_profile_loads_the_skills_and_plugins_it_pins() -> None:
+    # Cortex Code agent profiles are a Snowflake private preview.
+    document = lineage_manifest()
+    profile = ArtifactEntry(
+        "coco_profile", "p", "f" * 64, (), (), ("plugin:kit", "skill:notes"), "CORTEX_CODE.CONFIG.P", 1, "AGENT"
+    )
+    skill = ArtifactEntry("skill", "notes", "f" * 64, (), (), (), "DB.S.NOTES", 1, "CORTEX EXTENSION")
+    plugin = ArtifactEntry("plugin", "kit", "f" * 64, (), (), (), "DB.S.KIT", 1, "CORTEX EXTENSION")
+    artifacts = MappingProxyType(
+        {**document.artifacts, "coco_profile:p": profile, "skill:notes": skill, "plugin:kit": plugin}
+    )
+    graph = manifest_lineage(dataclasses.replace(document, artifacts=artifacts))
+    assert graph.parents["coco_profile:p"] == ("plugin:kit", "skill:notes")
+    assert graph.kind("skill:notes", "coco_profile:p") == "loads"
+    assert graph.kind("plugin:kit", "coco_profile:p") == "loads"
 
 
 def test_a_column_a_member_reads_sits_between_its_model_and_the_member() -> None:

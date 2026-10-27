@@ -1,11 +1,12 @@
-"""Skills, plugins, Desktop profiles and their parts, for the per-code skill and profile tests.
+"""Skills, plugins, and Cortex Code profiles, for the per-code skill and profile tests.
 
 `skill` is one valid skill folder, `month-close`, whose SKILL.md references the one file it
-ships; `plugin` bundles skills by name; `profile` is the `analyst` Desktop profile carrying
-`month-close`. `write` lays a project tree on disk for the loader-level checks. `compile_agents`
-compiles agents against the project's published extensions: `month-close`, a skill, and
-`finance-kit`, a plugin carrying it and its `close.py` script. `publish_extensions` plans and
-applies compiled skills against a recorded Snowflake, the way `sst apply` does.
+ships; `plugin` bundles skills by name; `profile` is the `analyst` Cortex Code profile pinning
+`month-close`, which `compile_profiles` compiles against the published extensions. `write`
+lays a project tree on disk for the loader-level checks. `compile_agents` compiles agents
+against the project's published extensions: `month-close`, a skill, and `finance-kit`, a plugin
+carrying it and its `close.py` script. `publish_extensions` plans and applies compiled skills
+against a recorded Snowflake, the way `sst apply` does.
 """
 
 from __future__ import annotations
@@ -15,19 +16,18 @@ from dataclasses import replace
 from snowflake_semantic_tools.app.apply import ApplyArtifacts
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, ExtensionPin
 from snowflake_semantic_tools.app.compile.base import CompileResult
+from snowflake_semantic_tools.app.compile.coco_profiles import CompileCocoProfiles
 from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
 from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
 from snowflake_semantic_tools.app.manifest import build_manifest
 from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentSkill, AgentTool
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import (
-    CocoDesktopProfile,
-    CocoDesktopProfileCatalog,
-    CommandFile,
-    HookDefinition,
-    McpConfig,
-    SharedCocoDesktopProfile,
+from snowflake_semantic_tools.domain.model.coco_profile import (
+    CocoProfileCatalog,
+    CocoProfileModel,
+    SharedCocoProfile,
+    owned_entries,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
@@ -84,53 +84,31 @@ def skill_catalog(*skills: Skill, plugins: tuple[Plugin, ...] = ()) -> SkillCata
     return SkillCatalog(skills or (skill(),), plugins)
 
 
-def profile(name: str = "analyst", **fields: object) -> CocoDesktopProfile:
-    value = CocoDesktopProfile(
+def profile(name: str = "analyst", **fields: object) -> CocoProfileModel:
+    """The `name` Cortex Code profile pinning `month-close`, with `fields` replaced."""
+    manifest = f"coco_profiles/{name}/coco_profile.yml"
+    value = CocoProfileModel(
         name,
-        f"coco_desktop_profiles/{name}",
-        "Analyst.",
-        "Data",
-        ("month-close",),
-        (),
-        (),
-        None,
-        Origin(f"coco_desktop_profiles/{name}/coco_desktop_profile.yml", 1),
-        (f"coco_desktop_profiles/{name}/coco_desktop_profile.yml",),
+        Origin(manifest, 1),
+        (manifest,),
+        comment="Analyst.",
+        prompt="Be careful.\n",
+        skills=owned_entries("skill", ("month-close",)),
+        published_name=name,
     )
     return replace(value, **fields)  # type: ignore[arg-type]
 
 
-def shared(**fields: object) -> SharedCocoDesktopProfile:
-    value = SharedCocoDesktopProfile(
-        "Shared rules.\n", (), (), Origin("coco_desktop_profiles/shared/coco_desktop_profile.yml", 1)
-    )
+def shared(**fields: object) -> SharedCocoProfile:
+    value = SharedCocoProfile("Shared rules.\n", (), (), Origin("coco_profiles/shared/coco_profile.yml", 1))
     return replace(value, **fields)  # type: ignore[arg-type]
 
 
-def hook(name: str = "sql-safety", script: str = "check.sh") -> HookDefinition:
-    return HookDefinition(
-        name,
-        f"hooks/{name}",
-        "PreToolUse",
-        "bash",
-        SkillFile(script, b"#!/bin/sh\n"),
-        Origin(f"hooks/{name}/hook.yml", 1),
-        matcher="snowflake_sql_execute",
-    )
+def profile_catalog(*profiles: CocoProfileModel, shared: SharedCocoProfile | None = None) -> CocoProfileCatalog:
+    return CocoProfileCatalog(profiles or (profile(),), shared)
 
 
-def mcp(name: str = "dbt", servers: dict[str, object] | None = None) -> McpConfig:
-    value = servers if servers is not None else {"dbt": {"command": "dbt-mcp", "env": {"TOKEN": "${DBT_TOKEN}"}}}
-    return McpConfig(name, f"mcp-servers/{name}/mcp.json", value, Origin(f"mcp-servers/{name}/mcp.json", 1))
-
-
-def command(path: str = "sql/check", content: str = "Run the check.\n") -> CommandFile:
-    return CommandFile(path, content.encode("utf-8"), f"commands/{path}.md", Origin(f"commands/{path}.md", 1))
-
-
-def profile_catalog(*profiles: CocoDesktopProfile, **fields: object) -> CocoDesktopProfileCatalog:
-    value = CocoDesktopProfileCatalog(profiles or (profile(),))
-    return replace(value, **fields)  # type: ignore[arg-type]
+PROFILE_SCHEMA = ("CORTEX_CODE", "CONFIG")
 
 
 SKILL_PIN = ExtensionPin(
@@ -156,8 +134,8 @@ def skill_ref(name: str, path: str, *, ref: str = "skill", version: str = "", va
     return AgentSkill(name, "CORTEX_EXTENSION", path, version, ref=ref, version_var=var)
 
 
-def compile_agents(*agents: AgentModel, unpublished: dict[str, str] | None = None) -> CompileResult:
-    context = AgentCompileContext(
+def _context(unpublished: dict[str, str] | None) -> AgentCompileContext:
+    return AgentCompileContext(
         semantic_views={},
         tools=ToolCatalog((), "dev", frozenset(("dev",))),
         agents={},
@@ -172,7 +150,22 @@ def compile_agents(*agents: AgentModel, unpublished: dict[str, str] | None = Non
         plugins={"finance-kit": PLUGIN_PIN},
         unpublished=unpublished or {},
     )
-    return CompileAgents(agents, DiagnosticBag(), context).run_result()
+
+
+def compile_agents(*agents: AgentModel, unpublished: dict[str, str] | None = None) -> CompileResult:
+    return CompileAgents(agents, DiagnosticBag(), _context(unpublished)).run_result()
+
+
+def compile_profiles(
+    catalog: CocoProfileCatalog,
+    *,
+    unpublished: dict[str, str] | None = None,
+    schema: tuple[str, str] = PROFILE_SCHEMA,
+    diagnostics: DiagnosticBag = DiagnosticBag(),
+) -> CompileResult:
+    """Compile Cortex Code profiles against `month-close` and `finance-kit`, each published to `schema`."""
+    targets = {model.key: QualifiedName.from_parts(*schema, model.published_name) for model in catalog.profiles}
+    return CompileCocoProfiles(catalog, diagnostics, _context(unpublished), targets).run_result()
 
 
 CATALOG_CHANNEL = CatalogChannel("DB", "S", QualifiedName.parse("DB.S.SKILL_BUNDLES"))

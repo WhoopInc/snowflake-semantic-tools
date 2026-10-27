@@ -126,13 +126,21 @@ In `sst_config.yml` it moves what left `skills:`:
 | Earlier | Now |
 |---|---|
 | `skills.catalog.+database`, `+schema`, `+bundle_stage` | the same keys on `skills:`, and a new `plugins:` block with them and the root's `+certified` and `+version_prefix`, when the project has plugins |
-| `skills.stage` | the top-level `coco_desktop_profiles:` block |
+| `skills.stage` | not moved: it is left in place with a note for a hand edit (`SST-CFG042` until removed) |
 | `skills.extensions` | the top-level `extensions:` block |
 | `+flatten`, `+prune_deleted`, `+auto_compress`, `+layout`, `skills.catalog.+registry_table` | removed: their values were fixed |
 | a routed block's `+key: null` | removed: an absent key is unset, and `null` is `SST-CFG054` |
 
 A block that already exists at the top level is not overwritten; the move is
 reported for a hand edit.
+
+A 0.3 `skills.stage` published desktop profiles from the skills folder; SST 1.0
+has no such artifact. Move each one by hand to a Cortex Code profile, a folder
+`coco_profiles/<name>/` holding a `coco_profile.yml` that lists its skills with
+`{{ skill() }}`, configure the `coco_profiles:` block, then delete
+`skills.stage`. Hooks, MCP servers, and commands have no place in a Cortex Code
+profile; make a command a skill. See
+[Plugins and Cortex Code profiles](plugins-and-coco-profiles.md#cortex-code-profiles).
 
 ```bash
 sst migrate split            # report only: exit 2 when a split is pending
@@ -222,8 +230,7 @@ Verified-query SQL is not rewritten: a table it reads by name rather than with
 
 It reads every YAML file under `project.semantic_models_dir` and
 `project.tools_dir`, each `agent.yml` and `evals/` file under
-`project.agents_dir`, each `hook.yml` under `project.hooks_dir`, each command
-under `project.commands_dir`, and the `tool()` calls of `sst_config.yml`,
+`project.agents_dir`, and the `tool()` calls of `sst_config.yml`,
 skipping hidden directories; it never edits dbt YAML, and needs neither a
 manifest nor a connection.
 

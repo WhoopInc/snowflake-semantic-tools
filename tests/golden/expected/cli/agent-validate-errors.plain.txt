@@ -1,7 +1,7 @@
 $ sst -o agent --project-dir <project> --manifest <manifest> validate
 --- exit 1
 --- stdout
-sst validate: FAIL exit=1 errors=1 warnings=7 info_hidden=58 time=<n>s
+sst validate: FAIL exit=1 errors=1 warnings=7 info_hidden=61 time=<n>s
 E SST-REF002 semantic_models/metrics/total_supply_cost.yml:8:34 metric:total_supply_cost | {{ ref('supplies','supply_costs') }}: 'supply_costs' is not a column on supplies
   fix: correct the column name, or add it to the model's columns: block
   cascade SST-MEM107 semantic_models/metrics/total_supply_cost.yml:5:3 | metric:total_supply_cost skipped: 1 unresolved references

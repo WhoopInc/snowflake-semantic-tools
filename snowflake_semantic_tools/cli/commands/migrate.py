@@ -11,7 +11,6 @@ from snowflake_semantic_tools.adapters.yaml.migrate import (
     create_file,
     files_under,
     filter_sites,
-    hook_files,
     remove_file,
     semantic_files,
     uses_crlf,
@@ -26,8 +25,6 @@ from snowflake_semantic_tools.cli.help_form import SstSubGroup
 from snowflake_semantic_tools.cli.runner import CommandResult, WriteFailure, command_body
 from snowflake_semantic_tools.cli.settings import project_config, semantic_models_dir
 from snowflake_semantic_tools.domain.model.config_schema import configured_dir
-
-_MARKDOWN = frozenset((".md",))
 
 
 @click.group(cls=SstSubGroup)
@@ -52,8 +49,7 @@ def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResul
     """Rewrite references as template calls, move old settings under config:, and label filters.
 
     Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, each agent
-    file and eval file under `project.agents_dir`, each hook manifest under `project.hooks_dir`,
-    each command under `project.commands_dir`, and the configuration file's `tool()` calls.
+    file and eval file under `project.agents_dir`, and the configuration file's `tool()` calls.
     Dry-run by default: exit 2 when rewrites are pending, 0 when there are none, and 1 when
     something sits where no rewrite is safe, each such place named on stderr. With --write the
     files are rewritten, and the command exits 0, or 1 while such a place remains.
@@ -67,8 +63,6 @@ def migrate_refs_command(paths: ProjectPaths, write_files: bool) -> CommandResul
         tools=files_under(project_dir, _dir(paths, "tools_dir", "tools"), YAML_SUFFIXES),
         agents=agents,
         evals=evals,
-        hooks=hook_files(project_dir, _dir(paths, "hooks_dir", "hooks")),
-        commands=files_under(project_dir, _dir(paths, "commands_dir", "commands"), _MARKDOWN),
         config={paths.config_name: config_file.read_text(encoding="utf-8")}
         if config_file is not None and inside
         else {},
@@ -102,8 +96,8 @@ def migrate_split_command(paths: ProjectPaths, write_files: bool) -> CommandResu
     Every member, a view too, stays in the folder of the file that listed it.
 
     Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
-    configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
-    the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that
+    configuration file, whose `skills.catalog` and `skills.extensions` move to the `skills:` root
+    and the `plugins:` and `extensions:` blocks; a `skills.stage` is left for a hand edit. A file that
     would overwrite one already there is left whole and named on stderr. Dry-run by default:
     exit 2 when a split is pending, 0 when there is none, and 1 when a file is left whole or a
     configuration key needs a hand edit. With --write the files are written, then the lists

@@ -10,7 +10,11 @@ from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.commands.compile import _payload_files
 from snowflake_semantic_tools.cli.main import cli
-from tests.helpers.cli_projects import common, profile_with_commands_and_plugin, skills_only_project
+from tests.helpers.cli_projects import (
+    common,
+    profile_with_plugin,
+    skills_only_project,
+)
 from tests.helpers.cowork_profiles import compile_profiles, cowork_profile, described_agent
 from tests.helpers.reference_project import DBT_MANIFEST, break_menu_view, project_copy
 
@@ -95,8 +99,8 @@ def test_compile_writes_deterministic_manifest(tmp_path: Path) -> None:
         "agent:jaffle_analytics_agent",
         "agent:jaffle_delivery_agent",
         "agent:jaffle_minimal_agent",
-        "coco_desktop_profile:jaffle-analyst",
-        "coco_desktop_profile:jaffle-operator",
+        "coco_profile:jaffle_analyst",
+        "coco_profile:jaffle_operator",
         "cowork_profile:jaffle_concierge",
         "eval:jaffle_analytics_agent",
         "plugin:jaffle-toolkit",
@@ -160,14 +164,19 @@ def test_compile_emits_each_agent_specification_and_nothing_else(tmp_path: Path)
     result = CliRunner().invoke(cli, ["compile", *common(project), "--emit-agent-spec", str(specs)])
     assert result.exit_code == 0, result.output
     assert sorted(path.name for path in specs.iterdir()) == [
+        "coco_profile",
         "cowork_profile",
         "jaffle_analytics_agent.json",
         "jaffle_delivery_agent.json",
         "jaffle_minimal_agent.json",
     ]
-    # The CoWork profile's specification, in its type's folder as --emit-ddl names one.
+    # Each profile's specification, in its type's folder as --emit-ddl names one.
     assert [path.name for path in (specs / "cowork_profile").iterdir()] == ["jaffle_concierge.json"]
-    assert f"wrote 4 files to {specs}" in result.output
+    assert sorted(path.name for path in (specs / "coco_profile").iterdir()) == [
+        "jaffle_analyst.json",
+        "jaffle_operator.json",
+    ]
+    assert f"wrote 6 files to {specs}" in result.output
     database = CliRunner().invoke(cli, ["compile", *common(project), "--database", "ELSEWHERE", "--output", "json"])
     targets = {item["artifact_key"]: item["target"] for item in json.loads(database.output)["data"]["artifacts"]}
     assert targets["semantic_view:jaffle_minimal"].startswith("ELSEWHERE.")
@@ -232,8 +241,10 @@ def test_a_partial_run_still_stops_on_an_error_that_names_no_artifact(tmp_path: 
     break_menu_view(project)
     config = project / "sst_config.yml"
     text = config.read_text(encoding="utf-8")
-    assert "  hooks_dir: hooks\n" in text
-    config.write_text(text.replace("  hooks_dir: hooks\n", "  hooks_dir: nowhere\n", 1), encoding="utf-8")
+    assert "  coco_profiles_dir: coco_profiles\n" in text
+    config.write_text(
+        text.replace("  coco_profiles_dir: coco_profiles\n", "  coco_profiles_dir: nowhere\n", 1), encoding="utf-8"
+    )
     result = CliRunner().invoke(cli, ["compile", *common(project), "--partial", "--output", "json"])
     assert result.exit_code == 1
     assert "SST-CFG047" in {item["code"] for item in json.loads(result.output)["diagnostics"]}
@@ -287,17 +298,14 @@ def test_project_without_dbt_or_target_profile_is_a_config_error(tmp_path: Path)
 
 
 def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) -> None:
-    config = "project:\n  target_profile: skills\n  coco_desktop_profiles_dir: profilez\n  hooks_dir: hooks\n"
+    config = "project:\n  target_profile: skills\n  coco_profiles_dir: profilez\n  plugins_dir: kits\n"
     project = skills_only_project(tmp_path / "skills", config)
-    (project / "hooks").mkdir()
+    (project / "kits").mkdir()
     result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
     assert [item["code"] for item in diagnostics] == ["SST-CFG047", "SST-MAN008"]
-    assert (
-        diagnostics[0]["message"]
-        == "project.coco_desktop_profiles_dir is profilez, which is not a directory in the project"
-    )
+    assert diagnostics[0]["message"] == "project.coco_profiles_dir is profilez, which is not a directory in the project"
 
     # A dbt-only directory in a project without dbt is reported once, as CFG046.
     dbt_only = skills_only_project(tmp_path / "other", "project:\n  target_profile: skills\n  agents_dir: nowhere\n")
@@ -305,8 +313,16 @@ def test_a_configured_directory_that_does_not_exist_is_an_error(tmp_path: Path) 
     assert [item["code"] for item in json.loads(result.output)["diagnostics"]] == ["SST-CFG046", "SST-MAN008"]
 
 
+def test_a_profile_with_a_plugin_compiles_to_its_agent_spec(tmp_path: Path) -> None:
+    project = profile_with_plugin(tmp_path / "skills")
+    result = CliRunner().invoke(cli, ["compile", "--project-dir", str(project), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    document = json.loads((project / "sst_target" / "manifest.json").read_text(encoding="utf-8"))
+    assert sorted(document["artifacts"]) == ["coco_profile:analyst", "plugin:kit", "skill:month-close"]
+
+
 def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> None:
-    project = profile_with_commands_and_plugin(tmp_path / "skills")
+    project = profile_with_plugin(tmp_path / "skills")
     (project / "skills" / "month-close" / "SKILL.md").write_text(
         "---\nname: month-close\ndescription: Close the month.\n---\nRead [it](reference/missing.md).\n",
         encoding="utf-8",
@@ -315,13 +331,13 @@ def test_a_plugin_with_a_broken_member_blocks_the_profile(tmp_path: Path) -> Non
     assert result.exit_code == 1
     diagnostics = json.loads(result.output)["diagnostics"]
     # The skill's broken link is reported once, by the catalog checks; it blocks the skill the
-    # profile shares and the plugin that carries it.
+    # profile pins and the plugin that carries it.
     assert [item["code"] for item in diagnostics].count("SST-VAL808") == 1
     assert "SST-VAL836" in {item["code"] for item in diagnostics}
-    blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL855"]
+    blocked = [item["message"] for item in diagnostics if item["code"] == "SST-VAL856"]
     assert blocked == [
-        "CoCo Desktop profile 'analyst': skill 'month-close' has errors, so the profile cannot publish",
-        "CoCo Desktop profile 'analyst': plugin 'kit' has errors, so the profile cannot publish",
+        "'analyst': skill('month-close') has no version to pin because it has errors",
+        "'analyst': plugin('kit') has no version to pin because it has errors",
     ]
 
 

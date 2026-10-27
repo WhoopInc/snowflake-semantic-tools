@@ -8,7 +8,6 @@ from tests.helpers.snowflake_fake.catalog import FakeCatalog
 from tests.helpers.snowflake_fake.cortex_models import FakeCortexModels
 from tests.helpers.snowflake_fake.execution import FakeExecution
 from tests.helpers.snowflake_fake.preflight import FakePreflight
-from tests.helpers.snowflake_fake.profile_registry import FakeProfileRegistry
 from tests.helpers.snowflake_fake.stage import FakeStage
 from tests.helpers.snowflake_fake.state import FakeState
 from tests.helpers.snowflake_fake.usage import FakeUsage
@@ -18,7 +17,6 @@ class FakeSnowflake(
     FakeCatalog,
     FakeExecution,
     FakeStage,
-    FakeProfileRegistry,
     FakeState,
     FakePreflight,
     FakeCortexModels,

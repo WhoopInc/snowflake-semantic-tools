@@ -2,4 +2,4 @@ $ sst --project-dir <project> --manifest <manifest> test --target dev
 --- exit 0
 --- stdout
 --- stderr
-[32m[1m✓[0m [1m42 smoke probes passed[0m · <n>s
+[32m[1m✓[0m [1m44 smoke probes passed[0m · <n>s

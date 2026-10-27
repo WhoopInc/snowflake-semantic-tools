@@ -1,0 +1,5 @@
+# THE RESERVED `shared/` LAYER. Its skills reach EVERY profile, each pinned
+# first in every profile's skills, and its AGENTS.md and rules/*.md lead every
+# profile's instructions. Only `skills:` is accepted here.
+skills:
+  - "{{ skill('jaffle-catalogue') }}"

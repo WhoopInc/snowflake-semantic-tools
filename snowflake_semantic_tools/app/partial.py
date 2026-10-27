@@ -27,8 +27,6 @@ from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.plan.changeset import narrowed
 
-# Inputs only a profile carries: an error in one blocks the profiles that list it.
-PROFILE_INPUTS = frozenset(("command", "hook", "mcp"))
 # A member reference's prefix, by the type of the artifact the member belongs to.
 _MEMBER_OWNERS = {"tool_ref": "tool"}
 
@@ -70,7 +68,7 @@ def _owner(subject: str | None) -> str | None:
 def _attributable(subject: str | None) -> bool:
     owner = _owner(subject)
     prefix = split_artifact_key(owner)[0] if owner and ":" in owner else ""
-    return prefix in SEMANTIC_REGISTRY.artifacts or prefix in PROFILE_INPUTS
+    return prefix in SEMANTIC_REGISTRY.artifacts
 
 
 def partial_refusal(result: CompileResult) -> Diagnostic | None:

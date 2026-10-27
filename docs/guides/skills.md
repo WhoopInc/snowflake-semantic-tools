@@ -5,8 +5,9 @@ question matches the skill's description, plus any files those instructions
 point at. SST validates the folder, publishes it as a skill-type Cortex
 Extension, and pins every agent that uses it to the published version.
 
-A skill can also ship to CoCo Desktop through a profile; see
-[plugins and profiles](plugins-and-coco-desktop-profiles.md).
+A skill can also reach Cortex Code users through a Cortex Code profile, which
+pins it as an agent does; see
+[plugins and Cortex Code profiles](plugins-and-coco-profiles.md).
 
 These are skills SST publishes. The skills `sst agent-kit` installs into `.cortex/skills` or
 `.claude/skills` are a different thing: they teach the coding agent that edits the project,
@@ -119,9 +120,8 @@ credential.
 
 Every channel publishes a skill's folder as authored, under `skills/<name>/`,
 so `reference/join-paths.md` publishes as
-`skills/sales-semantics/reference/join-paths.md`: the catalog extension, a
-plugin's bundle, and a CoCo Desktop profile's stage tree all hold the same
-paths. A nested skill's folder rides along in the skill that holds it, and also
+`skills/sales-semantics/reference/join-paths.md`: the catalog extension
+and a plugin's bundle hold the same paths. A nested skill's folder rides along in the skill that holds it, and also
 publishes alone as its own extension.
 
 ## Limits
@@ -206,11 +206,12 @@ the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
   blocks the plan (`SST-VAL807`): moving it would change the name every pinned
   reference uses.
 - `session.threads` caps concurrent catalog publishes, as it does every other
-  change apply makes (default 4, 1 to 16). Profiles always publish one at a time.
+  change apply makes (default 4, 1 to 16).
 - An unprefixed key of `skills:` is a folder route; one that names no folder
-  under `skills_dir` is an error (`SST-CFG041`). `skills.catalog`,
-  `skills.stage`, and `skills.extensions` moved to `skills:` itself,
-  `coco_desktop_profiles:`, and `extensions:` (`SST-CFG042`). `+grant_read_to` and
+  under `skills_dir` is an error (`SST-CFG041`). `skills.catalog` and
+  `skills.extensions` moved to `skills:` itself and `extensions:`, and
+  `skills.stage`, whose desktop profiles Cortex Code profiles replaced, is gone
+  (`SST-CFG042`). `+grant_read_to` and
   `+enabled` were removed (`SST-CFG043`): SST issues no grants, and a skill
   with no `+bundle_stage` does not publish.
 - The top-level `extensions:` block names extensions this project consumes but

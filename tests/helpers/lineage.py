@@ -36,9 +36,9 @@ def lineage_manifest(*, dbt_nodes: dict[str, object] | None = None) -> Manifest:
                     "agent",
                     "helper",
                     depends_on=("semantic_view:sales", "tool:status"),
-                    references=("command:x", "tool_ref:partner"),
+                    references=("plugin:x", "tool_ref:partner"),
                 ),
-                "coco_desktop_profile:p": _entry("profile", "p", references=("agent:helper",)),
+                "coco_profile:p": _entry("coco_profile", "p", depends_on=("skill:month-close",)),
             }
         ),
         members=MappingProxyType(

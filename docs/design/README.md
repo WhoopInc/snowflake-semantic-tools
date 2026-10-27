@@ -19,7 +19,7 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 as code in a dbt project. From files beside the dbt models it builds semantic
 views, the tools agents call, Cortex Agents, Snowflake CoWork profiles (a
-private preview[^preview]), their evaluations, skills, plugins, and CoCo Desktop profiles. It validates them offline, saves a reviewable plan of
+private preview[^preview]), their evaluations, skills, plugins, and Cortex Code profiles. It validates them offline, saves a reviewable plan of
 what would change in Snowflake, and applies exactly that plan.
 
 The command line is the interface. The package exports nothing but its version.

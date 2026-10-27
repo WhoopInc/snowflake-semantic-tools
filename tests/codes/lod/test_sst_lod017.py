@@ -45,7 +45,7 @@ def _with_bom(project: Path, relative: str) -> None:
         "tools/platform/zz_bom.sql",
         "agents/jaffle_analytics/instructions/response.md",
         "skills/jaffle-catalogue/SKILL.md",
-        "hooks/sql-guard/sql-guard.sh",
+        "coco_profiles/jaffle_analyst/AGENTS.md",
     ],
 )
 def test_a_bom_in_any_sidecar_is_refused_naming_that_file(tmp_path: Path, sidecar: str) -> None:

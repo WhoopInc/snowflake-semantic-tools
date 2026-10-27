@@ -21,7 +21,7 @@ def test_every_artifact_type_routes_by_folder() -> None:
         "tool",
         "skill",
         "plugin",
-        "coco_desktop_profile",
+        "coco_profile",
         "agent",
         "cowork_profile",
         "eval",

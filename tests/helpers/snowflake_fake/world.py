@@ -1,12 +1,12 @@
 """What the Snowflake fake holds: the account it models, the calls it was sent, what is scripted.
 
-Every role of the fake (`catalog`, `execution`, `stage`, `profile_registry`, `state`,
-`preflight`) reads and writes this one world, so a statement one role runs is what another
-role then observes, as on one Snowflake session.
+Every role of the fake (`catalog`, `execution`, `stage`, `state`, `preflight`) reads and
+writes this one world, so a statement one role runs is what another role then observes, as on
+one Snowflake session.
 
 - The account: objects SHOW lists by (type, schema), grants, ownership markers, GET_DDL
-  definitions, what exists, stages and their files, extensions, the profile registry, the
-  state table and its run locks. A test sets these to stage what Snowflake already holds.
+  definitions, what exists, stages and their files, extensions, the state table and its run
+  locks. A test sets these to stage what Snowflake already holds.
 - The log: `log`, every call that reached the session, in order. `queries`, `scripts`,
   and `uploads` are read-only views of it by kind.
 - The script: `execute_results` and `query_results` answer the next script or query, in
@@ -169,10 +169,9 @@ class SnowflakeWorld:
         # syntax error, so SHOW DATASETS' `owner` is the only way to read who owns one.
         self.dataset_owners: dict[str, str] = {}
         self.table_row_counts: dict[str, int] = {}
-        # Column (name, type) pairs by qualified name; the profile registry's shape lands here.
+        # Column (name, type) pairs by qualified name.
         self.tables: dict[str, tuple[tuple[str, str], ...]] = {}
         self.extensions: dict[str, dict[str, object]] = {}
-        self.profile_rows: dict[str, dict[str, dict[str, object]]] = {}
         # SHOW rows and DESCRIBE properties by "<TYPE> <qualified name>"; parameters by
         # (type, object name, parameter), each upper-cased.
         self.show_rows: dict[str, Mapping[str, str]] = {}

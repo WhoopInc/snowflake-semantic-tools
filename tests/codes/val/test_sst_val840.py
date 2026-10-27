@@ -20,7 +20,7 @@ def test_sst_val840_fires() -> None:
     )
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message.startswith(
-        "agent 'router': plugin entry name {{ skill('other') }} must be one of the plugin's members: "
+        "'router': plugin entry name {{ skill('other') }} must be one of the plugin's members: "
     )
     assert diagnostic.subject == "agent:router"
     assert diagnostic.suggestion == "name a member as {{ skill('<member>') }}, or remove the name to load every member"

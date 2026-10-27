@@ -1,0 +1,39 @@
+{
+  "instructions": {
+    "response": "# Jaffle Shop assistant\n\nYou help jaffle analysts answer questions from the jaffle semantic views.\n\n- Prefer a semantic view over querying tables directly.\n- State the view you used and the date range the answer covers.\n\n## SQL style\n\n- Use common table expressions rather than nested subqueries.\n- Monetary columns are stored in cents; divide by one hundred for currency.\n"
+  },
+  "skills": [
+    {
+      "name": "jaffle-catalogue",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.JAFFLE.JAFFLE_CATALOGUE",
+        "version": "SST_9513F01FCF43"
+      }
+    },
+    {
+      "name": "supply-backfill",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.JAFFLE.SUPPLY_BACKFILL",
+        "version": "SST_5EEE74F03EF2"
+      }
+    },
+    {
+      "name": "jaffle-operations",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT",
+        "version": "SST_A52873E3F1B1"
+      }
+    },
+    {
+      "name": "jaffle-semantics",
+      "source": {
+        "type": "CORTEX_EXTENSION",
+        "path": "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT",
+        "version": "SST_A52873E3F1B1"
+      }
+    }
+  ]
+}

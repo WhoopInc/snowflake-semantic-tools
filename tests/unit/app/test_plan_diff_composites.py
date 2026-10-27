@@ -1,4 +1,4 @@
-"""The live content of a skill, plugin, profile or eval a planned update replaces, and when it cannot be read."""
+"""The live content of a skill, plugin or eval a planned update replaces, and when it cannot be read."""
 
 from __future__ import annotations
 
@@ -8,14 +8,12 @@ from typing import Any
 
 import pytest
 
-from snowflake_semantic_tools.app.compile.coco_desktop_profiles import CompiledCocoDesktopProfile
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
 from snowflake_semantic_tools.app.plan_diff_composites import (
     desired_eval,
     desired_extension,
     live_eval,
     live_extension,
-    live_profile,
     served_extension,
 )
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -59,20 +57,11 @@ def test_reads_with_nothing_to_compare_say_so() -> None:
     port = FakeSnowflake()
     with pytest.raises(TypeError, match="CompiledExtension"):
         desired_extension(SimpleNamespace(artifact_key="skill:a"))
-    with pytest.raises(TypeError, match="CompiledCocoDesktopProfile"):
-        live_profile(port, SimpleNamespace(artifact_key="coco_desktop_profile:a"))
     with pytest.raises(TypeError, match="CompiledEval"):
         desired_eval(SimpleNamespace(artifact_key="eval:a"))
     port.extensions[_NAME.sql] = {"type": "SKILL", "comment": None, "versions": [], "live": None}
     with pytest.raises(SnowflakePortError, match="serves no version to compare"):
         live_extension(port, _NAME)
-    profile = _stand_in(
-        CompiledCocoDesktopProfile,
-        release=SimpleNamespace(name="team", trees=(), row={}),
-        channel=SimpleNamespace(registry=QualifiedName.parse("DB.S.REGISTRY")),
-    )
-    with pytest.raises(SnowflakePortError, match="holds no row for profile team"):
-        live_profile(port, profile)
 
 
 def _published(name: str, alias: str, path: str, *, default: bool = False) -> dict[str, object]:

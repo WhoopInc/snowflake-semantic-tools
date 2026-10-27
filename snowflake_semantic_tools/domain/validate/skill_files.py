@@ -1,7 +1,7 @@
 """Check the files a skill folder publishes, which every channel ships exactly as authored.
 
 A skill is its folder: `SKILL.md` and every file and folder beside it, a nested skill's folder
-included. The catalog extension and a CoCo Desktop profile's stage tree both publish it under
+included. The catalog extension publishes it under
 `skills/<name>/` with every path unchanged, so a relative path that resolves in the repository
 resolves where the agent reads the skill. Only a Markdown link is held to resolve: a path
 mentioned in prose or a code block is an instruction or an example, which the agent resolves by

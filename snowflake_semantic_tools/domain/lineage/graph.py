@@ -16,8 +16,8 @@ Each edge records how the reader uses what it reads, as one of `EDGE_KINDS`: a m
 from the nodes it selects from, a test tests and an exposure exposes its models, a member or an
 artifact reads a model's table, a member uses another and attaches to its view, an agent loads
 a skill and calls a view, a tool or another agent as a tool, a CoWork profile's router calls
-each agent it routes to, an eval tests its agent, a plugin bundles a skill and a profile
-includes a plugin or a skill; anything else depends on it.
+each agent it routes to, an eval tests its agent, a plugin bundles a skill, and a Cortex Code
+profile loads a plugin or a skill; anything else depends on it.
 
 Where a walk ends at someone else's work, the node says so in its `marker`: a source is a raw
 source, a model of another dbt package that reads nothing here is defined in another project, a
@@ -66,7 +66,6 @@ EDGE_KINDS: Mapping[str, tuple[str, str]] = MappingProxyType(
         "loads": ("loads it", "loaded by it"),
         "calls": ("calls it as a tool", "a tool it calls"),
         "bundles": ("bundles it", "bundled by it"),
-        "includes": ("includes it", "included by it"),
         "depends": ("depends on it", "needed by it"),
     }
 )
@@ -87,8 +86,9 @@ _ARTIFACT_EDGES: Mapping[tuple[str, str], str] = MappingProxyType(
         ("skill", "cowork_profile"): "loads",
         ("cowork_profile", "eval"): "tests",
         ("skill", "plugin"): "bundles",
-        ("plugin", "coco_desktop_profile"): "includes",
-        ("skill", "coco_desktop_profile"): "includes",
+        # Snowflake private preview (PrPr): a Cortex Code agent profile loads skills as an agent does.
+        ("plugin", "coco_profile"): "loads",
+        ("skill", "coco_profile"): "loads",
     }
 )
 

@@ -17,7 +17,7 @@ where it is explained.
 - **Apply.** The command that executes a plan's changes against a target and
   records them in state. See [the pipeline](concepts.md#the-pipeline).
 - **Artifact.** One thing SST publishes and tracks: a semantic view, tool,
-  skill, plugin, CoCo Desktop profile, agent, CoWork profile, or eval. See
+  skill, plugin, Cortex Code profile, agent, CoWork profile, or eval. See
   [artifacts](concepts.md#artifacts).
 - **Association.** How metrics, relationships, filters, and verified queries
   join views: a member attaches to every view whose `tables:` include all of
@@ -26,10 +26,6 @@ where it is explained.
   holding known warnings that are counted rather than shown and do not block
   until the baseline expires. See
   [known warnings](guides/ci-cd.md#known-warnings-the-baseline).
-- **CoCo Desktop profile.** A profile for Cortex Code Desktop that SST publishes
-  from `coco_desktop_profile.yml`, bundling skills, a system prompt, MCP
-  servers, and hooks. See
-  [profiles](guides/plugins-and-coco-desktop-profiles.md#profiles). Not a CoWork profile.
 - **Connected validation.** The checks `sst validate` and `sst plan` make
   against Snowflake, such as compiling expressions and reading live objects.
   They run unless `--no-snowflake-syntax-check` is given,
@@ -43,6 +39,13 @@ where it is explained.
   `cowork_profile.yml`: an AGENT whose router hands each question to one of the
   agents it lists. A [Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles)[^preview]. See
   [CoWork profiles](guides/cowork-profiles.md).
+- **Cortex Code profile.** A Cortex Code agent profile (a Snowflake private
+  preview) SST publishes from `coco_profile.yml`: an AGENT in
+  `CORTEX_CODE.CONFIG` whose specification holds an orchestration model,
+  response instructions, and pinned skills, which the Cortex Code CLI, Desktop,
+  and Snowsight apply for the roles that can use it. See
+  [Cortex Code profiles](guides/plugins-and-coco-profiles.md#cortex-code-profiles).
+  Not a CoWork profile.
 - **Defer target.** A second target whose dbt relations `ref()` resolves to,
   while publishing still goes to `--target`. See [targets](concepts.md#targets).
 - **Diagnostic.** A problem SST reports, with a stable code such as
@@ -61,7 +64,7 @@ where it is explained.
   [terms used in the code](concepts.md#terms-used-in-the-code).
 - **Folder route.** An unprefixed key under an artifact block of
   `sst_config.yml` -- `semantic_views:`, `tools:`, `agents:`, `cowork_profiles:`,
-  `evals:`, `skills:`, `plugins:`, or `coco_desktop_profiles:` -- that names a folder, whose `+` keys
+  `evals:`, `skills:`, `plugins:`, or `coco_profiles:` -- that names a folder, whose `+` keys
   apply to what is in it. See
   [folder routes](guides/configuration.md#folder-routes).
 - **Key.** An artifact's or member's identity, `<type>:<name>`, such as
@@ -85,7 +88,7 @@ where it is explained.
   live, and saves the changes to `sst_target/plan.json` without writing to
   Snowflake. See [the pipeline](concepts.md#the-pipeline).
 - **Plugin.** A bundle of skills published as one plugin-type Cortex
-  Extension. See [plugins](guides/plugins-and-coco-desktop-profiles.md#plugins).
+  Extension. See [plugins](guides/plugins-and-coco-profiles.md#plugins).
 - **Poisoned.** Said of a member or view with an error: still checked, but not
   attached or built. See [terms used in the code](concepts.md#terms-used-in-the-code).
 - **Prune.** `--prune`: extend a plan to managed artifacts whose source was
@@ -139,7 +142,7 @@ Drawn from: [artifact keys](../snowflake_semantic_tools/domain/model/artifact_ke
 | state | -- | `--state`, a directory of an earlier run's artifacts | the state table apply writes; `--state` also names an earlier build directory, as in dbt |
 | version | a numbered version of an agent or extension, such as `VERSION$1` | a model version, or dbt's own release | an extension version named for its content, or an agent version added by each change |
 | alias | a name on an agent or extension version | the name a model's relation takes instead of the model's | an agent's `alias` setting, moved to each new version |
-| profile | an agent's display name, avatar, and color; in CoWork (a private preview), an AGENT in `SNOWFLAKE_INTELLIGENCE.PROFILES` that routes questions | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a CoCo Desktop profile from `coco_desktop_profile.yml`; an agent's `profile:` keeps Snowflake's sense; a CoWork profile is always called that in full, and its display block is `display:` |
+| profile | an agent's display name, avatar, and color; in CoWork (a private preview), an AGENT in `SNOWFLAKE_INTELLIGENCE.PROFILES` that routes questions | a connection in `profiles.yml` | dbt's `profiles.yml`, which SST also reads, or a Cortex Code profile from `coco_profile.yml`; an agent's `profile:` keeps Snowflake's sense; a CoWork profile is always called that in full, and its display block is `display:` |
 | catalog | the catalog that serves Cortex Extensions to users; also a catalog integration for Iceberg tables | `catalog.json`, written by `dbt docs generate` | the same Cortex Extension catalog, which a skill or plugin publishes to wherever its `+bundle_stage` resolves |
 | tool | an entry in an agent specification's `tools` | -- | an agent's tool, or the `tool` artifact a defined tool member publishes |
 | metric | an entry in a semantic view's `METRICS` | a metric in dbt's semantic layer | a `metric:` file or a `snowflake_metrics:` entry; an eval's judge metric is a different thing, named with `eval_metric()` |

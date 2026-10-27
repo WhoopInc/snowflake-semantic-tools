@@ -15,14 +15,29 @@ def test_sst_cfg043_fires() -> None:
     assert diagnostic.subject == "config:generation.publish_via"
 
 
-def test_sst_cfg043_names_the_coco_desktop_profile_keys_the_old_ones_became() -> None:
-    tree = {"project": {"profiles_dir": "profiles"}, "profiles": {"+stage": "S"}}
+_GONE = (
+    "CoCo Desktop profiles are gone: Cortex Code agent profiles replaced the registry; move each profile to "
+    "coco_profiles/ and configure coco_profiles:"
+)
+
+
+def test_sst_cfg043_points_each_coco_desktop_profile_key_at_cortex_code_profiles() -> None:
+    tree = {
+        "project": {"profiles_dir": "p", "coco_desktop_profiles_dir": "c", "hooks_dir": "h"},
+        "profiles": {"+stage": "S"},
+        "coco_desktop_profiles": {"+stage": "S"},
+    }
     found = {item.subject: item.message for item in validate_config(tree) if item.code == "SST-CFG043"}
     assert found == {
-        "config:project.profiles_dir": (
-            "config key 'project.profiles_dir' was removed: renamed project.coco_desktop_profiles_dir"
+        "config:project.profiles_dir": f"config key 'project.profiles_dir' was removed: {_GONE}",
+        "config:project.coco_desktop_profiles_dir": (
+            f"config key 'project.coco_desktop_profiles_dir' was removed: {_GONE}"
         ),
-        "config:profiles": "config key 'profiles' was removed: renamed coco_desktop_profiles:",
+        "config:project.hooks_dir": (
+            "config key 'project.hooks_dir' was removed: Cortex Code agent profiles cannot carry hooks"
+        ),
+        "config:profiles": f"config key 'profiles' was removed: {_GONE}",
+        "config:coco_desktop_profiles": f"config key 'coco_desktop_profiles' was removed: {_GONE}",
     }
 
 

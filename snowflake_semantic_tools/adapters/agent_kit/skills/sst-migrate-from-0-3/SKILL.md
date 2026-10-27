@@ -25,10 +25,13 @@ until it is migrated.
    ```
 
    It also moves tool group members to `tools/<group>/<name>.yml` (a group's `immutable`
-   becomes a `tools.<group>.+immutable` route) and moves `skills.catalog`, `skills.stage`
-   and `skills.extensions` in `sst_config.yml` to the `skills:` root and the `plugins:`,
-   `coco_desktop_profiles:` and `extensions:` blocks. It never overwrites a file: one in the way leaves
-   that list whole and exits 1.
+   becomes a `tools.<group>.+immutable` route) and moves `skills.catalog` and
+   `skills.extensions` in `sst_config.yml` to the `skills:` root and the `plugins:` and
+   `extensions:` blocks. It never overwrites a file: one in the way leaves that list whole and
+   exits 1. It leaves `skills.stage` in place for a hand edit (`SST-CFG042`): move each desktop
+   profile it published to `coco_profiles/<name>/coco_profile.yml` as a Cortex Code profile,
+   listing its skills with `{{ skill() }}` (hooks, MCP servers, and commands have no
+   equivalent; make a command a skill), then delete `skills.stage`.
 3. Rewrite references, reviewing the report before writing (either command may run first):
 
    ```bash

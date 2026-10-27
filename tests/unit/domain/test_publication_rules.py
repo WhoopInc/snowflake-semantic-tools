@@ -1,4 +1,4 @@
-"""The publication guards, rule by rule: versions, schemas, uploads, pointers, statements and channels."""
+"""The publication guards, rule by rule: versions, schemas, uploads, statements and channels."""
 
 from __future__ import annotations
 
@@ -14,11 +14,9 @@ from snowflake_semantic_tools.domain.validate.publication import (
     channel_outcome_diagnostics,
     eval_publication_diagnostics,
     put_target_diagnostics,
-    registry_pointer_diagnostics,
     schema_diagnostics,
     statement_diagnostic,
     version_collision_diagnostics,
-    version_coverage_diagnostics,
     version_diagnostics,
 )
 from tests.helpers.artifact_builders import rendered
@@ -54,16 +52,8 @@ def test_a_version_outside_the_catalog_schema_is_reported_by_its_schema() -> Non
 
 
 def test_each_upload_must_target_a_directory() -> None:
-    found = put_target_diagnostics("coco_desktop_profile:p", "p", ("@S/a/", "@S/b"))
+    found = put_target_diagnostics("skill:p", "p", ("@S/a/", "@S/b"))
     assert [(item.code, item.context["path"]) for item in found] == [("SST-VAL820", "@S/b")]
-
-
-def test_each_uploaded_tree_needs_a_pointer_and_a_hashed_prefix() -> None:
-    pointers = ("@S/one/skills/a", "@S/two")
-    found = registry_pointer_diagnostics("coco_desktop_profile:p", "p", ("@S/one/", "@S/three/"), pointers)
-    assert [item.context["path"] for item in found] == ["@S/three/"]
-    covered = version_coverage_diagnostics("coco_desktop_profile:p", "p", ("aaa", "bbb"), "aaa|ccc")
-    assert [(item.code, item.context["value"]) for item in covered] == [("SST-VAL823", "bbb")]
 
 
 @pytest.mark.parametrize(
@@ -86,13 +76,13 @@ def test_a_publisher_sends_only_sql_and_typed_grants_after_certification(
 def test_each_channel_change_reports_exactly_one_outcome() -> None:
     changes = (
         ("skill:a", "skill"),
-        ("coco_desktop_profile:b", "coco_desktop_profile"),
+        ("skill:b", "skill"),
         ("plugin:c", "plugin"),
         ("semantic_view:v", "x"),
     )
     found = channel_outcome_diagnostics(changes, ("skill:a", "plugin:c", "plugin:c"))
     assert [(item.subject, item.context["detail"]) for item in found] == [
-        ("coco_desktop_profile:b", "the stage channel reported no outcomes"),
+        ("skill:b", "the catalog channel reported no outcomes"),
         ("plugin:c", "the catalog channel reported 2 outcomes"),
     ]
 

@@ -72,5 +72,5 @@ def test_d_refuses_a_context_without_a_suggestion_placeholder() -> None:
 
 
 def test_a_suggestions_other_braces_are_text_not_placeholders() -> None:
-    # `{"mcpServers": ...}` and `${VARIABLE}` are examples written as text, which no context fills.
-    assert not {"SST-VAL850", "SST-VAL853"} & set(_suggestion_only())
+    # `{{ skill('<member>') }}` is an example written as text, which no context fills.
+    assert not {"SST-VAL840", "SST-REF033"} & set(_suggestion_only())

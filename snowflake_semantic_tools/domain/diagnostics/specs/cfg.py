@@ -362,7 +362,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Configuration requires a dbt project",
         "{key} requires a dbt project, and the project has no dbt_project.yml",
         "add dbt_project.yml, or remove the configuration; a project without dbt publishes skills, plugins, "
-        "and CoCo Desktop profiles only",
+        "and Cortex Code profiles only",
         condition=(
             "configuration that needs dbt (semantic_views, evals, ...) is present and dbt_project.yml is "
             "absent, or `sst init` runs in a directory with no dbt_project.yml"

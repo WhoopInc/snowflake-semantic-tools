@@ -158,8 +158,7 @@ Subcommands: [`sst migrate refs`](#sst-migrate-refs), [`sst migrate split`](#sst
 Rewrite references as template calls, move old settings under config:, and label filters.
 
 Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, each agent
-file and eval file under `project.agents_dir`, each hook manifest under `project.hooks_dir`,
-each command under `project.commands_dir`, and the configuration file's `tool()` calls.
+file and eval file under `project.agents_dir`, and the configuration file's `tool()` calls.
 Dry-run by default: exit 2 when rewrites are pending, 0 when there are none, and 1 when
 something sits where no rewrite is safe, each such place named on stderr. With --write the
 files are rewritten, and the command exits 0, or 1 while such a place remains.
@@ -179,8 +178,8 @@ Write each listed member to a file of its own, tool group members to their group
 Every member, a view too, stays in the folder of the file that listed it.
 
 Reads every YAML file under `project.semantic_models_dir` and `project.tools_dir`, and the
-configuration file, whose `skills.catalog`, `skills.stage` and `skills.extensions` move to
-the `skills:` root and the `plugins:`, `coco_desktop_profiles:` and `extensions:` blocks. A file that
+configuration file, whose `skills.catalog` and `skills.extensions` move to the `skills:` root
+and the `plugins:` and `extensions:` blocks; a `skills.stage` is left for a hand edit. A file that
 would overwrite one already there is left whole and named on stderr. Dry-run by default:
 exit 2 when a split is pending, 0 when there is none, and 1 when a file is left whole or a
 configuration key needs a hand edit. With --write the files are written, then the lists
@@ -984,10 +983,10 @@ Record what state lost, from ownership markers and content digests on the target
 
 Plans the target, then records, under the run lock and without writing any object, each
 artifact state does not record whose live objects prove they hold the compiled definition,
-so `sst plan` then shows it unchanged. A semantic view, tool or agent proves it by the
+so `sst plan` then shows it unchanged. A semantic view, tool, agent or profile proves it by the
 marker in its comment; a skill or plugin by its aliased version's files and the bundle
-prefix they came from, read back byte for byte; a profile by its registry row as Desktop
-reads it; an eval by its dataset version's provenance and its staged config's bytes.
+prefix they came from, read back byte for byte; an eval by its dataset version's
+provenance and its staged config's bytes.
 Every other unrecorded artifact is listed with what the next apply will do: one SST cannot
 prove stays unmanaged (SST-PLN024), and one that holds another definition is published
 again. Eval baselines are not recovered.

@@ -60,9 +60,10 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["invocation"]["started_at"]
     assert envelope["invocation"]["duration_s"] >= 0
     assert envelope["status"] == "ok"
-    # Infos: SST-VAL854 (the fixture's profile registry is not Desktop's), SST-VAL020 once per
-    # connected rule (5), the eval notes SST-VAL711/712/725, the skill notes SST-VAL816 (3) and
-    # SST-VAL831 (4), the dbt seam's notes SST-DBT016 for orders and products and SST-DBT025,
+    # Infos: SST-VAL890 and SST-VAL891 for each Cortex Code profile (a private preview, published
+    # where Cortex Code does not list it), SST-VAL020 once per connected rule (7), the eval notes
+    # SST-VAL711/712/725, the skill notes SST-VAL816 (4) and SST-VAL831 (5), the CoWork
+    # profile's SST-VAL870 and SST-VAL878, the dbt seam's notes SST-DBT016 for orders and products and SST-DBT025,
     # eighteen that report
     # what attached where (SST-MEM011 for each of the fifteen members both jaffle views hold,
     # SST-MEM103 for each of the three views), and the compiled views' shape: SST-VAL125 (9),
@@ -83,7 +84,7 @@ def test_validate_json_emits_one_v2_envelope(tmp_path: Path) -> None:
     assert envelope["summary"] == {
         "error": 0,
         "warning": 7,
-        "info": 58,
+        "info": 61,
         "promoted": 0,
         "suppressed_cascade": 0,
         "baselined": 0,

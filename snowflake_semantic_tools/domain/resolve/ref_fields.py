@@ -126,13 +126,8 @@ REFERENCE_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
         "tool.body": ("file",),
         "tool.imports": ("tool",),
         "plugin.skills": ("skill",),
-        "coco_desktop_profile.skills": ("skill",),
-        "coco_desktop_profile.plugins": ("plugin",),
-        "coco_desktop_profile.commands": ("command",),
-        "coco_desktop_profile.hooks": ("hook",),
-        "coco_desktop_profile.mcp_servers": ("mcp_server",),
-        "hook.script": ("file",),
-        "command.skill": ("skill",),
+        "coco_profile.skills": ("skill",),
+        "coco_profile.plugins": ("plugin",),
     }
 )
 

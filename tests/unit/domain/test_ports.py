@@ -12,13 +12,12 @@ from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import AgentVersion, AgentVersions, CatalogPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.execution import ExecutionPort, WriteGuardPort
-from snowflake_semantic_tools.domain.ports.snowflake.profile_registry import ProfileRegistryPort
 from snowflake_semantic_tools.domain.ports.snowflake.stage import StagePort
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.ports.state import StateStore
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 
-ROLES = (CatalogPort, ExecutionPort, StagePort, ProfileRegistryPort, StatePort)
+ROLES = (CatalogPort, ExecutionPort, StagePort, StatePort)
 
 
 def test_semantic_view_source_protocol_methods_are_declarations_only() -> None:
@@ -101,17 +100,8 @@ def test_execution_and_stage_port_methods_are_declarations_only() -> None:
     assert StagePort.list_location(source, "@x/") is None  # type: ignore[arg-type]
 
 
-def test_profile_registry_and_state_port_methods_are_declarations_only() -> None:
+def test_state_port_methods_are_declarations_only() -> None:
     source = object()
-    ProfileRegistryPort.ensure_profile_registry(source, object())  # type: ignore[arg-type]
-    assert ProfileRegistryPort.read_profile_row(source, object(), "x") is None  # type: ignore[arg-type]
-    assert (
-        ProfileRegistryPort.merge_profile_row(source, object(), {}, expected_version=None) is None  # type: ignore[arg-type]
-    )
-    assert (
-        ProfileRegistryPort.deactivate_profile_row(source, object(), "x", expected_version="1") is None  # type: ignore[arg-type]
-    )
-    assert ProfileRegistryPort.desktop_profile_rows(source, object()) is None  # type: ignore[arg-type]
     assert StatePort.read_state(source, object(), "x") is None  # type: ignore[arg-type]
     assert StatePort.read_state_manifest(source, object(), "x") is None  # type: ignore[arg-type]
     assert StatePort.write_state(source, object(), "x", "m", {}, object()) is None  # type: ignore[arg-type]

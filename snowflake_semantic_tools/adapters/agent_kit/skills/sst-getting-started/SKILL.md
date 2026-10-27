@@ -2,7 +2,7 @@
 name: sst-getting-started
 description: |-
   Use when the user is new to SST, new to dbt, or asks where to start: what SST is, what a
-  semantic view, Cortex Agent, tool, published skill, plugin, CoWork profile, CoCo Desktop
+  semantic view, Cortex Agent, tool, published skill, plugin, CoWork profile, Cortex Code
   profile, or eval is, the dbt ideas SST builds on (models, ref(), the manifest, targets),
   setting up a first project, or which guide to read. Explains in plain terms and leads the
   user through the first view step by step. Do NOT use for a specific edit in a working project
@@ -45,9 +45,9 @@ would change in Snowflake, then apply that plan. Nothing is built by clicking in
 | Column metadata | Whether each column is a dimension, fact, or time dimension, plus keys and synonyms. | each dbt model's YAML, under `config.meta.sst` |
 | Cortex Agent | An AI assistant in Snowflake that answers questions by choosing among its tools. | `agents/<name>/agent.yml` |
 | Tool | Something an agent can call: a semantic view, a Cortex Search service, a procedure or function, or another agent. | the agent's `spec.tools`; the objects behind them under `tools/` |
-| Published skill | Instructions an agent or a CoCo Desktop profile loads, published to Snowflake. Not the same as this kit, which is for the coding agent and is never published. | `skills/` |
+| Published skill | Instructions an agent or a Cortex Code profile loads, published to Snowflake. Not the same as this kit, which is for the coding agent and is never published. | `skills/` |
 | Plugin | A bundle of published skills. | `plugins/` |
-| CoCo Desktop profile | A setup for Cortex Code Desktop: skills, a system prompt, MCP servers, and hooks. | `coco_desktop_profiles/` |
+| Cortex Code profile | A Cortex Code agent profile (a Snowflake private preview): an AGENT in `CORTEX_CODE.CONFIG` with a model, instructions, and skills that Cortex Code applies for the roles that can use it. | `coco_profiles/` |
 | CoWork profile | An agent that hands each question to one of the agents it lists (a Snowflake private preview). | `cowork_profiles/` |
 | Eval | A fixed set of questions an agent is scored on, so a change that makes it worse is caught. | the agent's `evals/` folder |
 
@@ -107,7 +107,7 @@ sst debug --no-connect                          # shows the profile, target, and
 | build an agent and its tools | @SST_DOCS@/guides/agents.md |
 | test an agent before publishing | @SST_DOCS@/guides/ask.md |
 | score an agent | @SST_DOCS@/guides/evals.md |
-| publish skills, plugins, profiles | @SST_DOCS@/guides/skills.md, @SST_DOCS@/guides/plugins-and-coco-desktop-profiles.md |
+| publish skills, plugins, profiles | @SST_DOCS@/guides/skills.md, @SST_DOCS@/guides/plugins-and-coco-profiles.md |
 | route questions across agents | @SST_DOCS@/guides/cowork-profiles.md |
 | see what a change affects | @SST_DOCS@/guides/lineage.md |
 | run SST in CI | @SST_DOCS@/guides/ci-cd.md |

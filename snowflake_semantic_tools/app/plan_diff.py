@@ -19,6 +19,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompiledView
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile
 from snowflake_semantic_tools.app.compile.tools import CompiledTool
 from snowflake_semantic_tools.app.fanout import Fanout
@@ -26,10 +27,8 @@ from snowflake_semantic_tools.app.plan_diff_composites import (
     compiled_as,
     desired_eval,
     desired_extension,
-    desired_profile,
     live_eval,
     live_extension,
-    live_profile,
 )
 from snowflake_semantic_tools.app.prior import served_version
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
@@ -38,6 +37,7 @@ from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle import Action, Change
 from snowflake_semantic_tools.domain.model.tool import ToolKind
 from snowflake_semantic_tools.domain.plan.definitions.agent import (
+    COCO_PROPERTIES_KIND,
     COWORK_PROPERTIES_KIND,
     PROPERTIES_KEYS,
     PROPERTIES_KIND,
@@ -140,6 +140,14 @@ def _desired_cowork_profile(compiled: CompiledArtifact) -> Definition:
     )
 
 
+def _desired_coco_profile(compiled: CompiledArtifact) -> Definition:
+    """The specification SST renders, with the profile's comment, no display or alias, and SECURE false."""
+    profile = compiled_as(compiled, CompiledCocoProfile)
+    return _desired_agent_object(
+        profile.payload, profile.resolved.model.comment, AgentProfile(), None, False, COCO_PROPERTIES_KIND
+    )
+
+
 def _desired_agent_object(
     payload: str, comment: str | None, profile: AgentProfile, alias: str | None, secure: bool, kind: str
 ) -> Definition:
@@ -203,6 +211,8 @@ COMPARISONS: Mapping[str, Comparison] = {
     "agent": Comparison(_desired_agent, _live_agent),
     # Snowflake private preview (PrPr): CoWork profiles
     "cowork_profile": Comparison(_desired_cowork_profile, _live_agent),
+    # Snowflake private preview (PrPr): Cortex Code agent profiles
+    "coco_profile": Comparison(_desired_coco_profile, _live_agent),
     "tool": Comparison(_desired_tool, _live_tool),
     "skill": Comparison(
         desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
@@ -210,7 +220,6 @@ COMPARISONS: Mapping[str, Comparison] = {
     "plugin": Comparison(
         desired_extension, lambda port, _compiled, live: live_extension(port, live.name, live.recorded)
     ),
-    "coco_desktop_profile": Comparison(desired_profile, lambda port, compiled, _live: live_profile(port, compiled)),
     "eval": Comparison(desired_eval, lambda port, _compiled, live: live_eval(port, live.config_folder, live.recorded)),
 }
 

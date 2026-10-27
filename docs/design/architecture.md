@@ -102,7 +102,6 @@ classDiagram
     CatalogPort <|-- SnowflakePort
     ExecutionPort <|-- SnowflakePort
     StagePort <|-- SnowflakePort
-    ProfileRegistryPort <|-- SnowflakePort
     StatePort <|-- SnowflakePort
     SnowflakePort <|.. SnowflakeConnector
     SnowflakePort <|.. FakeSnowflake
@@ -181,7 +180,7 @@ it, and `RegistryBuilder.freeze` refuses any other owner with `SST-REG022`.
 Every field is plain data: names, integers, booleans, enums, tuples. A type whose objects
 no single statement publishes is marked `ArtifactLifecycle.COMPOSITE`, and its
 behavior lives in a `CompositeLifecycleHandler` in `app/lifecycle/` (the
-eval, extension, and profile handlers, all built on `CompositeHandler`). Plan
+eval and extension handlers, all built on `CompositeHandler`). Plan
 and apply route every artifact of such a type to its handler, which observes,
 decides, publishes, and reports which resources state should record. An
 `OBJECT` type is one Snowflake object, planned and applied by the generic path.
@@ -231,7 +230,7 @@ The diagram shows `CompileProject.run` from configuration to manifest.
 flowchart TD
     A["ProjectInputs.config and target"] --> B["consumed_extensions"]
     B --> C["CompileSkills"]
-    C --> D["CompileCocoDesktopProfiles"]
+    C --> D["CompileCocoProfiles"]
     D --> E{"config.has_dbt_project"}
     E -->|yes| F["CompileSemanticViews"]
     F --> G["CompileTools"]
@@ -250,15 +249,15 @@ flowchart TD
 
 Drawn from: [app/compile/project.py](../../snowflake_semantic_tools/app/compile/project.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py), [app/compile/base.py](../../snowflake_semantic_tools/app/compile/base.py), [app/manifest.py](../../snowflake_semantic_tools/app/manifest.py).
 
-Skills, plugins, and profiles compile only when one of the `skills:`,
-`plugins:`, and `coco_desktop_profiles:` blocks is written or an item places itself, and each
-publishes only where its own settings resolve a stage; profiles compile when the
-`coco_desktop_profiles:` block is written or a profile has a stage. Each later compiler reads
+Skills and plugins compile only when the `skills:` or `plugins:` block is
+written or an item places itself, and each publishes only where its own settings
+resolve a stage; Cortex Code profiles compile when `coco_profiles_dir` holds a
+profile, pinning the extensions the skills compiled to, and need no dbt project. Each later compiler reads
 what the earlier ones produced: tools read the dbt relations, agents the views
 and tools that compiled, CoWork profiles the agents, evals the tools each agent
 resolved. The checks that span all five run after them, as a result that
 compiles nothing, and then the checks of what the configuration, the agents,
-and the profiles say about the tools.
+and the CoWork profiles say about the tools.
 
 Every compiler returns a `CompileResult`: a tuple of `CompiledArtifact` values
 and a `DiagnosticBag`. A problem in what was authored is a diagnostic, never an
@@ -378,10 +377,9 @@ and is resolved where that thing is known:
 | `var()` | a project variable from `vars:` | `resolve_scalar` |
 | `tag()` | a tag from `tags:` | `resolve_scalar`, and `domain/resolve/tags.py` for an agent's tags |
 | `semantic_view()`, `tool('name')`, `agent()` | that artifact; a `tool()` that opens a stage path names the stage member | the agent loader, then `app/compile/agents/resolve_tools.py`; a stage path through `domain/resolve/stage_path.py` |
-| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin or profile member, `member_names` in `adapters/yaml/fields.py`; as a command's `skill:`, `domain/validate/coco_desktop_profile.py`, and `domain/render/coco_desktop_profile.py` renders it to the skill's name |
-| `command()`, `mcp_server()`, `hook()` | a command, MCP config or hook, as a profile member | `member_names`, in the profile loader |
+| `skill()`, `plugin()` | a skill or plugin this project publishes | the agent loader, then `app/compile/agents/resolve_skills.py`; as a plugin member, `member_names` in `adapters/yaml/fields.py`; as a Cortex Code profile's `skills:` or `plugins:`, the profile loader, then the agent skill resolver |
 | `extension()` | an extension another project publishes, from the top-level `extensions:` block | the agent loader, then `app/compile/agents/resolve_skills.py` |
-| `file()` | a file, relative to the folder of the file that names it: an agent's instructions, a verified query's `sql:`, a tool member's `body:`, a hook's `script:` | `resolve_file` in `adapters/yaml/fields.py`, the one resolver every loader calls |
+| `file()` | a file, relative to the folder of the file that names it: an agent's instructions, a verified query's `sql:`, a tool member's `body:` | `resolve_file` in `adapters/yaml/fields.py`, the one resolver every loader calls |
 | `eval_dataset()`, `eval_config()` | an eval file in the agent's `evals/` folder, by its `name:` | the eval catalog reader |
 | `eval_metric()` | a custom judge metric | the eval config reader |
 | `table()`, `column()` | nothing: legacy spellings of `ref()` | refused |

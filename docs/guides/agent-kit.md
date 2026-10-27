@@ -129,7 +129,7 @@ lock with the last skill. A file you changed is kept, and stays recorded, unless
 ## Not to be confused with published skills
 
 The project's `skills/` folder (`project.skills_dir`) holds skills SST publishes to Snowflake
-for Cortex Agents and CoCo Desktop profiles; see [Skills](skills.md). The agent kit is for the
+for Cortex Agents and Cortex Code profiles; see [Skills](skills.md). The agent kit is for the
 coding agent that edits the project, and is never published.
 
 Drawn from: [agent-kit commands](../../snowflake_semantic_tools/cli/commands/agent_kit.py), [planner and lock](../../snowflake_semantic_tools/domain/agent_kit.py), [kit files](../../snowflake_semantic_tools/adapters/agent_kit/__init__.py).

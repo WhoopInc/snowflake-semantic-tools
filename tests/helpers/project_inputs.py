@@ -8,7 +8,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.model.agent import AgentModel
-from snowflake_semantic_tools.domain.model.coco_desktop_profile import CocoDesktopProfileCatalog
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileCatalog
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
@@ -48,7 +48,8 @@ class InMemoryProjectInputs:
     identity: TargetIdentity = field(default_factory=dev_target)
     target_diagnostics: tuple[Diagnostic, ...] = ()
     skills: SkillCatalog = field(default_factory=SkillCatalog)
-    profiles: CocoDesktopProfileCatalog = field(default_factory=CocoDesktopProfileCatalog)
+    profiles: CocoProfileCatalog = field(default_factory=lambda: CocoProfileCatalog((), None))
+    profile_diagnostics: DiagnosticBag = DiagnosticBag()
     views: SemanticViewProject = field(default_factory=lambda: SemanticViewProject(()))
     dbt: DbtCatalog = field(default_factory=lambda: DbtCatalog("v12", None, None, ()))
     tools: ToolCatalog = field(default_factory=lambda: ToolCatalog((), "dev", frozenset(("dev",))))
@@ -81,13 +82,9 @@ class InMemoryProjectInputs:
         self.reads.append(f"skill_catalog:{skills_dir},{plugins_dir}")
         return self.skills
 
-    def coco_desktop_profile_catalog(
-        self, *, coco_desktop_profiles_dir: str, hooks_dir: str, mcp_servers_dir: str, commands_dir: str
-    ) -> CocoDesktopProfileCatalog:
-        self.reads.append(
-            f"coco_desktop_profile_catalog:{coco_desktop_profiles_dir},{hooks_dir},{mcp_servers_dir},{commands_dir}"
-        )
-        return self.profiles
+    def coco_profile_catalog(self, *, coco_profiles_dir: str) -> tuple[CocoProfileCatalog, DiagnosticBag]:
+        self.reads.append(f"coco_profile_catalog:{coco_profiles_dir}")
+        return self.profiles, self.profile_diagnostics
 
     def dbt_catalog(self) -> DbtCatalog:
         self.reads.append("dbt_catalog")

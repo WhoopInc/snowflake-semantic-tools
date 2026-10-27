@@ -96,6 +96,24 @@ def test_drop_removes_an_owned_object_and_forgets_it_remote_and_local(
     assert (silenced.exit_code, "warn  drop:" in silenced.stderr) == (0, False)
 
 
+def test_a_coco_profile_drops_as_the_agent_it_publishes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Cortex Code agent profiles are a Snowflake private preview; each publishes as an AGENT.
+    profile = "CORTEX_CODE.CONFIG.ANALYST"
+    port = FakeSnowflake(
+        role="RECORDED_ROLE",
+        existing=(profile,),
+        markers={profile: MARKER},
+        state={"coco_profile:analyst": _entry(profile)},
+    )
+    port.state_manifest = "a" * 64
+    args = ["drop", profile, "--type", "coco_profile", "--target", "dev", "--yes", "--output", "json", "--quiet"]
+    result = invoke_with_port(monkeypatch, port, [*args, "--project-dir", str(_project(tmp_path))])
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)["data"]
+    assert (data["statement"], data["forgotten"]) == (f"DROP AGENT {profile}", ["coco_profile:analyst"])
+    assert port.scripts == [(f"DROP AGENT {profile}",)]
+
+
 def test_an_object_without_sst_marker_is_refused_and_left_alone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -184,7 +202,8 @@ def test_a_configured_state_table_is_honored_and_a_broken_config_ignored(
         (
             ["A.B.C"],
             "SST-PRT100",
-            "sst drop requires --type; no --type; one of agent, cowork_profile, plugin, semantic_view, skill",
+            "sst drop requires --type; no --type; one of agent, coco_profile, cowork_profile, plugin, semantic_view, "
+            "skill",
         ),
         (["A.B.C", "--type", "tool"], "SST-PRT100", "sst drop requires --type; --type 'tool' is not a droppable type"),
         (["A.B.C", "--type", "agent"], "SST-PRT100", "sst drop requires --target; it has no default"),

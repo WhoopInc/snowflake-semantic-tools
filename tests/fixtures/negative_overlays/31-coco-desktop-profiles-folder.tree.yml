@@ -1,0 +1,7 @@
+---
+# A CoCo Desktop profile left in the folder SST read before agent profiles.
+files:
+  coco_desktop_profiles/jaffle_legacy/coco_desktop_profile.yml: |
+    name: jaffle_legacy
+    skills:
+      - "{{ skill('jaffle-semantics') }}"

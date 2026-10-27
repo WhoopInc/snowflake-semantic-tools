@@ -1,7 +1,7 @@
 # Snowflake Semantic Tools
 
 SST builds Snowflake semantic views, Cortex Agents, their tools and evaluations,
-Cortex Extension skills and plugins, CoCo Desktop profiles, and Snowflake
+Cortex Extension skills and plugins, Cortex Code profiles, and Snowflake
 CoWork profiles (a Snowflake private preview[^preview]) from files in a dbt project, and
 publishes them with a reviewed plan.
 
@@ -25,7 +25,7 @@ publishes them with a reviewed plan.
 | [Agents](guides/agents.md) | agent specs, tool members, and skills an agent loads |
 | [Evals](guides/evals.md) | question sets, run configuration, custom judges, running, and baselines |
 | [Skills](guides/skills.md) | `SKILL.md` folders, nested skills, bundled files, limits, and versions |
-| [Plugins and profiles](guides/plugins-and-coco-desktop-profiles.md) | plugins, CoCo Desktop profiles, commands, hooks, and MCP configs |
+| [Plugins and Cortex Code profiles](guides/plugins-and-coco-profiles.md) | plugins, and Cortex Code agent profiles (a Snowflake private preview) |
 | [CoWork profiles](guides/cowork-profiles.md) | Snowflake CoWork profiles, a [Snowflake private preview](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles): the agents a profile routes to, where it publishes, and what SST leaves to CoWork Admin |
 | [Configuration](guides/configuration.md) | `sst_config.yml`, targets, folder routes, an item's `config:` and the precedence chain, projects without dbt, and authentication |
 | [References](guides/references.md) | every field that names a file or a member, the template call it takes, `file()`, stage paths, and the fields left literal |
@@ -70,7 +70,7 @@ For maintainers, and anyone weighing SST: how the engine is built and why.
 
 `tests/fixtures/reference_project/` in this repository is a complete project
 that uses every artifact type: three semantic views, tools, three agents, an
-eval, three skills, a plugin, two Desktop profiles, and a CoWork profile. The test suite validates
+eval, four skills, a plugin, two Cortex Code profiles, and a CoWork profile. The test suite validates
 and compiles it on every change. Run it offline with the dbt manifest committed
 beside it:
 

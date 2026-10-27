@@ -18,9 +18,9 @@ its shape and publishes it. Treat each of these like SQL you would run yourself:
   each table the views read; publishing writes them into the semantic view.
 - **Agent instructions, tool definitions, and skills** are published as written, and decide
   what an agent does when someone calls it. `sst eval` runs the agents.
-- **Profiles, hooks, MCP configs, and commands** are published to the profile registry, and
-  CoCo Desktop installs them for everyone who selects the profile: a hook's script and an MCP
-  server's command run for those people, not for you.
+- **Cortex Code profiles** are published as AGENTs in `CORTEX_CODE.CONFIG`, and Cortex Code
+  applies their instructions and skills for every role with USAGE on them; SST grants none of
+  that access. A Cortex Code profile carries no hooks, MCP servers, or commands.
 - **profiles.yml** chooses the account, the role, and the credentials.
 
 **Never run a credentialed command on an untrusted change.** These commands connect:

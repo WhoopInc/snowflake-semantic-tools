@@ -1,6 +1,7 @@
 ---
 # The skills: root without its bundle stage: no skill resolves one, so none
-# publishes, and the agent that references one cannot pin it.
+# publishes, and neither the agent nor a Cortex Code profile that references one
+# can pin it: once for the agent's skill and once for each skill a profile pins.
 edits:
   sst_config.yml:
     - old: "  +bundle_stage: SKILL_BUNDLE_SRC\n  # `true`"
