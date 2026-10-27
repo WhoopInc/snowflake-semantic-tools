@@ -247,10 +247,11 @@ jobs:
 
       # SST_GOLDEN_PROJECT and no manifest: SST runs `dbt parse` itself, through the same seam a
       # user's project goes through, then renders every artifact and compares it with the goldens.
+      # `-n 0`: runs serially so concurrent xdist workers do not race on the reference project's target/manifest.json.
       - name: Render the goldens from the manifest SST has dbt parse
         env:
           SST_GOLDEN_PROJECT: ${{ env.REFERENCE_PROJECT }}
-        run: poetry run pytest -m "not live" tests/unit/test_goldens.py
+        run: poetry run pytest -n 0 -m "not live" tests/unit/test_goldens.py
 
       # The same contract the committed manifests are held to: the schema version is accepted,
       # every path SST reads is present with its type, and the views render as the goldens'.
