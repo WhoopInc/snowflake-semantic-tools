@@ -131,6 +131,10 @@ explicit_package_bases = true
 disallow_untyped_defs = true
 exclude = [
 ]
+
+[[tool.mypy.overrides]]
+module = "snowflake_semantic_tools.adapters.dbt.manifest_schema"
+disable_error_code = ["override"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 # The repository root, so test modules can import shared test support as `tests.helpers.*`.
