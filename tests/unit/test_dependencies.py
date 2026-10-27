@@ -211,7 +211,8 @@ def metadata_text(name: str) -> str | None:
     except PackageNotFoundError:
         return None
     classifiers = [c for c in meta.get_all("Classifier") or () if c.startswith("License ::")]
-    return "\n".join((meta.get("License-Expression") or "", meta.get("License") or "", *classifiers)).strip()
+    licenses = [*(meta.get_all("License-Expression") or ()), *(meta.get_all("License") or ()), *classifiers]
+    return "\n".join(licenses).strip()
 
 
 def forbidden_metadata(names: set[str], read: Any = metadata_text) -> dict[str, str]:
