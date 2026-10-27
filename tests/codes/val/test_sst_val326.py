@@ -67,3 +67,11 @@ def test_sst_val326_silent(tmp_path: Path) -> None:
         "  expr: \"SUM({{ ref('orders', 'order_total') }}) + 0 * DATEDIFF(day, CURRENT_DATE, CURRENT_DATE)\"\n",
     )
     assert reported(niladic, "SST-VAL326") == []
+    # A backslash-escaped quote does not end a string literal (GitHub #266).
+    escaped = edited(
+        tmp_path / "escaped",
+        METRICS,
+        EXPR,
+        "  expr: \"SUM({{ ref('orders', 'order_total') }}) + COUNT_IF('it''s \\\\' ok' = 'x')\"\n",
+    )
+    assert reported(escaped, "SST-VAL326") == []

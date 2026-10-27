@@ -93,6 +93,9 @@ def test_every_bare_word_a_view_attaches_is_a_column_or_a_variable_it_declares()
         "total",
         "x",
     )
+    assert bare_identifiers("COUNT_IF(name = 'it''s \\' ok') + $$a b$$ + total") == ("name", "total")
+    # Text that does not lex is masked by the same escapes, as far as it goes.
+    assert bare_identifiers("total + 'a\\' b' + 'open") == ("total", "open")
     metrics = (
         MetricDef("typo", "SUM(totl) * threshold", None, ()),
         MetricDef("fine", "SUM(total) * current_date", None, ()),

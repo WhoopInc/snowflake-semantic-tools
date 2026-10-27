@@ -20,6 +20,7 @@ from snowflake_semantic_tools.domain.model.project import ParsedView
 from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship, ViewScope
 from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.sql import UnsafeSqlError, guard_expression, is_datatype
+from snowflake_semantic_tools.domain.sql.lexer import LexError, TokenKind, tokenize
 from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
 from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
 
@@ -111,9 +112,12 @@ SQL_WORDS = frozenset(
     ]
 )
 _TEMPLATE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+# The lexer's tokens that hold no name: strings (with `''` and backslash escapes), quoted
+# identifiers, `$$` bodies and comments.
+_OPAQUE = frozenset((TokenKind.STRING, TokenKind.QUOTED_IDENTIFIER, TokenKind.DOLLAR_STRING, TokenKind.COMMENT))
+# For text that does not lex, a best effort with the same escapes.
 _MASKS = (
-    _TEMPLATE,
-    re.compile(r"'(?:''|[^'])*'"),
+    re.compile(r"'(?:''|\\.|[^'\\])*'"),
     re.compile(r"\"(?:\"\"|[^\"])*\""),
     re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL),
 )
@@ -127,9 +131,12 @@ def bare_identifiers(expression: str) -> tuple[str, ...]:
     Template calls, string literals, quoted identifiers and comments are masked first, and SQL
     keywords and type names are left out.
     """
-    text = expression
-    for mask in _MASKS:
-        text = mask.sub(" ", text)
+    text = _TEMPLATE.sub(" ", expression)
+    try:
+        text = "".join(" " if token.kind in _OPAQUE else token.text for token in tokenize(text))
+    except LexError:
+        for mask in _MASKS:
+            text = mask.sub(" ", text)
     return tuple(
         dict.fromkeys(
             word for word in _BARE.findall(text) if word.casefold() not in SQL_WORDS and not is_datatype(word.upper())
