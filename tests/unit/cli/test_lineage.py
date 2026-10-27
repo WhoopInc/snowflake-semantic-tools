@@ -10,7 +10,7 @@ from typing import Any
 from click.testing import CliRunner
 
 from snowflake_semantic_tools.cli.main import cli
-from snowflake_semantic_tools.domain.state.documents import content_hash
+from snowflake_semantic_tools.domain.state.manifest import _manifest_from_dict_unchecked
 from tests.helpers.cli_projects import common, compile_project
 from tests.helpers.reference_project import project_copy
 
@@ -84,8 +84,8 @@ def test_a_manifest_without_dbt_s_graph_says_to_compile_again(tmp_path: Path) ->
     compile_project(project)
     path = project / "sst_target" / "manifest.json"
     document = {**json.loads(path.read_text(encoding="utf-8")), "dbt_nodes": {}}
-    material = {key: value for key, value in document.items() if key not in ("manifest_id", "schema_version")}
-    path.write_text(json.dumps({**document, "manifest_id": content_hash(material)}), encoding="utf-8")
+    stripped = _manifest_from_dict_unchecked(document).with_computed_id()
+    path.write_text(json.dumps(stripped.as_dict()), encoding="utf-8")
     assert "run `sst compile` to trace through dbt" in _lineage(project, "tool:order_status", output="table")
     assert _lineage(project, "tool:order_status")["dbt_graph"] is False
 

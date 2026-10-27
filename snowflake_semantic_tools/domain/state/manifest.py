@@ -179,10 +179,18 @@ class Manifest:
     migrated_from: int | None = field(default=None, compare=False)
 
     def hash_material(self) -> dict[str, object]:
-        """Return what `manifest_id` hashes: the document without the id and the schema version."""
+        """Return what `manifest_id` hashes: the document less its id, schema version and info count.
+
+        Info diagnostics are notes, and some depend on the run rather than the project (measured
+        in CI: a full and a partial `dbt parse` of the same files), so counting them would make
+        plan refuse a fresh compile as stale (SST-MAN009). The count is still written.
+        """
         document = self.as_dict()
         document.pop("manifest_id")
         document.pop("schema_version")
+        document["diagnostics_summary"] = {
+            key: count for key, count in self.diagnostics_summary.items() if key != "info"
+        }
         return document
 
     def with_computed_id(self) -> Manifest:

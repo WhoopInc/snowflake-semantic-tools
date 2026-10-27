@@ -117,6 +117,18 @@ def test_manifest_round_trip_detects_tampering_and_versions() -> None:
         Manifest.from_dict({"schema_version": MANIFEST_SCHEMA_VERSION})
 
 
+def test_the_info_count_is_written_but_not_hashed() -> None:
+    value = replace(
+        manifest(), diagnostics_summary=MappingProxyType({"error": 0, "warning": 2, "info": 5})
+    ).with_computed_id()
+    more_info = replace(value, diagnostics_summary=MappingProxyType({"error": 0, "warning": 2, "info": 9}))
+    more_warnings = replace(value, diagnostics_summary=MappingProxyType({"error": 0, "warning": 3, "info": 5}))
+    assert more_info.with_computed_id().manifest_id == value.manifest_id
+    assert more_warnings.with_computed_id().manifest_id != value.manifest_id
+    assert value.as_dict()["diagnostics_summary"] == {"error": 0, "warning": 2, "info": 5}
+    assert Manifest.from_dict(more_info.as_dict()).diagnostics_summary["info"] == 9
+
+
 def test_manifest_v1_migrates_in_memory_and_bad_migrations_fail() -> None:
     value = manifest().as_dict()
     value["schema_version"] = 1
