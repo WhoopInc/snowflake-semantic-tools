@@ -84,6 +84,24 @@ def _refuse(diagnostic: Diagnostic, cause: Exception | None = None) -> ProjectEr
     return error
 
 
+# The most characters of dbt's output a refusal quotes; the rest is printed above it.
+_QUOTED = 400
+
+
+def _dbt_error(completed: CompletedRun) -> str:
+    """Quote what dbt said went wrong: its lines naming an error, else its last lines.
+
+    A reader that sees only the diagnostic, as an agent reading `-o agent` does, then knows
+    the cause without dbt's full output.
+    """
+    lines = [line.strip() for line in (completed.stdout + "\n" + completed.stderr).splitlines() if line.strip()]
+    if not lines:
+        return "it printed nothing"
+    errors = [line for line in lines if "error" in line.casefold()]
+    quoted = " | ".join(errors or lines[-3:])
+    return quoted if len(quoted) <= _QUOTED else quoted[: _QUOTED - 3] + "..."
+
+
 def _yaml_mapping(path: Path) -> Mapping[str, Any]:
     """Read a dbt-owned YAML file as plain YAML; an absent, unreadable or non-mapping one is empty."""
     try:
@@ -318,7 +336,7 @@ def parse_project(
     completed = _run(runner, arguments, root)
     if completed.returncode != 0:
         echo(completed.stdout + completed.stderr)
-        raise _refuse(D("SST-DBT028", found=completed.returncode))
+        raise _refuse(D("SST-DBT028", found=completed.returncode, detail=_dbt_error(completed)))
     if not manifest_path.is_file():
         try:
             shown = manifest_path.relative_to(project_dir).as_posix()

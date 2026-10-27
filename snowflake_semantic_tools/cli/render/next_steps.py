@@ -56,9 +56,22 @@ def default_next_steps(
         if agent:
             return ("show the user this plan; `sst apply` changes Snowflake, so run it only when they ask",)
         return ("review the plan; `sst apply` makes these changes in Snowflake, so run it only when you mean to",)
+    if exit_code == CHANGES and command in _WRITES:
+        return (f"the lines above list what would change; {_WRITES[command]}",)
+    if exit_code == ERROR and not errors:
+        return (f"the lines above say what `sst {command}` left undone; resolve them, then {_again(command, agent)}",)
     if exit_code == OK and command == "validate" and not errors:
         return ("`sst plan` shows what would change in Snowflake",) if not warnings else ()
     return ()
+
+
+# How to make the changes a command that exits 2 has listed but not made.
+_WRITES = {
+    "format": "run `sst format` to rewrite the files",
+    "migrate refs": "run `sst migrate refs --write` to rewrite them",
+    "migrate split": "run `sst migrate split --write` to split them",
+    "docs": "run `sst docs` to write the pages",
+}
 
 
 def _again(command: str, agent: bool) -> str:

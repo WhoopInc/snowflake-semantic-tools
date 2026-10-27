@@ -6,8 +6,10 @@ act and nothing else, in a grammar a line-by-line reader can rely on:
 - the first line is the verdict, `sst <command>: <OUTCOME> key=value ...`;
 - each finding is one line, `E`, `W` or `I`, then its code, location, subject and message,
   with a `fix:` line under it and the follow-on findings it caused as `cascade` lines;
-- a plan's changes, apply's outcomes, list's items, or the kit skills `agent-kit status` finds
-  not current follow, one line each, the first two marked `+ ~ - ! =`;
+- a plan's changes, apply's outcomes, list's items, the kit skills `agent-kit status` finds
+  not current, and the files and entries `format`, `clean`, `migrate`, and `baseline` change
+  or list follow, one line each, marked `+ ~ - ! =` where a line adds, changes, removes, leaves
+  alone, or keeps something;
 - the last line is `next:`, which never tells an agent to change Snowflake on its own.
 
 Its own marks are ASCII, and it has no color, progress, links, info findings, or baselined
@@ -185,7 +187,10 @@ def _body(command: str, data: Mapping[str, object]) -> list[str]:
 
 
 def _listed(command: str, data: Mapping[str, object]) -> list[str]:
-    """Return one line per item `list` lists, node `lineage` traces, or kit skill not current."""
+    """Return one line per item `list` lists, node `lineage` traces, kit skill not current, or file
+    and baseline entry a command changes or lists."""
+    if command in _FILE_COMMANDS:
+        return _files(command, data)
     if command == "list":
         listed = ("key", "status", "target", "relation")
         return [" ".join(str(item.get(key)) for key in listed if item.get(key)) for item in _rows(data.get("items"))]
@@ -200,6 +205,54 @@ def _listed(command: str, data: Mapping[str, object]) -> list[str]:
         + (f" | {item['marker']}" if item.get("marker") else "")
         for item in _rows(data.get("nodes"))
     ]
+
+
+# The commands whose files or baseline entries `_files` lists.
+_FILE_COMMANDS = frozenset(
+    ("format", "clean", "migrate refs", "migrate split", "baseline show", "baseline add", "baseline prune")
+)
+
+
+def _files(command: str, data: Mapping[str, object]) -> list[str]:
+    """Return a line per file a command changes or would, per place it left alone, or per baseline entry.
+
+    `~` a file rewritten, or that would be; `-` one removed, or an entry pruned; `+` an entry
+    added; `!` a file or reference left as it is, with why; `=` an entry `baseline show` lists.
+    """
+    lines = [f"~ {path}" for path in _strings(data.get("would_change"))]
+    lines += [f"~ {path} formatted" for path in _strings(data.get("formatted"))]
+    lines += [f"- {path} would be removed" for path in _strings(data.get("would_remove"))]
+    lines += [f"- {path} removed" for path in _strings(data.get("removed"))]
+    for item in _rows(data.get("files")):
+        path = item.get("path")
+        if item.get("refused"):
+            lines.append(f"! {path} left whole | {_one_line(str(item['refused']))}")
+        elif item.get("into"):
+            lines.append(f"~ {path} into {','.join(_strings(item.get('into')))}")
+        rewrites = item.get("rewrites")
+        if isinstance(rewrites, Mapping) and any(rewrites.values()):
+            counts = ",".join(f"{kind}={value}" for kind, value in rewrites.items() if value)
+            lines.append(f"~ {path} {counts}")
+        for left in _rows(item.get("untouched")):
+            where = f"{path}:{left.get('line')}:{left.get('column')}"
+            lines.append(f"! {where} {left.get('text')} | {_one_line(str(left.get('reason')))}")
+    config = data.get("config")
+    if isinstance(config, Mapping):
+        for rewrite in _rows(config.get("rewrites")):
+            change = f"{rewrite.get('before') or '(new)'} -> {rewrite.get('after') or '(removed)'}"
+            lines.append(f"~ {config.get('path')}:{rewrite.get('line')} {change}")
+        for left in _rows(config.get("untouched")):
+            lines.append(f"! {config.get('path')}:{left.get('line')} {left.get('text')} | {left.get('reason')}")
+    marks = (("added", "+"), ("pruned", "-")) + ((("entries", "="),) if command == "baseline show" else ())
+    for key, mark in marks:
+        for entry in _rows(data.get(key)):
+            where = " ".join(str(entry[name]) for name in ("artifact", "file") if entry.get(name))
+            lines.append(f"{mark} {entry.get('code')} {where}".rstrip())
+    return lines
+
+
+def _strings(value: object) -> list[str]:
+    return [str(item) for item in value] if isinstance(value, list) else []
 
 
 def _kit_skills(data: Mapping[str, object]) -> list[str]:

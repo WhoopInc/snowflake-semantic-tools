@@ -15,8 +15,14 @@ def test_sst_dbt028_fires(tmp_path: Path) -> None:
     dbt = FakeDbt(parse=CompletedRun(2, "Compilation Error in model orders\n", ""))
     diagnostic = refused(tmp_path, dbt, echo=echoed.append)
     assert (diagnostic.code, diagnostic.severity) == ("SST-DBT028", Severity.ERROR)
-    assert diagnostic.message == "dbt exited 2"
+    assert diagnostic.message == "dbt exited 2: Compilation Error in model orders"
     assert echoed == ["Compilation Error in model orders\n"]
+    # Without a line naming an error the last lines are quoted, and a long quote is cut short.
+    for output, quoted in (("", "it printed nothing"), ("a\nb\nc\nd\n", "b | c | d")):
+        silent = refused(tmp_path, FakeDbt(parse=CompletedRun(1, output, "")), echo=echoed.append)
+        assert silent.message == f"dbt exited 1: {quoted}"
+    long = refused(tmp_path, FakeDbt(parse=CompletedRun(1, "Error " + "x" * 500, "")), echo=echoed.append)
+    assert len(long.message) == len("dbt exited 1: ") + 400 and long.message.endswith("...")
 
 
 def test_sst_dbt028_silent(tmp_path: Path) -> None:

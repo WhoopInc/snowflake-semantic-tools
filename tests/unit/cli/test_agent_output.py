@@ -23,7 +23,7 @@ LINE = re.compile(
     r"|[EWI] SST-[A-Z]{3}\d{3} .*\| .*"
     r"|  fix: .+"
     r"|  cascade SST-[A-Z]{3}\d{3} .*\| .*"
-    r"|[+~\-!=] \S+ \S+ \S+.*"
+    r"|[+~\-!=] \S+.*"
     r"|(applied|failed|skipped) \S+ \S+.*"
     r"|\.\.\. \d+ more lines left out; .*"
     r"|next: .+)$"
@@ -196,3 +196,82 @@ def test_json_lists_the_next_steps(tmp_path: Path) -> None:
     _, out, _ = _validate(_broken(tmp_path), "-o", "json")
     steps = json.loads(out)["next_steps"]
     assert steps[0].startswith("fix the error") and any("sst explain" in step for step in steps)
+
+
+def test_format_check_lists_each_file_and_says_how_to_rewrite_them(tmp_path: Path) -> None:
+    # GitHub #265: the agent document once said `nothing to do` while files would change.
+    project = project_copy(tmp_path)
+    metric = project / "semantic_models" / "metrics" / "gross_margin.yml"
+    metric.write_text(metric.read_text().replace("\n  ", "\n      "))
+    for flag, code in (("--check", 2), ("--dry-run", 0)):
+        result = CliRunner().invoke(cli, ["-o", "agent", "--project-dir", str(project), "format", flag])
+        lines = result.stdout.splitlines()
+        assert result.exit_code == code, result.stdout
+        assert "~ semantic_models/metrics/gross_margin.yml" in lines
+        assert all(LINE.match(line) for line in lines), [line for line in lines if not LINE.match(line)]
+    checked = CliRunner().invoke(cli, ["-o", "agent", "--project-dir", str(project), "format", "--check"])
+    assert checked.stdout.splitlines()[-1] == (
+        "next: the lines above list what would change; run `sst format` to rewrite the files"
+    )
+
+
+def _document(command: str, exit_code: int, data: dict[str, object]) -> list[str]:
+    out = agent_document(
+        command,
+        exit_code,
+        DiagnosticBag(()),
+        baselined=frozenset(),
+        fingerprint=stable_fingerprint,
+        project_dir=Path("."),
+        data=data,
+        next_steps=default_next_steps(command, exit_code, errors=0, warnings=0, audience="agent"),
+    )
+    lines = out.splitlines()
+    assert all(LINE.match(line) for line in lines), [line for line in lines if not LINE.match(line)]
+    return lines[1:]
+
+
+def test_clean_migrate_and_baseline_list_what_they_change_or_list() -> None:
+    assert _document("clean", 0, {"removed": ["sst_target"], "would_remove": []})[:-1] == ["- sst_target removed"]
+    assert _document("clean", 0, {"removed": [], "would_remove": ["sst_target"]})[0] == (
+        "- sst_target would be removed"
+    )
+    assert _document("format", 0, {"formatted": ["a.yml"], "would_change": []})[0] == "~ a.yml formatted"
+    untouched = {"line": 4, "column": 27, "text": "{{ table('x') }}", "reason": "no model named x"}
+    refs = {
+        "written": False,
+        "files": [{"path": "m.yml", "rewrites": {"ref": 2, "metric": 0}, "untouched": [untouched]}],
+    }
+    assert _document("migrate refs", 1, refs) == [
+        "~ m.yml ref=2",
+        "! m.yml:4:27 {{ table('x') }} | no model named x",
+        "next: the lines above say what `sst migrate refs` left undone; resolve them, then run "
+        "`sst migrate refs` again",
+    ]
+    split = {
+        "written": False,
+        "files": [
+            {"path": "big.yml", "into": ["a.yml", "b.yml"], "refused": None},
+            {"path": "odd.yml", "refused": "a comment"},
+        ],
+        "config": {
+            "path": "sst_config.yml",
+            "rewrites": [{"line": 3, "before": "old", "after": None}],
+            "untouched": [{"line": 5, "text": "x", "reason": "kept"}],
+        },
+    }
+    assert _document("migrate split", 2, split) == [
+        "~ big.yml into a.yml,b.yml",
+        "! odd.yml left whole | a comment",
+        "~ sst_config.yml:3 old -> (removed)",
+        "! sst_config.yml:5 x | kept",
+        "next: the lines above list what would change; run `sst migrate split --write` to split them",
+    ]
+    entry = {"code": "SST-VAL001", "artifact": "metric:m", "file": "m.yml"}
+    baseline = {"entries": [entry], "added": [], "pruned": [dict(entry, artifact=None)]}
+    assert _document("baseline show", 0, baseline)[:-1] == ["- SST-VAL001 m.yml", "= SST-VAL001 metric:m m.yml"]
+    assert _document("baseline prune", 0, baseline)[:-1] == ["- SST-VAL001 m.yml"]
+    assert (
+        _document("docs", 2, {})[-1]
+        == "next: the lines above list what would change; run `sst docs` to write the pages"
+    )

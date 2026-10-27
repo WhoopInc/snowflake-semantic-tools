@@ -6181,11 +6181,11 @@ Fix: install dbt, or pass --manifest to read a manifest that already exists
 
 **dbt exited non-zero** (error)
 
-`dbt exited <found>`
+`dbt exited <found>: <detail>`
 
 Raised when the dbt subprocess (`dbt.command`) ran and reported failure.
 
-Fix: read dbt's own output above; the failure is in the dbt project
+Fix: fix the dbt project as dbt's error says; its full output is printed above
 
 ### SST-DBT029
 
