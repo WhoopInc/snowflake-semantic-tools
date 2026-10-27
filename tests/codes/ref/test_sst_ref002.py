@@ -13,6 +13,9 @@ def test_sst_ref002_fires() -> None:
     assert diagnostic.message == "{{ ref('orders','nope') }}: 'nope' is not a column on orders"
     assert diagnostic.subject == "metric:m"
     assert value.poisoned
+    # Two calls naming one missing column are one problem, reported once (GitHub #270).
+    _, twice = resolved("{{ ref('orders', 'nope') }} + {{ ref('orders', 'nope') }}", METRIC_EXPR)
+    assert [item.code for item in twice] == ["SST-REF002"]
 
 
 def test_sst_ref002_silent() -> None:

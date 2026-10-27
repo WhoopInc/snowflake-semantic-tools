@@ -186,7 +186,9 @@ def resolve_scalar(
     for call in reversed(calls):
         value = _resolve_call(call, policy, site, context, (ref_value, column_value))
         if isinstance(value, Diagnostic):
-            diagnostics.append(value)
+            # Two calls that name the same missing thing are one problem, reported once.
+            if value not in diagnostics:
+                diagnostics.append(value)
             continue
         rendered = rendered[: call.start] + value + rendered[call.end :]
     diagnostics.extend(_call_count_problems(text, calls, policy, site))

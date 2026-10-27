@@ -60,3 +60,16 @@ def test_sst_ref001_silent_for_known_view_tables(tmp_path: Path) -> None:
     project = _view(tmp_path, ("customers",))
     assert reported(project, "SST-REF001") == []
     assert "V" in view_names(project)
+
+
+def test_sst_ref001_is_reported_at_the_tables_entry_not_at_a_word_of_the_description(tmp_path: Path) -> None:
+    # GitHub #270: the finding was moved onto the description, which also names the model.
+    view = VIEW.replace("questions about orders.", "questions about ghostmodel orders.")
+    rows = "      - \"{{ ref('orders') }}\"\n      - \"{{ ref('ghostmodel') }}\""
+    project = with_view(tmp_path, view.format(tables=rows, extra=""))
+    [diagnostic] = [item for item in reported(project, "SST-REF001") if item.context["model"] == "ghostmodel"]
+    assert diagnostic.origin is not None
+    assert (diagnostic.origin.file, diagnostic.origin.line) == (
+        "semantic_models/semantic_views/extra/semantic_views.yml",
+        7,
+    )

@@ -177,7 +177,7 @@ def test_each_template_call_of_a_metric_names_a_variable_model_and_column_it_may
         "SST-REF001",
         "SST-REF002",
         "SST-VAL318",
-        "SST-VAL112",
+        # Two calls on one model outside the metric's tables are one problem, reported once.
         "SST-VAL112",
     ]
     assert _codes(metric("unchecked", f"{SUM} + {{{{ var('missing') }}}}")) == []

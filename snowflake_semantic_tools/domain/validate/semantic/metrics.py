@@ -137,14 +137,21 @@ def _duplicate_diagnostics(duplicate_names: frozenset[str], metrics: tuple[Metri
         SST-VAL001: when two or more metrics of one scope share a name, compared casefolded.
     """
     scopes: dict[str, set[bool]] = {}
+    declared: dict[str, list[MetricDef]] = {}
     for metric in metrics:
         scopes.setdefault(metric.name.casefold(), set()).add(metric.derived)
-    return [
-        D("SST-PRS008", name=name, subject=artifact_key("metric", name))
-        if len(scopes.get(name, ())) > 1
-        else D("SST-VAL001", type="metric", name=name, subject=artifact_key("metric", name))
-        for name in sorted(duplicate_names)
-    ]
+        declared.setdefault(metric.name.casefold(), []).append(metric)
+    found: list[Diagnostic] = []
+    for name in sorted(duplicate_names):
+        # The first declaration is the location, and each other one a related location.
+        origins = [metric.origin for metric in declared.get(name, ()) if metric.origin is not None]
+        origin, related = (origins[0], tuple(origins[1:])) if origins else (None, ())
+        subject = artifact_key("metric", name)
+        if len(scopes.get(name, ())) > 1:
+            found.append(D("SST-PRS008", name=name, subject=subject, origin=origin, related=related))
+        else:
+            found.append(D("SST-VAL001", type="metric", name=name, subject=subject, origin=origin, related=related))
+    return found
 
 
 def _one_metric_diagnostics(
@@ -451,7 +458,7 @@ def _template_call_diagnostics(
             found = variable_problem(call.args[0], variables, metric.origin, subject=subject)
             diagnostics.extend((found,) if found is not None else ())
         elif call.function == "ref":
-            diagnostics.extend(_ref_call_diagnostics(metric, call, models))
+            diagnostics.extend(item for item in _ref_call_diagnostics(metric, call, models) if item not in diagnostics)
     return diagnostics
 
 

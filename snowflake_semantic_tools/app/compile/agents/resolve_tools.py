@@ -142,15 +142,19 @@ def _analyst(
 ) -> _Resolution | None:
     """A Cortex Analyst tool: its own `name`, else the name of the compiled view it queries."""
     if not authored.semantic_view:
-        diagnostics.append(D("SST-VAL520", artifact=agent.name, name=authored.name or "", subject=agent.key))
+        diagnostics.append(
+            D("SST-VAL520", artifact=agent.name, name=authored.name or "", subject=agent.key, origin=authored.origin)
+        )
         return None
     target = context.semantic_views.get(authored.semantic_view.casefold())
     declared = view_key(authored.semantic_view)
     if target is None and declared in context.unpublished:
-        diagnostics.append(D("SST-VAL016", type="agent", name=agent.name, value=declared, subject=agent.key))
+        diagnostics.append(
+            D("SST-VAL016", type="agent", name=agent.name, value=declared, subject=agent.key, origin=authored.origin)
+        )
         return None
     if target is None:
-        diagnostics.append(D("SST-REF011", name=authored.semantic_view, subject=agent.key))
+        diagnostics.append(D("SST-REF011", name=authored.semantic_view, subject=agent.key, origin=authored.origin))
         return None
     environment = _execution_environment(
         authored.warehouse or context.warehouse,

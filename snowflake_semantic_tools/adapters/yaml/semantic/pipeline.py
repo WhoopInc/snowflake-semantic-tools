@@ -307,6 +307,7 @@ def _view_table_checks(
             context.models,
             context.catalog.sources,
             unavailable=context.catalog.unreadable_models,
+            entry_origins=_entry_origins(context, path, node, "tables"),
         )
         view = parsed_views.get(key)
         origin = (
@@ -444,7 +445,7 @@ def _build_views(
                 context.config,
                 context.catalog.sources,
                 settings=_view_provenance(settings, view_target),
-                variable_origins=_variable_origins(context, path, node),
+                variable_origins=_entry_origins(context, path, node, "variables"),
             )
         except ProjectError as exc:
             # A member several views hold fails the same way in each; it is reported once.
@@ -454,19 +455,19 @@ def _build_views(
     return views, tuple(diagnostics)
 
 
-def _variable_origins(context: LoadContext, path: Path, node: Mapping[str, Any]) -> tuple[Origin, ...]:
-    """Return where each entry of a view's `variables:` is written, found by the view's node in its file.
+def _entry_origins(context: LoadContext, path: Path, node: Mapping[str, Any], field: str) -> tuple[Origin, ...]:
+    """Return where each entry of a view's list `field` is written, found by the view's node in its file.
 
-    Empty when the node is not one of its file's views, so its variables are reported at the file.
+    Empty when the node is not one of its file's views, so its entries are reported at the file.
     """
     root_key = SEMANTIC_REGISTRY.artifacts["semantic_view"].root_key
     assert root_key is not None
-    entries = node.get("variables")
+    entries = node.get(field)
     count = len(entries) if isinstance(entries, list) else 0
     for document in context.documents.under(context.semantic_dir, root_key):
         for index, candidate in enumerate(document.tree.get(root_key) or []):
             if document.abs_path == path and candidate is node:
-                return tuple(_located(document, (root_key, index, "variables", item)) for item in range(count))
+                return tuple(_located(document, (root_key, index, field, item)) for item in range(count))
     return ()
 
 

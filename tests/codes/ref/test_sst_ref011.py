@@ -22,6 +22,8 @@ def test_sst_ref011_fires() -> None:
     assert diagnostic.severity is Severity.ERROR
     assert diagnostic.message == "{{ semantic_view('nope') }} does not resolve"
     assert diagnostic.subject == "agent:router"
+    # It is reported where the tool is written (GitHub #270).
+    assert diagnostic.origin == ORIGIN
 
 
 def test_sst_ref011_silent() -> None:

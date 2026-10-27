@@ -296,6 +296,7 @@ def view_table_diagnostics(
     models: dict[str, DbtModel],
     sources: tuple[DbtSource, ...] = (),
     unavailable: Container[str] = frozenset(),
+    entry_origins: tuple[Origin, ...] = (),
 ) -> tuple[Diagnostic, ...]:
     """Report every table entry of the view that does not resolve, without stopping at the first.
 
@@ -307,6 +308,8 @@ def view_table_diagnostics(
     Args:
         unavailable: The casefolded names of the models that are disabled or produce no
             relation, which SST-VAL303 reports on the view; an entry naming one reports nothing.
+        entry_origins: Where each `tables:` entry is written, in entry order; a finding is
+            reported there, not at a word of the view that only looks like the model's name.
 
     Diagnostics:
         SST-REF044, SST-REF001, SST-DBT011, SST-PRS006: as `_view_table` reports them, one per
@@ -322,11 +325,16 @@ def view_table_diagnostics(
     )
     found: list[Diagnostic] = []
     logical_by_model: dict[str, str] = {}
-    for raw in node.get("tables") or []:
+    for index, raw in enumerate(node.get("tables") or []):
         try:
             model_key, table = _view_table(raw, view, logical_by_model)
         except ProjectError as exc:
-            found.extend(item for item in exc.diagnostics if _table_entry_problem(item, unavailable))
+            at = entry_origins[index] if index < len(entry_origins) else None
+            found.extend(
+                replace(item, origin=item.origin or at)
+                for item in exc.diagnostics
+                if _table_entry_problem(item, unavailable)
+            )
             continue
         logical_by_model[model_key] = table.logical_name
     return tuple(found)
