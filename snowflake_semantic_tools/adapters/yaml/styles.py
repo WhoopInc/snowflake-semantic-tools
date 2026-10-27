@@ -89,13 +89,15 @@ def unwrap_prose(text: str) -> tuple[list[str], bool]:
     """Join `text`'s soft wraps; return its paragraphs and whether a hard line break remains.
 
     Paragraphs are split at blank-line runs. A paragraph with a line `_HARD_START` matches after
-    its first, or that starts indented, is hard and kept as written.
+    its first, a line other than its last that ends in `:`, as a label over the lines it
+    introduces does, or that starts indented, is hard and kept as written.
     """
     paragraphs: list[str] = []
     hard = False
     for block in re.split(r"\n[ \t]*\n+", text.strip("\n")):
         lines = block.split("\n")
-        if any(_HARD_START.match(line) for line in lines[1:]) or lines[0][:1].isspace():
+        labelled = any(line.rstrip().endswith(":") for line in lines[:-1])
+        if labelled or any(_HARD_START.match(line) for line in lines[1:]) or lines[0][:1].isspace():
             hard = True
             paragraphs.append(block)
         else:

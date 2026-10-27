@@ -367,7 +367,8 @@ format:
   `immutable_reason` -- first has its soft wraps joined: a line break inside a
   paragraph becomes a space, and a run of blank lines between paragraphs becomes
   one paragraph break. A paragraph holding a list item, heading, table row, code
-  fence or indented line keeps its line breaks and stays `|-`. This changes the
+  fence, indented line, or a label line ending in `:` keeps its line breaks and stays `|-`.
+  A label in capitals without a colon is prose and is joined. This changes the
   value, its whitespace only, and the formatter refuses any other change
   (`SST-INT003`). The next publish then updates those comments.
 - SQL, `expr`, agent instructions, custom instructions and prompts are never

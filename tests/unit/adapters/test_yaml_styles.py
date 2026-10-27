@@ -55,6 +55,11 @@ def test_soft_wraps_join_and_lists_headings_and_indented_lines_keep_their_breaks
     )
     for hard in ("Columns:\n- a\n- b", "Intro\n# Heading", "Steps:\n1. one", "a\n  indented", "a\n| t |"):
         assert unwrap_prose(hard)[1]
+    # A label line ending in `:` keeps its break, as a heading does (GitHub #274); a colon
+    # inside a line, or on the last line, is prose.
+    label = "Survey responses.\nNPS SURVEY (nps):\nOne row per respondent."
+    assert unwrap_prose(label) == ([label], True)
+    assert unwrap_prose("Note: one\nrow per day.\nSee also:") == (["Note: one row per day. See also:"], False)
 
 
 def test_a_soft_wrapped_description_publishes_as_one_line_per_paragraph() -> None:
