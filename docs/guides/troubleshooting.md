@@ -489,7 +489,8 @@ suppresses the diagnostic in any run, offline or against any target.
   with `sst baseline add <CODE> --target <name>`, which runs the connected
   validate against that target and records the target in each entry it adds.
 - **`sst baseline prune` keeps a connected entry.** An offline prune cannot tell
-  whether a connected entry is stale, so it keeps it. Run
+  whether a connected entry is stale, so it keeps it, unless its code is one SST no longer
+  reports. Run
   `sst baseline prune --target <name>` for the target the entry records;
   `sst baseline show` lists each entry as `offline` or `connected:<target>`.
 - **The baseline expired.** Past its date it matches nothing and every warning
@@ -499,6 +500,10 @@ suppresses the diagnostic in any run, offline or against any target.
   When it blocks, `SST-INT011` names the entry it may have been:
   run `sst baseline add <CODE>` for the new name, then `sst baseline prune` to
   drop the old entry.
+- **An entry's code is one SST no longer reports**, after an upgrade renamed or
+  retired it or a hand edit: `SST-CFG062` names the entry, and the code that replaced it
+  when one did. `sst baseline prune` removes it; `sst baseline add <CODE>` records the
+  warning again under its current code.
 
 The summary counts baselined warnings apart, as `1 warning (3 baselined)`;
 `--show-baselined` prints them.
