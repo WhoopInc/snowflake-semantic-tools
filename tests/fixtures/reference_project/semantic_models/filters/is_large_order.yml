@@ -1,0 +1,10 @@
+---
+# Reads the view variable large_order_cents as a bare identifier; it renders
+# as ORDERS.ORDER_TOTAL > LARGE_ORDER_CENTS.
+filter:
+  name: is_large_order
+  description: |-
+    Restricts to orders above the view's large-order threshold.
+  expr: "{{ ref('orders', 'order_total') }} > large_order_cents"
+  labels:
+    - filter

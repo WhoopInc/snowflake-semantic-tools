@@ -1,0 +1,16 @@
+# A SECOND PROFILE, FOR WHAT THE ANALYST PROFILE DOES NOT CARRY: a plugin.
+#
+# `plugins:` names a plugin folder. It pins one skill entry per member, each to
+# the plugin extension's version alias, so the plugin's two skills reach this
+# profile through the plugin alone; listing them under `skills:` too would be
+# SST-VAL541.
+#
+# `skills:` adds `supply-backfill`, the skill nested inside `jaffle-operations/`,
+# which is a skill of its own.
+name: jaffle_operator
+description: |-
+  Jaffle operators: the month-close toolkit as one plugin.
+skills:
+  - "{{ skill('supply-backfill') }}"
+plugins:
+  - "{{ plugin('jaffle-toolkit') }}"

@@ -1,0 +1,164 @@
+"""Load what SST needs from a dbt project: the resolved target, its name, and its manifest's models.
+
+`invoke` runs dbt; this module reads what the project declares about where dbt writes and
+reads: the manifest's path and the model directories, through the YAML reader the caller
+passes, and whether the manifest still matches the model files. `dbt_project_name` reads
+dbt_project.yml as plain YAML, as dbt does. This package never parses an SST file.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable, Mapping
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+
+from snowflake_semantic_tools.adapters import bounded_yaml
+from snowflake_semantic_tools.adapters.dbt.profiles import profile_output, target_location
+from snowflake_semantic_tools.adapters.errors import ProjectError
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import resolve_within
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtTarget
+
+YamlReader = Callable[[Path], Mapping[str, Any]]
+# dbt's own default when dbt_project.yml declares no `model-paths`.
+DEFAULT_MODEL_PATHS = ("models",)
+
+
+def resolve_target(files: ProjectPaths, target_name: str | None = None) -> DbtTarget:
+    """Resolve a declared dbt target's database and schema from `profiles.yml`.
+
+    The profile adapter reads the file: it is plain YAML, not a semantic model, so
+    the template-preserving parser would keep a single-quoted scalar's `''`
+    escapes inside `{{ env_var(...) }}` and the value would never resolve.
+
+    Raises:
+        ProjectError: the profile or target cannot be resolved, as `profile_output` says, or the
+            target sets no database or schema (SST-CFG012).
+    """
+    profile, selected_target, output = profile_output(files, target_name)
+    database, schema = target_location(profile, selected_target, output)
+    return DbtTarget(database=database, schema=schema)
+
+
+def target_path(project_dir: Path, read_yaml: YamlReader) -> Path:
+    """The `manifest.json` dbt writes for this project, under dbt_project.yml's `target-path`.
+
+    Raises:
+        ProjectError: `target-path` resolves outside the project directory (SST-PRT009).
+
+    Diagnostics:
+        SST-PRT009: `target-path` resolves outside the project; raised.
+    """
+    target_path = str(read_yaml(project_dir / "dbt_project.yml").get("target-path") or "target")
+    if resolve_within(project_dir, project_dir / target_path) is None:
+        diagnostic = D(
+            "SST-PRT009",
+            origin=Origin("dbt_project.yml"),
+            subject="config:dbt_project.yml",
+            path=f"target-path {target_path!r}",
+            detail="it resolves outside the project",
+        )
+        raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return project_dir / target_path / "manifest.json"
+
+
+def check_model_paths(project_dir: Path, read_yaml: YamlReader) -> None:
+    """Refuse a `model-paths` entry dbt_project.yml sets that is not a directory in the project.
+
+    Only entries the file sets are checked: dbt's default needs no directory to exist.
+
+    Raises:
+        ProjectError: SST-DIS009, one per missing entry in the order they are listed.
+    """
+    entries = read_yaml(project_dir / "dbt_project.yml").get("model-paths")
+    missing = (
+        [str(entry) for entry in entries or () if not (project_dir / str(entry)).is_dir()]
+        if isinstance(entries, list)
+        else []
+    )
+    if missing:
+        diagnostics = tuple(
+            D("SST-DIS009", origin=Origin("dbt_project.yml"), subject="config:dbt_project.yml", path=entry)
+            for entry in missing
+        )
+        raise ProjectError(diagnostics[0].message, diagnostics=diagnostics)
+
+
+def model_paths(project_dir: Path, read_yaml: YamlReader) -> tuple[tuple[str, ...], tuple[Diagnostic, ...]]:
+    """Return dbt_project.yml's `model-paths`, or dbt's default when it declares none.
+
+    Diagnostics:
+        SST-DBT022: `model-paths` is declared but is not a list of directories; the default is used.
+    """
+    value = read_yaml(project_dir / "dbt_project.yml").get("model-paths")
+    if value is None:
+        return DEFAULT_MODEL_PATHS, ()
+    if isinstance(value, list) and value and all(isinstance(item, str) and item.strip() for item in value):
+        return tuple(str(item).strip().rstrip("/") for item in value), ()
+    diagnostic = D(
+        "SST-DBT022",
+        origin=Origin("dbt_project.yml"),
+        subject="config:dbt_project.yml",
+        expected=repr(list(DEFAULT_MODEL_PATHS)),
+    )
+    return DEFAULT_MODEL_PATHS, (diagnostic,)
+
+
+def _fresh(path: Path, checksum: str, dbt_version: str | None) -> bool:
+    """Report whether a model file still has the checksum dbt recorded, in the form it hashes it.
+
+    dbt hashes the file raw or stripped up to 1.11, and from 1.12 with every run of whitespace
+    collapsed to one space, so an edit that only changes whitespace is not stale there. The
+    manifest's `metadata.dbt_version` chooses the forms; every form is tried when it names no
+    version this can read, which may call a whitespace-only edit fresh.
+    """
+    raw = path.read_bytes()
+    text = raw.decode("utf-8", "replace")
+    collapsed = " ".join(text.split()).encode()
+    release = _release(dbt_version)
+    if release is None:
+        forms: tuple[bytes, ...] = (raw, text.strip().encode(), collapsed)
+    else:
+        forms = (collapsed,) if release >= (1, 12) else (raw, text.strip().encode())
+    return checksum in {sha256(form).hexdigest() for form in forms}
+
+
+def _release(dbt_version: str | None) -> tuple[int, int] | None:
+    """The major and minor release a manifest's `dbt_version` names; None when it names none."""
+    found = re.match(r"(\d+)\.(\d+)", dbt_version or "")
+    return (int(found.group(1)), int(found.group(2))) if found else None
+
+
+def stale_models(project_dir: Path, catalog: DbtCatalog, paths: tuple[str, ...]) -> tuple[Diagnostic, ...]:
+    """Report each model file under `paths` that changed after the manifest recorded its checksum.
+
+    Only the root project's models are compared, by the file dbt read them from; a model with no
+    checksum, or whose file is gone, is not compared. Snapshots and seeds are not compared
+    either: dbt v2 hashes a YAML snapshot as something other than its file, so no form of the
+    file says whether it changed.
+
+    Diagnostics:
+        SST-DBT005: a model file's contents no longer match the manifest, once per file.
+    """
+    found: list[Diagnostic] = []
+    for model in sorted(catalog.models, key=lambda item: item.original_file_path or ""):
+        file = model.original_file_path
+        if model.resource_type != "model" or file is None or model.checksum is None:
+            continue
+        if model.package_name not in (None, catalog.project_name):
+            continue
+        if not any(file == root or file.startswith(f"{root}/") for root in paths):
+            continue
+        path = project_dir / file
+        if path.is_file() and not _fresh(path, model.checksum, catalog.dbt_version):
+            found.append(D("SST-DBT005", origin=Origin(file), subject=f"dbt_model:{model.name}", value=file))
+    return tuple(found)
+
+
+def dbt_project_name(project_dir: Path) -> str:
+    """Return the `name:` of `dbt_project.yml`, or "" when the file names none or is not a mapping."""
+    value = bounded_yaml.safe_load((project_dir / "dbt_project.yml").read_text(encoding="utf-8")) or {}
+    return str(value.get("name") or "") if isinstance(value, dict) else ""

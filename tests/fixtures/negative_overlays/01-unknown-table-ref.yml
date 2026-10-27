@@ -1,0 +1,7 @@
+---
+# A metric over a model the dbt project does not have.
+snowflake_metrics:
+  - name: phantom_order_count
+    description: |-
+      Counts rows of a model that does not exist.
+    expr: "COUNT({{ ref('phantom_orders', 'order_id') }})"

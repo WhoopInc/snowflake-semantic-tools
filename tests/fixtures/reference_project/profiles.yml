@@ -1,0 +1,74 @@
+---
+# =============================================================================
+# profiles.yml -- reference project
+# =============================================================================
+# The dbt profile SST reads its targets from. SST's --target is a dbt target: a
+# name not declared here is refused (SST-CFG010), and a `relations:` key in
+# tools/*.yml that names an undeclared target is SST-REF018.
+#
+# `dev` is the default and the golden target: every file under
+# tests/golden/expected/ resolves against it.
+#
+# `dev`, `prod` and `ci` name an account and a user but carry no credential, so
+# they cannot connect; the fixture runs offline against them, and the tests run
+# them against a recorded session. `verify` is the connected target.
+# =============================================================================
+
+sst_reference_impl:
+  target: dev
+
+  outputs:
+    dev:
+      type: snowflake
+      account: sst_reference
+      user: sst_reference
+      database: SST_REF_DEV
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    # Every tool reference maps dev and prod to different objects, so
+    # `--target prod` resolves them all.
+    prod:
+      type: snowflake
+      account: sst_reference
+      user: sst_reference
+      database: SST_REF_PROD
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    # Declared, but mapped by no tool `relations:`, so `--target ci` reports
+    # SST-REF018 for every referenced tool object.
+    ci:
+      type: snowflake
+      account: sst_reference
+      user: sst_reference
+      database: SST_REF_CI
+      schema: JAFFLE
+      warehouse: SST_REF_WH
+      threads: 4
+
+    # Runs the fixture in a real account; every value comes from the same
+    # SST_TEST_SNOWFLAKE_* variables the live tests read (docs/guides/testing-live.md).
+    # Account, user, role, database, schema and warehouse have no default, so an
+    # unset one stops at profile load with the variable named. The authenticator
+    # defaults to externalbrowser (SSO). Unlike `ci`, every tool member maps
+    # it in `relations:`, to a stand-in under SST_REF_VERIFY: a relation is a
+    # literal name and cannot follow these variables. No golden resolves
+    # against it. With the variables exported
+    # (`set -a; . tests/live.local.env; set +a` from the repository root),
+    # build the dbt models there with:
+    #
+    #   dbt deps
+    #   dbt build --target verify
+    verify:
+      type: snowflake
+      account: "{{ env_var('SST_TEST_SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SST_TEST_SNOWFLAKE_USER') }}"
+      authenticator: "{{ env_var('SST_TEST_SNOWFLAKE_AUTHENTICATOR', 'externalbrowser') }}"
+      role: "{{ env_var('SST_TEST_SNOWFLAKE_ROLE') }}"
+      database: "{{ env_var('SST_TEST_SNOWFLAKE_DATABASE') }}"
+      schema: "{{ env_var('SST_TEST_SNOWFLAKE_SCHEMA') }}"
+      warehouse: "{{ env_var('SST_TEST_SNOWFLAKE_WAREHOUSE') }}"
+      threads: 4

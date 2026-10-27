@@ -1,0 +1,90 @@
+---
+# products: the menu, a closed catalogue of ten seed rows. The eval dataset's
+# product-count case relies on that count.
+
+version: 2
+
+models:
+  - name: products
+    description: |-
+      One row per menu item. Jaffles and drinks.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          # Keys, synonyms and the table COMMENT (the description above) belong
+          # to the model, so jaffle_minimal renders them as jaffle_menu does.
+          primary_key:
+            - product_id
+          synonyms:
+            - menu item
+            - jaffle
+    columns:
+      - name: product_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the product. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - product key
+                - menu item identifier
+        data_tests:
+          - unique
+          - not_null
+
+      # The apostrophe renders doubled: 'The menu item''s name ...'.
+      - name: product_name
+        data_type: VARCHAR
+        description: |-
+          The menu item's name as printed on the receipt.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - menu item
+                - item name
+                - dish
+              sample_values:
+                - nutellaphone who dis
+                - doctor stew
+
+      - name: product_type
+        data_type: VARCHAR
+        description: |-
+          Whether the item is food or drink. A closed set.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - item category
+                - menu category
+                - food or drink
+              sample_values:
+                - jaffle
+                - beverage
+
+      - name: list_price
+        data_type: NUMBER(38,2)
+        description: |-
+          Menu price for one unit, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - menu price
+                - catalogue price
+                - sticker price
+              sample_values:
+                - 1100
+                - 700

@@ -1,0 +1,270 @@
+"""The fake's `CatalogPort`: what SHOW, DESCRIBE, GET_DDL and the version reads report.
+
+Each read answers from the account `SnowflakeWorld` holds and never writes. A read armed with
+`fail` raises before it answers, as the connector raises `SnowflakePortError` when Snowflake
+refuses the statement behind it. An existence read of an object in a schema
+`preflight.missing_schemas` lists raises too, as Snowflake refuses `SHOW ... IN SCHEMA` for a
+schema that does not exist (002043, measured on a live account).
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from typing import Any
+
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
+    AgentVersions,
+    DescribedMember,
+    ExtensionObservation,
+    ExtensionVersion,
+)
+from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
+from tests.helpers.snowflake_fake.extensions import versions
+from tests.helpers.snowflake_fake.world import SnowflakeWorld
+
+
+class FakeCatalog(SnowflakeWorld):
+    """`CatalogPort` over the shared account."""
+
+    def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
+        self._check("show_objects")
+        return self.objects.get((object_type.upper(), scope.sql), ())
+
+    def show_grants(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> tuple[GrantRow, ...]:
+        del routine_signature
+        self._check("show_grants")
+        if " ".join(object_type.upper().split()) == "DATASET":
+            # MEASURED: Snowflake rejects SHOW GRANTS ON DATASET in every form.
+            raise SnowflakePortError(
+                "SQL compilation error: syntax error line 1 at position 23 "
+                f"unexpected '{qualified_name.database.folded}'."
+            )
+        return self.grants.get(qualified_name.sql, ())
+
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        self._check("tag_references")
+        if " ".join(object_type.upper().split()) != "SEMANTIC VIEW":
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {object_type.upper()}")
+        self.tag_reads.append(qualified_name.sql)
+        return tuple(sorted(self.tags.get(qualified_name.sql, ())))
+
+    def describe_marker(
+        self,
+        qualified_name: QualifiedName,
+        object_type: str,
+    ) -> OwnershipMarker | None:
+        self._check("describe_marker")
+        recorded = self.object_types.get(qualified_name.sql)
+        if recorded is not None and recorded.upper() != " ".join(object_type.upper().split()):
+            return None
+        return self.markers.get(qualified_name.sql)
+
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
+        self._check("get_ddl")
+        kind = " ".join(object_type.upper().split())
+        if kind in {"STAGE", "DATASET", "CORTEX EXTENSION"}:
+            # As the connector does, a type GET_DDL reads no object of is refused unsent.
+            raise SnowflakePortError(f"GET_DDL cannot read a {kind.lower()}")
+        if kind in {"PROCEDURE", "FUNCTION"}:
+            # GET_DDL addresses a routine by its name with its argument types, as Snowflake documents.
+            name = f"{qualified_name.sql}({', '.join(routine_signature)})"
+            if name not in self.definitions:
+                raise SnowflakePortError(f"SQL compilation error: {kind} '{name}' does not exist or not authorized.")
+            return self.definitions[name]
+        if qualified_name.sql not in self.definitions:
+            raise SnowflakePortError(f"GET_DDL refused for {object_type} {qualified_name.sql}")
+        return self.definitions[qualified_name.sql]
+
+    def _schema_present(self, qualified_name: QualifiedName) -> None:
+        """Raise as Snowflake does for a read in a schema that does not exist."""
+        scope = SchemaScope.from_qualified_name(qualified_name)
+        if scope.sql in self.preflight.missing_schemas:
+            raise SnowflakePortError(
+                "002043 (02000): SQL compilation error:\nObject does not exist, or operation cannot be performed."
+            )
+
+    def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
+        self._check("object_exists")
+        self._schema_present(qualified_name)
+        if object_type.upper() == "DATASET":
+            return self.dataset_exists(qualified_name)
+        if object_type.upper() == "STAGE" and qualified_name.sql in self.stage_formats:
+            return True
+        if self.existing is None:
+            return object_type == "TABLE OR VIEW"
+        return qualified_name.sql in self.existing
+
+    def dataset_exists(self, qualified_name: QualifiedName) -> bool:
+        self._check("dataset_exists")
+        return self.existing is not None and qualified_name.sql in self.existing
+
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        self._check("dataset_versions")
+        return tuple(self.dataset_version_names.get(qualified_name.sql, ()))
+
+    def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
+        self._check("dataset_version_metadata")
+        if qualified_name.sql not in self.dataset_version_names:
+            raise SnowflakePortError(f"Dataset '{qualified_name.sql}' does not exist or not authorized.")
+        return next(
+            (
+                metadata
+                for (dataset, named), metadata in self.dataset_version_metadata_text.items()
+                if dataset == qualified_name.sql and named.casefold() == version.casefold()
+            ),
+            None,
+        )
+
+    def describe_routine(
+        self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...]
+    ) -> Mapping[str, str]:
+        self._check("describe_routine")
+        kind = " ".join(object_type.upper().split())
+        name = f"{qualified_name.sql}({', '.join(routine_signature)})"
+        self.routine_reads.append(f"{kind} {name}")
+        described = self.routine_descriptions.get(f"{kind} {name}")
+        if described is None:
+            raise SnowflakePortError(f"SQL compilation error: {kind} '{name}' does not exist or not authorized.")
+        return described
+
+    def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
+        self._check("table_columns")
+        self._schema_present(qualified_name)
+        return self.tables.get(qualified_name.sql)
+
+    def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
+        self._check("describe_stage_file_format")
+        return self.stage_formats.get(qualified_name.sql)
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        self._check("stage_type")
+        self._schema_present(qualified_name)
+        if qualified_name.sql in self.stage_types:
+            return self.stage_types[qualified_name.sql]
+        return "INTERNAL NO CSE" if self.object_exists("STAGE", qualified_name) else None
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        self._check("observe_extension")
+        self._schema_present(qualified_name)
+        extension = self.extensions.get(qualified_name.sql)
+        if extension is None:
+            return None
+        listed = versions(extension)
+        default = next((version for version in listed if version["is_default"]), None)
+        # Once a version is certified, the extension serves the
+        # latest certified version instead of the default.
+        certified = next((version for version in reversed(listed) if version["certification"] == "CERTIFIED"), None)
+        effective = certified or default
+        return ExtensionObservation(
+            qualified_name=qualified_name,
+            extension_type=str(extension["type"]),
+            comment=extension["comment"] if isinstance(extension["comment"], str) else None,
+            owner=self.role,
+            effective_version=str(effective["name"]) if effective is not None else None,
+            latest_certified_version=str(certified["name"]) if certified is not None else None,
+        )
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
+        self._check("extension_versions")
+        extension = self.extensions.get(qualified_name.sql)
+        if extension is None:
+            raise SnowflakePortError(f"Cortex extension {qualified_name.sql} does not exist")
+        return tuple(
+            ExtensionVersion(
+                name=str(version["name"]),
+                alias=version["alias"] if isinstance(version["alias"], str) else None,
+                location=str(version["location"]),
+                is_default=bool(version["is_default"]),
+                certification_status=(version["certification"] if isinstance(version["certification"], str) else None),
+            )
+            for version in versions(extension)
+        )
+
+    def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
+        self._check("observe_agent_versions")
+        return AgentVersions(
+            self.agent_version_rows.get(qualified_name.sql, ()),
+            default_setting=self.agent_default_settings.get(qualified_name.sql),
+        )
+
+    def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
+        self._check("resolve_agent_version")
+        if selector.upper().startswith("VERSION$"):
+            return selector.upper()
+        try:
+            return self.agent_versions[(qualified_name.sql, selector.casefold())]
+        except KeyError as exc:
+            raise AgentVersionNotFound(
+                f"agent {qualified_name.sql} selector {selector!r} does not resolve to a committed version"
+            ) from exc
+
+    def current_role(self) -> str:
+        self._check("current_role")
+        return self.role
+
+    def current_account_locator(self) -> str:
+        self._check("current_account_locator")
+        return self.account_locator
+
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        self._check("show_row")
+        kind = " ".join(object_type.upper().split())
+        row = self.show_rows.get(f"{kind} {qualified_name.sql}")
+        if row is None and kind == "DATASET" and self.dataset_exists(qualified_name):
+            return self._dataset_row(qualified_name)
+        return row
+
+    def _dataset_row(self, qualified_name: QualifiedName) -> Mapping[str, str]:
+        """A dataset's row as SHOW DATASETS lists it, its keys casefolded as `show_row` returns them."""
+        return {
+            "created_on": "",
+            "name": qualified_name.name.folded,
+            "database_name": qualified_name.database.folded,
+            "schema_name": qualified_name.schema.folded,
+            "comment": "",
+            "owner": self.dataset_owners.get(qualified_name.sql, self.role),
+            "versions": json.dumps(self.dataset_version_names.get(qualified_name.sql, [])),
+        }
+
+    def read_semantic_view_yaml(self, qualified_name: QualifiedName) -> Mapping[str, Any] | None:
+        self._check("read_semantic_view_yaml")
+        # A view with no document is read through DESCRIBE, as on an account without the function.
+        return self.view_documents.get(qualified_name.sql)
+
+    def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
+        self._check("describe_semantic_view")
+        described = self.view_descriptions.get(qualified_name.sql)
+        if described is None:
+            raise SnowflakePortError(f"SQL compilation error: semantic view '{qualified_name.sql}' does not exist.")
+        return described
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        self._check("describe_properties")
+        return self.descriptions.get(f"{object_type.upper()} {qualified_name.sql}")
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        self._check("object_parameter")
+        return self.object_parameters.get((object_type.upper(), name.upper(), parameter.upper()))
+
+    def cowork_object(self) -> str | None:
+        self._check("cowork_object")
+        return self.intelligences[0] if self.intelligences else None
+
+    def attached_agents(self, cowork_object: str) -> tuple[QualifiedName, ...]:
+        self._check("attached_agents")
+        if cowork_object not in self.intelligences:
+            raise SnowflakePortError(f"SQL compilation error: Snowflake Intelligence '{cowork_object}' does not exist.")
+        return tuple(QualifiedName.parse(name) for name in self.intelligence_agents.get(cowork_object, []))

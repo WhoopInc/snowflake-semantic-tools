@@ -1,0 +1,37 @@
+---
+# Six relationships: four equality, one ASOF and one range. Each condition is a
+# SQL string over ref() columns, and its operator sets the join kind:
+#
+#   a = b               equality  REFERENCES t (key)
+#   a >= b              ASOF      REFERENCES t (key, ASOF col)
+#   a BETWEEN s AND e   range     REFERENCES t (BETWEEN s AND e EXCLUSIVE)
+#
+# left_table is the many side and right_table the one side, each one
+# {{ ref('<model>') }} call; a bare name there is SST-REF046. A relationship
+# attaches to every view that holds both its tables.
+#
+# This file keeps the list form for the two jaffle_sales relationships; the
+# other four are single-item `relationship:` files beside it.
+
+snowflake_relationships:
+  # Attaches to jaffle_sales, the one view holding both tables. A relationship
+  # that fits no view is SST-VAL205.
+  - name: orders_to_customers
+    description: |-
+      Each order belongs to exactly one customer. Many orders to one customer, so
+      `orders` is the left table.
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('customers') }}"
+    relationship_conditions:
+      - "{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}"
+
+  # The second relationship in jaffle_sales, so its RELATIONSHIPS clause holds
+  # more than one entry.
+  - name: orders_to_locations
+    description: |-
+      Each order is placed at exactly one store location. Many orders to one
+      location, so `orders` is the left table.
+    left_table: "{{ ref('orders') }}"
+    right_table: "{{ ref('locations') }}"
+    relationship_conditions:
+      - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"

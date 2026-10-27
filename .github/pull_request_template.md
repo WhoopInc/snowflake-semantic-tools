@@ -13,7 +13,8 @@
 
 - [ ] Bug fix (non-breaking change which fixes an issue)
 - [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
+- [ ] Breaking change (changes an exit code, the JSON envelope, a diagnostic code's meaning, or other existing behavior)
+- [ ] 0.3.x maintenance fix (targets the branch cut from `v0.3.1`; never merged into 1.0)
 - [ ] Documentation update
 - [ ] Performance improvement
 - [ ] Code refactoring
@@ -26,20 +27,19 @@
 
 ## Testing
 
-<!-- Describe how you tested your changes -->
+<!-- Describe how you tested your changes. Every gate, in the order CI runs it, is under "Running the Gates" in CONTRIBUTING.md -->
 
-- [ ] Unit tests pass (`pytest tests/unit/`)
-- [ ] All existing tests pass
+- [ ] All tests pass (`poetry run pytest tests/ -n auto`)
+- [ ] Coverage holds: the per-layer ratchet (`python -m tests.helpers.coverage_ratchet check`) and the floors (domain 100%, app 95%, cli 90%, adapters 90%; branch coverage)
 - [ ] New tests added for new functionality
-- [ ] Tested locally with Python 3.9-3.11
-- [ ] Manual testing completed (if applicable)
-- [ ] Test coverage maintained or improved (target: >90%)
+- [ ] Goldens changed only where rendered output was meant to change, rewritten with `python -m tests.helpers.update_goldens`, with the reason under Additional Notes
+- [ ] Manual testing completed (if applicable; against a non-production schema)
 
 ### Test Results
 
 ```
-<!-- Paste test output here, or describe test results -->
-<!-- Example: pytest tests/unit/ -v -->
+<!-- Paste the summary lines, or describe test results -->
+<!-- Example: the last line of `poetry run pytest tests/ -n auto` -->
 ```
 
 ## Checklist
@@ -47,22 +47,22 @@
 <!-- Mark completed items with an 'x' -->
 
 ### Code Quality
-- [ ] Code follows the project's style guidelines (Black, line length 120)
-- [ ] Imports sorted with isort (black profile)
-- [ ] Type hints added for new code (`mypy snowflake_semantic_tools/` passes)
-- [ ] Docstrings added for public functions/classes
-- [ ] No linting errors
+- [ ] Formatted with ruff, line length 120 (`poetry run ruff format --check snowflake_semantic_tools/ tests/`)
+- [ ] Lint-clean, imports sorted (`poetry run ruff check snowflake_semantic_tools/ tests/`)
+- [ ] Strictly typed (`poetry run mypy snowflake_semantic_tools tests` passes)
+- [ ] Ring boundaries hold (`poetry run lint-imports` passes all nine contracts)
+- [ ] SQL is composed only through `domain/sql` (`sql()` with a constant template and `Sql` parts)
+- [ ] Security scans pass (`poetry run bandit -r snowflake_semantic_tools -ll`; semgrep with `.semgrep/`)
+- [ ] `poetry.lock` regenerated and `DEPENDENCIES.md` updated (if a dependency changed; `poetry check --lock` passes)
 - [ ] Pre-commit hooks pass (if using pre-commit)
 
-### Testing & Validation
-- [ ] All tests pass (`pytest tests/unit/`)
-- [ ] New functionality has test coverage
-- [ ] Test results included above
-
-### Documentation & Compatibility
-- [ ] Documentation updated (if needed)
-- [ ] Backward compatibility maintained (if applicable)
-- [ ] Breaking changes discussed with maintainer first (see CONTRIBUTING.md)
+### Diagnostics & Documentation
+- [ ] Each new problem has a new `SST-` diagnostic code with an actionable suggestion; no code is reused
+- [ ] Each new code has a `test_<code>_fires` / `test_<code>_silent` pair under `tests/codes/<area>/`; no allowlist entry added; a retired code has its `TOMBSTONES` row
+- [ ] Each new option's help text is in `cli/help_text.py`, not `help=`
+- [ ] Reference pages regenerated with `poetry run sst docs` if diagnostics, config keys, CLI options, or artifact types changed (`poetry run sst docs --check` passes)
+- [ ] Guides and README updated (if needed)
+- [ ] Breaking changes discussed with a maintainer first (see CONTRIBUTING.md)
 
 ### Performance
 - [ ] Performance impact considered
@@ -70,7 +70,7 @@
 
 ## Screenshots / Examples
 
-<!-- If applicable, add screenshots or examples to help explain your changes -->
+<!-- If applicable, add examples such as `sst plan` output or rendered DDL -->
 
 ## Additional Notes
 

@@ -1,0 +1,321 @@
+"""Plan's preflight decisions, notices, impact scope, and order checks, decided in the domain."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from types import MappingProxyType
+
+import pytest
+
+from snowflake_semantic_tools.domain.diagnostics import Diagnostic
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import Action, Change, ChangeReason, OwnershipMarker
+from snowflake_semantic_tools.domain.plan import order
+from snowflake_semantic_tools.domain.plan.impact import impact_scope, modified_keys
+from snowflake_semantic_tools.domain.plan.preflight import Preflight, check_preflight, required_privilege
+from snowflake_semantic_tools.domain.plan.summary import plan_notices, plan_summary
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import ROLE_HIERARCHY_DEPTH, PreflightPort
+from tests.helpers.artifact_builders import change, rendered
+from tests.helpers.plan_codes import entry, live, manifest_of, plan, view
+from tests.helpers.snowflake_fake import FakeSnowflake
+
+
+def _codes(diagnostics: tuple[Diagnostic, ...]) -> list[str]:
+    return [item.code for item in diagnostics]
+
+
+def test_a_create_needs_the_create_privilege_of_its_object_type_and_nothing_else_is_checked() -> None:
+    created = change(rendered("SALES"))
+    assert created.rendered is not None
+    assert required_privilege(created) == "CREATE SEMANTIC VIEW"
+    assert required_privilege(change(rendered("SALES"), Action.UPDATE)) is None
+    composite = replace(created, rendered=replace(created.rendered, object_type=""))
+    assert required_privilege(composite) is None
+    assert required_privilege(replace(created, rendered=None)) is None
+
+
+def test_a_create_privilege_only_a_secondary_role_holds_is_named_as_such() -> None:
+    sales = change(rendered("SALES"))
+    lacking = MappingProxyType({("DB", "SCHEMA"): ("CREATE SEMANTIC VIEW",)})
+    [secondary], _ = check_preflight(
+        (sales,), Preflight("dev", "R", missing_privileges=lacking, secondary_privileges=lacking)
+    )
+    assert [item.message for item in secondary.diagnostics] == [
+        "R lacks CREATE SEMANTIC VIEW (only a secondary role in the session holds it, and a CREATE uses the "
+        "primary role) on DB.SCHEMA"
+    ]
+    [unheld], _ = check_preflight((sales,), Preflight("dev", "R", missing_privileges=lacking))
+    assert [item.message for item in unheld.diagnostics] == ["R lacks CREATE SEMANTIC VIEW on DB.SCHEMA"]
+
+
+def test_a_create_privilege_past_the_walk_s_depth_is_not_said_to_be_a_secondary_role_s() -> None:
+    sales = change(rendered("SALES"))
+    lacking = MappingProxyType({("DB", "SCHEMA"): ("CREATE SEMANTIC VIEW",)})
+    [unreached], _ = check_preflight(
+        (sales,), Preflight("dev", "R", missing_privileges=lacking, unreached_privileges=lacking)
+    )
+    assert [item.message for item in unreached.diagnostics] == [
+        f"R lacks CREATE SEMANTIC VIEW (the session holds it, but no inheritance path from the primary role was "
+        f"found within {ROLE_HIERARCHY_DEPTH} levels, and a CREATE uses the primary role) on DB.SCHEMA"
+    ]
+
+
+def test_one_missing_scope_is_reported_once_and_blocks_every_write_in_it() -> None:
+    first, second = change(rendered("SALES")), change(rendered("ORDERS"))
+    checked, diagnostics = check_preflight(
+        (first, second), Preflight("dev", "R", missing_schemas=frozenset((("DB", "SCHEMA"),)))
+    )
+    assert _codes(diagnostics) == ["SST-PLN010"]
+    assert [item.action for item in checked] == [Action.BLOCKED, Action.BLOCKED]
+    assert [_codes(item.diagnostics) for item in checked] == [["SST-PLN010"], ["SST-PLN010"]]
+
+
+def test_a_blocked_write_is_not_also_reported_for_a_privilege_and_unwritten_changes_are_skipped() -> None:
+    sales = change(rendered("SALES"))
+    noop = replace(change(rendered("ORDERS")), action=Action.NOOP)
+    preflight = Preflight(
+        "dev",
+        "R",
+        missing_relations=MappingProxyType({sales.key: (QualifiedName.parse("DB.SCHEMA.T"),)}),
+        missing_privileges=MappingProxyType({("DB", "SCHEMA"): ("CREATE SEMANTIC VIEW",)}),
+    )
+    checked, diagnostics = check_preflight((sales, noop), preflight)
+    assert _codes(diagnostics) == ["SST-PLN007"]
+    assert checked[1] is noop
+
+
+def test_an_update_never_warns_of_a_taken_name_and_a_report_only_prune_never_of_references() -> None:
+    update = change(rendered("SALES"), Action.UPDATE)
+    report_only = replace(change(rendered("OLD"), Action.PRUNE), prune_executable=False)
+    unobserved = change(rendered("GONE"), Action.PRUNE)
+    preflight = Preflight(
+        "dev",
+        "R",
+        occupied=frozenset((update.key,)),
+        referenced=MappingProxyType(
+            {key: (QualifiedName.parse("BI.S.X"),) for key in (report_only.key, unobserved.key)}
+        ),
+    )
+    checked, diagnostics = check_preflight((update, report_only, unobserved), preflight)
+    assert diagnostics == () and checked == (update, report_only, unobserved)
+
+
+def test_a_preflight_block_propagates_to_what_depends_on_the_blocked_write() -> None:
+    base = view("base")
+    top = view("top", depends_on=(base.key,))
+    planned = plan(
+        (base, top),
+        preflight=Preflight(
+            "dev", "R", missing_relations=MappingProxyType({base.key: (QualifiedName.parse("A.B.C"),)})
+        ),
+    )
+    assert {item.key: item.reason for item in planned.changes} == {
+        base.key: ChangeReason.VALIDATION_ERRORS,
+        top.key: ChangeReason.DEPENDENCY_BLOCKED,
+    }
+
+
+def test_the_summary_counts_each_type_in_name_order() -> None:
+    sales = view("sales")
+    orphan = view("orphan")
+    planned_manifest = manifest_of(sales)
+    marked = live(orphan, marker=OwnershipMarker("a" * 64, orphan.fingerprint))
+    planned = plan(
+        (sales,),
+        observed=(marked,),
+        applied={orphan.key: entry(orphan, "a" * 64)},
+        include_prune=True,
+        manifest=planned_manifest,
+    )
+    agent = Change("agent:a", "agent", Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS, None, None, (), 1)
+    widened = replace(planned, changes=(*planned.changes, agent))
+    assert plan_summary(widened) == (
+        "agent: 0 create, 1 update, 0 noop, 0 prune; semantic_view: 1 create, 0 replace, 0 noop, 1 prune"
+    )
+
+
+def test_impact_covers_what_a_manifest_adds_or_renders_differently() -> None:
+    kept, changed, added = view("kept"), view("changed"), view("added")
+    previous = manifest_of(kept, changed)
+    current = manifest_of(kept, replace(changed, fingerprint="f" * 64), added)
+    assert modified_keys(previous, current) == {changed.key, added.key}
+    keys, notice = impact_scope(previous, current)
+    assert keys == frozenset((changed.key, added.key)) and notice is None
+
+
+def test_an_order_that_violates_a_dependency_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    base = change(rendered("BASE"))
+    top = change(rendered("TOP", depends_on=(base.key, "semantic_view:outside")))
+    assert order.check_order((base, top)) is None
+    monkeypatch.setattr(order, "topological_order", lambda changes: ((top, base), ()))
+    ordered, diagnostic = order.order_changes((base, top))
+    assert ordered == () and diagnostic is not None and diagnostic.code == "SST-PLN900"
+
+
+def test_the_preflight_double_satisfies_the_port() -> None:
+    port: PreflightPort = FakeSnowflake(role="R")
+    assert port.database_exists(rendered().target.database)
+
+
+def test_each_preflight_finding_reports_its_code() -> None:
+    created, locked, other_db = view("created"), view("locked"), view("elsewhere", database="gone")
+    owned = view("owned")
+    planned_manifest = manifest_of(created, locked, other_db)
+    preflight = Preflight(
+        "dev",
+        "R",
+        missing_databases=frozenset(("GONE",)),
+        missing_privileges=MappingProxyType({("DB", "SCH"): ("CREATE SEMANTIC VIEW",)}),
+        occupied=frozenset((locked.key,)),
+        locked=frozenset((locked.target.folded,)),
+        referenced=MappingProxyType({owned.key: (QualifiedName.parse("BI.S.X"),)}),
+        warehouse="WH",
+        warehouse_usable=False,
+    )
+    planned = plan(
+        (created, locked, other_db),
+        observed=(live(owned, marker=OwnershipMarker("a" * 64, owned.fingerprint)),),
+        applied={owned.key: entry(owned, "a" * 64)},
+        include_prune=True,
+        preflight=preflight,
+        manifest=planned_manifest,
+    )
+    # The orphan is pruned, so no SST-PLN021 counts it as left undeclared.
+    assert sorted(_codes(planned.diagnostics)) == sorted(
+        ["SST-PLN011", "SST-PLN008", "SST-PLN008", "SST-PLN009", "SST-PLN019", "SST-PLN017", "SST-PLN012"]
+    )
+
+
+def test_notices_name_each_unchanged_artifact_then_the_counts() -> None:
+    sales = view("sales")
+    planned_manifest = manifest_of(sales)
+    marked = live(sales, marker=OwnershipMarker(planned_manifest.manifest_id, sales.fingerprint))
+    planned = plan(
+        (sales,),
+        observed=(marked,),
+        applied={sales.key: entry(sales, planned_manifest.manifest_id)},
+        manifest=planned_manifest,
+    )
+    assert _codes(plan_notices(planned)) == ["SST-PLN015", "SST-PLN016"]
+    cyclic = plan((view("a", depends_on=("semantic_view:b",)), view("b", depends_on=("semantic_view:a",))))
+    assert plan_notices(cyclic) == ()
+
+
+def test_two_changes_for_one_key_cannot_be_ordered_and_no_previous_manifest_plans_everything() -> None:
+    first = change(rendered("SALES"))
+    ordered, diagnostic = order.order_changes((first, replace(first, key=first.key.upper())))
+    assert ordered == () and diagnostic is not None and diagnostic.code == "SST-PLN022"
+    keys, notice = impact_scope(None, manifest_of())
+    assert keys is None and notice is not None and notice.code == "SST-PLN006"
+
+
+SPECS = QualifiedName.parse("DB.SCHEMA.AGENT_SPECS")
+
+
+def _staging(name: str, stage: QualifiedName = SPECS, action: Action = Action.CREATE) -> Change:
+    """A write of `DB.SCHEMA.<name>` that stages a file on `stage` first."""
+    return change(replace(rendered(name), upload_stage=stage), action)
+
+
+def test_an_absent_upload_stage_is_announced_once_per_stage_and_blocks_nothing() -> None:
+    other = QualifiedName.parse("DB.SCHEMA.OTHER_SPECS")
+    writes = (_staging("A"), _staging("B", action=Action.UPDATE), _staging("C", other))
+    noop = replace(_staging("D"), action=Action.NOOP)
+    preflight = Preflight("dev", "R", absent_stages=frozenset((SPECS.folded, other.folded)))
+    checked, diagnostics = check_preflight((*writes, noop), preflight)
+    assert [(item.code, item.subject, item.message) for item in diagnostics] == [
+        (
+            "SST-PLN035",
+            "semantic_view:a",
+            "stage DB.SCHEMA.AGENT_SPECS does not exist; apply creates it, server-side encrypted, "
+            "before it stages an agent there",
+        ),
+        (
+            "SST-PLN035",
+            "semantic_view:c",
+            "stage DB.SCHEMA.OTHER_SPECS does not exist; apply creates it, server-side encrypted, "
+            "before it stages an agent there",
+        ),
+    ]
+    assert checked == (*writes, noop)
+
+
+def test_an_absent_upload_stage_the_role_cannot_create_blocks_each_write_on_it() -> None:
+    preflight = Preflight(
+        "dev",
+        "R",
+        absent_stages=frozenset((SPECS.folded,)),
+        missing_privileges=MappingProxyType({("DB", "SCHEMA"): ("CREATE STAGE",)}),
+    )
+    checked, diagnostics = check_preflight((_staging("A"), _staging("B")), preflight)
+    assert [item.message for item in diagnostics] == ["R lacks CREATE STAGE on DB.SCHEMA"] * 2
+    assert [item.action for item in checked] == [Action.BLOCKED, Action.BLOCKED]
+
+
+@pytest.mark.parametrize(
+    ("found", "lacking", "expected"),
+    [
+        ("INTERNAL", (), "semantic_view:a: stage DB.SCHEMA.AGENT_SPECS is INTERNAL, expected INTERNAL NO CSE"),
+        ("", (), "semantic_view:a: stage DB.SCHEMA.AGENT_SPECS is untyped, expected INTERNAL NO CSE"),
+        ("internal no cse", ("READ", "WRITE"), "R lacks READ, WRITE on DB.SCHEMA.AGENT_SPECS"),
+    ],
+)
+def test_an_existing_upload_stage_must_be_internal_sse_and_readable_and_writable(
+    found: str, lacking: tuple[str, ...], expected: str
+) -> None:
+    preflight = Preflight(
+        "dev",
+        "R",
+        stage_types=MappingProxyType({SPECS.folded: found}),
+        missing_stage_privileges=MappingProxyType({SPECS.folded: lacking}),
+    )
+    [checked], [diagnostic] = check_preflight((_staging("A"),), preflight)
+    assert checked.action is Action.BLOCKED and diagnostic.message == expected
+
+
+def test_a_usable_or_unread_upload_stage_and_an_already_blocked_write_report_nothing_of_the_stage() -> None:
+    usable = Preflight("dev", "R", stage_types=MappingProxyType({SPECS.folded: "INTERNAL NO CSE"}))
+    assert check_preflight((_staging("A"),), usable) == ((_staging("A"),), ())
+    assert check_preflight((_staging("A"),), Preflight("dev", "R")) == ((_staging("A"),), ())
+    blocked = _staging("A")
+    missing = Preflight(
+        "dev",
+        "R",
+        absent_stages=frozenset((SPECS.folded,)),
+        missing_relations=MappingProxyType({blocked.key: (QualifiedName.parse("DB.SCHEMA.T"),)}),
+    )
+    assert _codes(check_preflight((blocked,), missing)[1]) == ["SST-PLN007"]
+
+
+def test_an_upload_stage_in_a_missing_schema_blocks_its_writes_once_for_the_schema() -> None:
+    elsewhere = QualifiedName.parse("DB.SPECS.AGENT_SPECS")
+    preflight = Preflight("dev", "R", missing_schemas=frozenset((("DB", "SPECS"),)))
+    checked, diagnostics = check_preflight((_staging("A", elsewhere), _staging("B", elsewhere)), preflight)
+    assert _codes(diagnostics) == ["SST-PLN010"]
+    assert [_codes(item.diagnostics) for item in checked] == [["SST-PLN010"], ["SST-PLN010"]]
+
+
+def test_an_absent_state_table_s_create_table_is_checked_only_when_the_plan_writes() -> None:
+    lacking = MappingProxyType({("DB", "STATE"): ("CREATE TABLE",)})
+    absent = (QualifiedName.parse("DB.STATE.SST_STATE"), QualifiedName.parse("DB.STATE.SST_STATE_LOCK"))
+    preflight = Preflight("dev", "DEPLOYER", missing_privileges=lacking, absent_state_tables=absent)
+    unchanged = change(rendered("SALES"), Action.NOOP)
+    report_only = replace(change(rendered("OLD"), Action.PRUNE), prune_executable=False)
+    pruned = replace(report_only, prune_executable=True)
+    assert _codes(check_preflight((unchanged, report_only), preflight)[1]) == []
+    # Two absent tables in one schema need the privilege once.
+    assert _codes(check_preflight((unchanged, pruned), preflight)[1]) == ["SST-PLN008"]
+    _, [lacked] = check_preflight((change(rendered("SALES")),), replace(preflight, missing_privileges=lacking))
+    assert lacked.message == "DEPLOYER lacks CREATE TABLE on DB.STATE"
+
+
+def test_a_hybrid_state_table_is_blocked_by_create_hybrid_table_alone() -> None:
+    absent = (QualifiedName.parse("DB.STATE.SST_STATE"),)
+    hybrid = Preflight("dev", "DEPLOYER", absent_state_tables=absent, state_table_kind="hybrid")
+    writes = (change(rendered("SALES")),)
+    lacks_hybrid = MappingProxyType({("DB", "STATE"): ("CREATE HYBRID TABLE",)})
+    _, [lacked] = check_preflight(writes, replace(hybrid, missing_privileges=lacks_hybrid))
+    assert lacked.message == "DEPLOYER lacks CREATE HYBRID TABLE on DB.STATE"
+    # Lacking only CREATE TABLE does not block a hybrid state table, which never needs it.
+    lacks_standard = MappingProxyType({("DB", "STATE"): ("CREATE TABLE",)})
+    assert _codes(check_preflight(writes, replace(hybrid, missing_privileges=lacks_standard))[1]) == []

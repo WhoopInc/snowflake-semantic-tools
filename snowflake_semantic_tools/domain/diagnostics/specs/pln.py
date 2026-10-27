@@ -1,0 +1,673 @@
+"""Planning codes (PLN): observation, preflight, ownership, drift, order, prune, smoke, and --partial."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
+
+TITLE: str = "Planning"
+
+SPECS: tuple[ErrorSpec, ...] = (
+    spec(
+        "SST-PLN001",
+        Severity.ERROR,
+        "Observation query failed",
+        "observation of {value} failed: {detail}",
+        "check the connection and the role, then re-run plan",
+        condition=(
+            "a read of the target failed: an object listing, grants, the state table, "
+            "a preflight read, or a composite artifact's resources; under `--use-cached-state`, also "
+            "each composite artifact, which a recorded observation cannot decide. A definition "
+            "`--capture-prior` cannot read is SST-PLN037 instead, and the tags on a view a replace "
+            "removes SST-PLN040"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN002",
+        Severity.ERROR,
+        "An object of a different type exists at the target name",
+        "{artifact}: {value} exists as a {found}",
+        "rename the artifact, or drop the existing object",
+        condition="the target name is occupied by another object kind",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN003",
+        Severity.WARNING,
+        "Prune candidate has no ownership marker",
+        "{value} has no SST ownership marker; skipped",
+        "drop it by hand if it is no longer wanted; SST prunes only objects carrying its marker",
+        condition=(
+            "under `--prune`, a live object of a prunable type that the project no longer "
+            "declares carries no SST ownership marker, so it is not pruned"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN004",
+        Severity.WARNING,
+        "Marked prune candidate is absent from local state",
+        "{value} carries an SST marker and is absent from state; skipped",
+        "reconcile state, or delete it by hand",
+        condition=(
+            "under `--prune`, a candidate carries an SST ownership marker, but state has no entry "
+            "for it, or its entry's manifest, fingerprint, DDL hash or name disagrees with the "
+            "marker, so it is not pruned"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN005",
+        Severity.ERROR,
+        "Dependency cycle among artifacts",
+        "artifact dependency cycle: {cycle}",
+        "break the cycle",
+        condition="the planned changes' dependencies form a cycle, so no change can be ordered",
+    ),
+    spec(
+        "SST-PLN006",
+        Severity.WARNING,
+        "Impact-scoped plan requested with no previous manifest",
+        "no previous manifest; a full plan was computed",
+        "commit the manifest, or pass --state",
+        condition=(
+            "`state:modified` was selected without a previous manifest: no `--state`, or a "
+            "`--state` directory holding no `manifest.json`, so the plan covers every artifact"
+        ),
+    ),
+    spec(
+        "SST-PLN007",
+        Severity.ERROR,
+        "Referenced object does not exist in the target",
+        "{artifact} references {value}, absent from target '{target}'",
+        "publish it first, or correct the reference",
+        condition="a planned create or update references a relation the target does not hold",
+        note="Plan blocks the change rather than let apply fail with SST-SNO003.",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN008",
+        Severity.ERROR,
+        "Deploying role lacks a required privilege",
+        "{value} lacks {detail} on {target}",
+        "grant the privilege to the session's primary role, or to a role it inherits",
+        condition=(
+            "the session's primary role does not hold, directly, through a role it inherits, or "
+            "through a database role, the CREATE privilege a planned create needs on its schema, "
+            "such as CREATE SEMANTIC VIEW, nor own the schema; or, for an agent create or "
+            "update, CREATE STAGE on the schema of an absent `apply.agent_spec_stage` stage; or no "
+            "role in the session holds READ and WRITE on an existing one"
+        ),
+        note=(
+            "Plan blocks the change rather than let apply fail with SST-SNO004. Snowflake authorizes "
+            "a CREATE by the primary role alone, so a CREATE privilege only a secondary role holds "
+            "does not count, and the message says a secondary role holds it. The walk up from the "
+            "primary role stops at 16 roles; a privilege the session holds that it has not reached "
+            "by then is said to have no inheritance path within that depth instead. With no "
+            "secondary role active, the session is asked alone. An update is not checked for its "
+            "own CREATE privilege: it replaces an object the role already owns."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN009",
+        Severity.WARNING,
+        "An object already exists at the target name",
+        "{artifact}: {value} already exists",
+        "drop or rename the existing object, or give the artifact another name",
+        condition="the name a planned create writes to is held by an object of its type that observation did not list",
+        note="Unless the name is free by then, apply refuses the create (SST-APL012).",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN010",
+        Severity.ERROR,
+        "Target schema does not exist",
+        "schema {value} does not exist or is not authorized",
+        "set `apply.create_schemas: true`, create the schema, or correct the target",
+        condition=(
+            "the schema a planned write targets does not exist, or the role cannot see it, and "
+            "`apply.create_schemas` is false; reported once per schema"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN011",
+        Severity.ERROR,
+        "Target database does not exist",
+        "database {value} does not exist or is not authorized",
+        "create the database, or correct the target",
+        condition=(
+            "the database a planned write targets does not exist, or the role cannot see it; reported once per database"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN012",
+        Severity.ERROR,
+        "Warehouse does not exist or is not authorized",
+        "warehouse {value} does not exist or is not authorized",
+        "grant USAGE, or name an existing warehouse",
+        condition=(
+            "the warehouse the dbt profile names does not exist, or the role cannot see it; reported once per plan"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN013",
+        Severity.WARNING,
+        "Live object carries grants that a replace would drop",
+        "{artifact}: replacing {value} would drop its explicit grants ({count})",
+        "report this as a bug; SST renders COPY GRANTS on every such replace, and apply refuses one without it",
+        condition=(
+            "a planned update replaces an object that carries explicit grants, with a statement "
+            "that omits COPY GRANTS although the object's type keeps its grants only by that clause"
+        ),
+        note=(
+            "An update that keeps the grants -- by COPY GRANTS, by granting them again, or by not "
+            "replacing the object -- reports nothing; apply still checks every grant survives it "
+            "(SST-APL009). One that would drop them is refused at apply (SST-APL004)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN014",
+        Severity.WARNING,
+        "Live definition differs from the last recorded state",
+        "{artifact} was changed out of band ({detail}); apply leaves it as it is",
+        "review the live object, then plan and apply it with `--select {artifact} --overwrite` to "
+        "publish the planned definition over the edit (an agent keeps its versions and gains one), "
+        "or restore the one SST wrote",
+        condition=(
+            "state records the artifact, but the live object's ownership marker is absent, or "
+            "names another manifest or fingerprint than state records, or the object is under "
+            "another name; or the marker is as recorded, but a property SST published that the "
+            "marker does not prove differs from what apply read back after writing it: an "
+            "agent's newest committed specification, a search service's target lag or "
+            "warehouse, a routine's SECURE, a procedure's EXECUTE AS or body, or a semantic "
+            "view's definition. The detail names each property that changed"
+        ),
+        note=(
+            "The change is blocked, although this code is a warning: `apply` skips it and the "
+            "changes that depend on it, applies the rest and exits 1 (SST-APL042), or with "
+            "`--fail-fast` refuses the whole plan (SST-APL003), until the live object is again the "
+            "one SST wrote or `--overwrite` publishes over it. An entry recorded "
+            "before SST read these properties is not compared until the next apply records "
+            "them; `plan.drift_check: basic` compares only what SHOW lists."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN015",
+        Severity.INFO,
+        "No change for an artifact",
+        "{artifact}: NOOP",
+        None,
+        condition="the proposed definition matches the observation",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN016",
+        Severity.INFO,
+        "Plan summary",
+        "{value}",
+        None,
+        condition=(
+            "a plan reports its counts by artifact type, as `view: 1 create, 0 replace, 2 noop, 0 "
+            "prune`, counting updates as `update` for a type that alters or re-versions in place, "
+            "such as an agent; under `--use-cached-state` it first reports when the recorded "
+            "observation was taken and how old it is"
+        ),
+    ),
+    spec(
+        "SST-PLN017",
+        Severity.WARNING,
+        "Prune would remove an object a consumer references by name",
+        "{value} is referenced outside this project",
+        "exclude it from prune, or migrate the consumer",
+        condition="a prune candidate is named by something SST does not manage",
+        note="What names an object is read from `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES`, "
+        "which needs IMPORTED PRIVILEGES on the `SNOWFLAKE` database and lags by up to three hours. "
+        "A role without it skips this check for each prune candidate, reported as `SST-VAL020`, "
+        "and the prune goes ahead: this is a warning, never what stops a prune.",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN018",
+        Severity.ERROR,
+        "Plan computed against a stale observation",
+        "observation for {value} is {detail}",
+        "re-run plan",
+        condition="observing and planning in one run took longer than the 15-minute observation lifetime",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN019",
+        Severity.WARNING,
+        "Concurrent DDL detected on the target",
+        "{value} is being modified by another session",
+        "retry, or serialize the publishers",
+        condition="the observation shows a competing writer",
+        note="Reading other sessions' locks needs MONITOR on the account. A role without it skips "
+        "this check, reported as `SST-VAL020`, and the plan goes ahead.",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN020",
+        Severity.ERROR,
+        "Smoke query could not be constructed",
+        "{artifact}: no smoke query can be built for metric '{member}'",
+        "make the metric selectable, or exclude it from smoke checks",
+        condition="a public metric of a semantic view has no smoke probe, because no query can name it",
+        note="Raised by `sst test`, which then runs no probe.",
+    ),
+    spec(
+        "SST-PLN021",
+        Severity.WARNING,
+        "Prune reconciliation found objects the repo does not declare",
+        "{value} holds objects this project does not declare and the plan leaves in place ({count})",
+        "declare them in the project, or drop them by hand",
+        condition=(
+            "under `--prune`, a schema holds live objects of a prunable type that the project does "
+            "not declare, compared case-folded, and that the plan does not prune: each one lacks an "
+            "SST ownership marker (SST-PLN003) or state disagrees with its marker (SST-PLN004); one "
+            "per schema"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN022",
+        Severity.ERROR,
+        "Change order is not computable",
+        "change order could not be computed: {detail}",
+        "resolve the dependency conflict",
+        condition="two planned changes carry artifact keys that are the same once case-folded",
+    ),
+    spec(
+        "SST-PLN023",
+        Severity.WARNING,
+        "Declared name differs from the live object only by case",
+        "{artifact}: declared '{value}', live object is '{found}'",
+        "normalize the declaration to the rendered case",
+        condition="an unquoted declared identifier matches a live object only after case folding",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN024",
+        Severity.ERROR,
+        "Existing object is not managed by SST",
+        "{artifact}: {value} exists without trusted SST ownership",
+        "drop or rename the object by hand, or give the artifact another name; plan never takes over "
+        "an object state does not record: `sst state adopt` records one whose definition the files "
+        "match, as `sst import` writes them, and `sst state recover` one carrying SST's marker",
+        demotable=False,
+        condition=(
+            "an object holds the target name and state records no SST entry for it; `sst drop` "
+            "also reports it for an object with no trusted SST ownership marker"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN025",
+        Severity.ERROR,
+        "Artifact target moved",
+        "{artifact}: recorded target '{found}' differs from declared target '{expected}'",
+        "move the object explicitly, then reconcile state and re-run plan",
+        demotable=False,
+        condition="state records the artifact (or its resources) at a target other than the one declared",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN026",
+        Severity.ERROR,
+        "Stage is not an internal SSE stage",
+        "{artifact}: stage {value} is {found}, expected INTERNAL NO CSE",
+        "point the configuration at an internal stage with SNOWFLAKE_SSE encryption; SST never alters a stage",
+        demotable=False,
+        condition=(
+            "the skill bundle stage or the `apply.agent_spec_stage` stage exists "
+            "but is not INTERNAL with SNOWFLAKE_SSE encryption"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN027",
+        Severity.ERROR,
+        "Version alias holds different content",
+        "{artifact}: version alias {value} holds files that differ from the bundle ({detail})",
+        "an earlier publish left a damaged version under this alias; remove the alias in Snowflake, then plan again",
+        demotable=False,
+        condition="a version alias SST would reuse holds files that differ from the bundle",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN030",
+        Severity.ERROR,
+        "Pinned version is not part of this plan",
+        "{artifact}: pins the published version of {value}; select {value} as well",
+        "plan the pinned artifact in the same run; when its version is already published it plans as NOOP",
+        demotable=False,
+        condition="a create or update pins the published version of an artifact this plan leaves out",
+    ),
+    spec(
+        "SST-PLN032",
+        Severity.INFO,
+        "Excluded from a partial run",
+        "{artifact} has errors, or depends on something that does, so this partial run leaves it unpublished",
+        "fix the errors reported for it; what is live stays as it is, and state keeps its record",
+        condition=(
+            "under --partial, an artifact with errors (or depending on one) is left out of the plan; "
+            "so is one the plan blocks against the target, such as an object changed out of band "
+            "(SST-PLN014) or one SST does not manage (SST-PLN024), and everything depending on it"
+        ),
+    ),
+    spec(
+        "SST-PLN033",
+        Severity.WARNING,
+        "Partial run cannot go ahead",
+        "--partial publishes nothing: {found} on {value} cannot be traced to the artifacts it would change",
+        "fix that error first; a configuration error, or an error in a semantic view member such as a metric, "
+        "stops every run, because the views it belongs to would otherwise publish without it",
+        condition=(
+            "under --partial, an error names no artifact, so nothing can be excluded and the run stops; "
+            "an error on a tool member's reference names its tool, so it is not one of these"
+        ),
+    ),
+    spec(
+        "SST-PLN034",
+        Severity.INFO,
+        "Prune is report-only",
+        "{artifact} is no longer declared; SST never removes {value}: {detail}",
+        "the plan lists it while state records it; it is never a write, and the plan exits 2 only "
+        "until an apply records it",
+        condition=(
+            "an artifact recorded in state is no longer declared; prune reports the resources SST "
+            "keeps and never executes"
+        ),
+    ),
+    spec(
+        "SST-PLN035",
+        Severity.INFO,
+        "Apply creates the agent specification stage",
+        "stage {value} does not exist; apply creates it, server-side encrypted, before it stages an agent there",
+        "nothing to do; to manage the stage yourself, create it first as an internal stage with "
+        "SNOWFLAKE_SSE encryption",
+        condition=(
+            "a planned agent create or update stages its specification on the `apply.agent_spec_stage` "
+            "stage, which does not exist; reported once per stage"
+        ),
+        note=(
+            "Apply runs `CREATE STAGE IF NOT EXISTS ... ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE')` once per "
+            "stage before its first upload, and never replaces, alters, or drops the stage. Plan "
+            "blocks the agent instead when the role lacks CREATE STAGE on the stage's schema (SST-PLN008)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN037",
+        Severity.WARNING,
+        "Prior definition not captured",
+        "the prior definition of {value} was not captured: {detail}",
+        "grant the role REFERENCES or OWNERSHIP on the object, or plan without --capture-prior",
+        condition=(
+            "under `sst plan --capture-prior`, reading the current definition of a live object a "
+            "planned artifact names failed: GET_DDL refused it, or SHOW VERSIONS IN AGENT did"
+        ),
+        note=(
+            "The plan is otherwise unaffected: the change is planned as without the flag, and its "
+            "`prior_definition` is null."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN038",
+        Severity.ERROR,
+        "Deploy ordering violated",
+        "{type} '{name}' would publish before {blocker}, which it depends on",
+        "add the dependency to `--select` or drop it from `--exclude`, or apply it first",
+        condition=(
+            "`sst plan` creates or updates an artifact whose dependency `--select` or `--exclude` left "
+            "out and which does not exist yet"
+        ),
+        note=(
+            "Publish order is the registry's type order, so it cannot be authored; only the selection "
+            "can leave a dependency unpublished. A pinned version is `SST-PLN030`."
+        ),
+    ),
+    spec(
+        "SST-PLN039",
+        Severity.WARNING,
+        "Live view carries tags that a replace would remove",
+        "{artifact}: replacing {value} removes tags the project does not declare: {found}",
+        "declare each tag to keep in the view's `tags` setting, or set it again after applying",
+        condition="a planned update replaces a semantic view that carries tags the project does not declare",
+        note=(
+            "The replace's `WITH TAG` names only the declared tags, and Snowflake removes every other "
+            "tag set on the view; a tag it inherits from its schema or database is kept. "
+            "`--no-grants` skips the read of the view's tags, and with it this warning; a read that "
+            "fails is `SST-PLN040`."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN040",
+        Severity.WARNING,
+        "Tags on a replaced view not read",
+        "the tags on {value} were not read, so the tags its replace removes are not checked: {detail}",
+        "check that the role can read the view's tags with TAG_REFERENCES, or plan with --no-grants to skip the read",
+        condition="reading the tags on a semantic view a planned update replaces failed",
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and `SST-PLN039` is "
+            "not checked for the view."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN041",
+        Severity.INFO,
+        "Update not compared member by member",
+        "what the update of {value} changes was not compared member by member: {detail}",
+        "check that the role can DESCRIBE the object and read its versions or staged files, or plan with "
+        "--no-diff to skip the read",
+        condition=(
+            "reading the live definition of an object a planned update changes failed, so the plan cannot "
+            "show which members the update changes"
+        ),
+        note=(
+            "The plan is otherwise unaffected: the update is planned as before, and reported as a changed "
+            "definition without its members."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN042",
+        Severity.WARNING,
+        "Agent versions published from uncommitted changes",
+        "the project has uncommitted changes ({value}), so the {count} agent version(s) this plan "
+        "commits name their commit as `git:<sha>-dirty`",
+        "commit the changes and plan again, so each version names the commit that holds its specification",
+        strict_exempt=True,
+        condition=(
+            "`git status` lists a changed or untracked path under the project, SST's build "
+            "directory aside, and the plan creates an agent or adds a version to one"
+        ),
+        note=(
+            "Each such version's comment reads `git:<sha>-dirty sst-spec:<fingerprint>`, since "
+            "`<sha>` does not hold its specification; the stage path, an eval dataset's METADATA "
+            "and state still record the sha. Strict mode leaves this a warning: someone editing "
+            "a project has uncommitted files, and a CI checkout has none."
+        ),
+    ),
+    spec(
+        "SST-PLN043",
+        Severity.WARNING,
+        "Overwriting an object changed out of band",
+        "{artifact} was changed out of band ({detail}); --overwrite publishes the planned definition over it",
+        "drop --overwrite to keep the edit, which then blocks the artifact (SST-PLN014)",
+        strict_exempt=True,
+        condition="plan or apply runs with `--overwrite`, and SST-PLN014 would block the artifact",
+        note=(
+            "The artifact is updated instead of blocked. An agent whose newest committed version "
+            "still holds SST's specification only gets its marked comment, alias and default "
+            "back; one whose specification was committed by hand gains a version holding SST's, "
+            "which its alias and default then follow. Every earlier version is kept. Strict mode "
+            "leaves this a warning, since the flag asked for it."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN044",
+        Severity.ERROR,
+        "Object is outside the target",
+        "{artifact}: {value} is outside every schema target '{target}' publishes to ({detail})",
+        "check the name and --target; pass --outside-target to drop it from another schema",
+        demotable=False,
+        condition=(
+            "`sst drop` names an object outside the target's own schema and every schema its state records an object in"
+        ),
+        note=(
+            "--outside-target skips only this check: the object must still carry a marker the "
+            "target's state vouches for (SST-PLN024)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN100",
+        Severity.ERROR,
+        "Smoke query failed",
+        "{artifact}: smoke query for metric '{member}' failed: {detail}",
+        "read Snowflake's error: when it is about the metric's definition, fix the metric, since a "
+        "created view is not a working view; when it names dimensions the query must request that "
+        "the probe could not, exclude the view from `sst test`",
+        condition=("a smoke probe of a metric failed (`sst test`); any other probe reports `SST-APL100`"),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN101",
+        Severity.INFO,
+        "Smoke check skipped",
+        "{artifact}: smoke check skipped ({detail})",
+        None,
+        condition=(
+            "under `sst test --fail-fast`, an artifact whose probes did not run because an earlier probe failed"
+        ),
+    ),
+    spec(
+        "SST-PLN102",
+        Severity.WARNING,
+        "Agent versions drifted from what SST published",
+        "{artifact}: {detail}; apply points it back",
+        "apply to roll forward, or hold a rollback by not applying until it should end",
+        strict_exempt=True,
+        condition=(
+            "state records the agent unchanged, but it has no live version, or its newest "
+            "committed version holds the planned specification and the agent's alias is on "
+            "another version or another version is the default"
+        ),
+        note=(
+            "The update sets the alias and a live version back on the version holding the "
+            "specification, and pins the default to that version by name, without adding a "
+            "version; a default on an eval-model version is pointed back the same way. An agent "
+            "with no live version whose newest version holds another specification, or whose "
+            "newest committed version is an eval-model version, gets a new version instead. "
+            "Strict mode leaves this a warning, since the apply it plans is the repair."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN103",
+        Severity.WARNING,
+        "Drift check could not read the object",
+        "{value}: {field} failed, so plan did not compare what it reads: {detail}",
+        "grant the role what the read needs (USAGE on a procedure for DESCRIBE, OWNERSHIP or "
+        "REFERENCES for GET_DDL), or set `plan.drift_check: basic` to compare only what SHOW lists",
+        condition=(
+            "`plan.drift_check` is `full`, and the DESCRIBE of a procedure or the GET_DDL of a "
+            "semantic view SST's marker claims failed"
+        ),
+        note=(
+            "The object's other properties, those SHOW lists, are still compared with what apply recorded (SST-PLN014)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN104",
+        Severity.WARNING,
+        "CoWork profile was detached from CoWork",
+        "{artifact}: not attached to the CoWork object {value}; apply attaches it again",
+        "apply to attach it again, or set `cowork_profiles.+attach: false` to leave it detached",
+        strict_exempt=True,
+        condition=(
+            "state records a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES unchanged, "
+            "`+attach` is on, and SHOW AGENTS IN SNOWFLAKE INTELLIGENCE does not list it"
+        ),
+        note=(
+            "Snowflake private preview. The update rewrites the CoWork profile's comment with SST's "
+            "ownership marker, which apply reads back, then runs ALTER SNOWFLAKE INTELLIGENCE ... "
+            "ADD AGENT, committing no version. Attaching is not part of the profile's definition, "
+            "so a profile "
+            "detached by hand is attached again rather than blocked as changed out of band (SST-PLN014). "
+            "Strict mode leaves this a warning, since the apply it plans is the repair."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN105",
+        Severity.WARNING,
+        "The account has no CoWork object to attach a CoWork profile to",
+        "{artifact}: the account has no CoWork object, so the CoWork profile publishes unattached",
+        "create the account's CoWork object, then plan again; or set `cowork_profiles.+attach: false`",
+        condition=(
+            "a CoWork profile published to SNOWFLAKE_INTELLIGENCE.PROFILES with `+attach` on is "
+            "planned, and SHOW SNOWFLAKE INTELLIGENCES lists nothing"
+        ),
+        note=(
+            "Snowflake private preview. The CoWork profile is still published, and a later plan attaches it "
+            "once the account has a CoWork object (SST-PLN104)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN106",
+        Severity.ERROR,
+        "No role in the session may attach a CoWork profile to CoWork",
+        "{artifact}: no role in the session holds MODIFY or OWNERSHIP on the CoWork object {value}",
+        "grant MODIFY on the CoWork object to the deploying role, or set `cowork_profiles.+attach: false`",
+        condition=(
+            "a planned change attaches a CoWork profile, and SHOW GRANTS ON SNOWFLAKE INTELLIGENCE "
+            "names no role in the session holding MODIFY or OWNERSHIP on it"
+        ),
+        note=(
+            "Snowflake private preview. A secondary role in the session counts. The change is blocked, "
+            "so apply never publishes a CoWork profile it cannot attach; USAGE on the profile is granted "
+            "outside SST."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN107",
+        Severity.INFO,
+        "Agent's default follows LAST",
+        "{artifact}: the default version follows LAST; apply pins it to {value} by name",
+        None,
+        condition=(
+            "state records a permanent agent unchanged, its default is on the version holding the "
+            "planned specification, and DESCRIBE AGENT reads its `default_version_name` as `LAST`"
+        ),
+        note=(
+            "Once, for an agent published before SST pinned its default by name. The update sets "
+            "DEFAULT_VERSION to that version's name and adds no version, so a version committed "
+            "after it, such as an eval-model version, never becomes the default. A default that "
+            "could not be read changes nothing."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-PLN900",
+        Severity.ERROR,
+        "Change order is not a valid topological order",
+        "change order violates {value}",
+        "report this as a bug",
+        condition="the computed order places a dependent before its dependency",
+    ),
+)

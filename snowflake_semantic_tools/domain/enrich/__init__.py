@@ -1,0 +1,115 @@
+"""`sst enrich`'s rules: what it fills, how it derives each value, and what it writes per model.
+
+`components` resolves the flags into what a run fills, `infer` holds the derivation rules,
+`prompts` the Cortex prompts and responses, `columns` what one model's columns gain,
+`governance` the column-tag read and which tags it finds sensitive, and
+`tables` what a model gains as table synonyms. Everything here is pure: the use case
+reads the warehouse and the files, and passes what it read in.
+"""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.enrich.columns import (
+    COMPONENT_KEYS,
+    WRITTEN_KEYS,
+    ColumnUpdate,
+    ModelEnrichment,
+    WarehouseColumn,
+    column_synonyms,
+    enrich_model,
+    prompt_columns,
+    role,
+    sample_columns,
+    sensitive,
+    synonym_columns,
+    withhold_pii_samples,
+    yaml_column_name,
+)
+from snowflake_semantic_tools.domain.enrich.components import (
+    COMPONENT_GROUPS,
+    COMPONENT_NAMES,
+    DATA_COMPONENTS,
+    DEFAULT_COMPONENTS,
+    SYNONYM_COMPONENTS,
+    Component,
+    EnrichOptions,
+    collection_refusal,
+    parse_components,
+    resolve_options,
+)
+from snowflake_semantic_tools.domain.enrich.governance import column_tags_sql, governed_columns, parse_column_tags
+from snowflake_semantic_tools.domain.enrich.infer import (
+    SampleDecision,
+    clean_synonyms,
+    decide_samples,
+    derive_column_type,
+    is_sampled_type,
+    proposed_synonym,
+    rejected_synonyms,
+    same_data_type,
+    semantic_data_type,
+    taken_names,
+    usable_sample,
+)
+from snowflake_semantic_tools.domain.enrich.prompts import (
+    COLUMN_SYNONYMS_SCHEMA,
+    COLUMNS_PER_PROMPT,
+    TABLE_SYNONYMS_SCHEMA,
+    PromptColumn,
+    column_synonyms_prompt,
+    parse_column_synonyms,
+    parse_table_synonyms,
+    table_synonyms_prompt,
+)
+from snowflake_semantic_tools.domain.enrich.tables import needs_table_synonyms, table_synonyms
+
+__all__ = [
+    "COLUMNS_PER_PROMPT",
+    "COLUMN_SYNONYMS_SCHEMA",
+    "COMPONENT_GROUPS",
+    "COMPONENT_KEYS",
+    "COMPONENT_NAMES",
+    "DATA_COMPONENTS",
+    "DEFAULT_COMPONENTS",
+    "SYNONYM_COMPONENTS",
+    "TABLE_SYNONYMS_SCHEMA",
+    "WRITTEN_KEYS",
+    "ColumnUpdate",
+    "Component",
+    "EnrichOptions",
+    "ModelEnrichment",
+    "PromptColumn",
+    "SampleDecision",
+    "WarehouseColumn",
+    "clean_synonyms",
+    "collection_refusal",
+    "column_synonyms",
+    "column_synonyms_prompt",
+    "column_tags_sql",
+    "decide_samples",
+    "derive_column_type",
+    "enrich_model",
+    "governed_columns",
+    "is_sampled_type",
+    "needs_table_synonyms",
+    "parse_column_synonyms",
+    "parse_column_tags",
+    "parse_components",
+    "parse_table_synonyms",
+    "prompt_columns",
+    "proposed_synonym",
+    "rejected_synonyms",
+    "resolve_options",
+    "role",
+    "same_data_type",
+    "sample_columns",
+    "semantic_data_type",
+    "sensitive",
+    "synonym_columns",
+    "table_synonyms",
+    "table_synonyms_prompt",
+    "taken_names",
+    "usable_sample",
+    "withhold_pii_samples",
+    "yaml_column_name",
+]

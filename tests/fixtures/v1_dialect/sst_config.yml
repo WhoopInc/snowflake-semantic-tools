@@ -1,0 +1,6 @@
+project:
+  semantic_models_dir: semantic_models
+
+validation:
+  strict: false
+  snowflake_syntax_check: false

@@ -1,0 +1,47 @@
+# =============================================================================
+# customers_snapshot -- the reference project's one snapshot
+# =============================================================================
+# A YAML snapshot (dbt 1.9 and later): the SCD-2 history of `customers`, one
+# row per version of a customer, between `dbt_valid_from` and `dbt_valid_to`.
+# `ref('customers_snapshot')` names it, and a semantic view may use it as a
+# table, as it may a model or a seed; no view here does. The column metadata
+# below is read exactly as a model's is.
+# =============================================================================
+snapshots:
+  - name: customers_snapshot
+    relation: ref('customers')
+    description: Every version of each customer, as `customers` held it between snapshots.
+    config:
+      unique_key: customer_id
+      strategy: check
+      check_cols: all
+      meta:
+        sst:
+          # One row per customer per version: the key an ASOF relationship to it targets.
+          primary_key:
+            - customer_id
+            - dbt_valid_from
+          synonyms:
+            - customer history
+    columns:
+      - name: customer_id
+        description: The customer this version describes.
+        data_type: VARCHAR
+        config:
+          meta:
+            sst:
+              column_type: dimension
+      - name: dbt_valid_from
+        description: When this version of the customer became current.
+        data_type: TIMESTAMP_NTZ
+        config:
+          meta:
+            sst:
+              column_type: time_dimension
+      - name: dbt_valid_to
+        description: When this version stopped being current; null for the current version.
+        data_type: TIMESTAMP_NTZ
+        config:
+          meta:
+            sst:
+              column_type: time_dimension

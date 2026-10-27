@@ -1,0 +1,13 @@
+---
+# BETWEEN makes this a range relationship. Snowflake requires a DISTINCT
+# RANGE constraint on the target, which jaffle_menu declares as the
+# distinct_range of pricing_periods. The end bound renders EXCLUSIVE.
+relationship:
+  name: orders_to_pricing_periods
+  description: |-
+    Each order falls inside exactly one pricing period, determined by when it was
+    placed.
+  left_table: "{{ ref('orders') }}"
+  right_table: "{{ ref('pricing_periods') }}"
+  relationship_conditions:
+    - "{{ ref('orders', 'ordered_at') }} BETWEEN {{ ref('pricing_periods', 'effective_start_at') }} AND {{ ref('pricing_periods', 'effective_end_at') }}"

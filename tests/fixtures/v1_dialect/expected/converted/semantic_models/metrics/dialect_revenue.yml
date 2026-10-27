@@ -1,0 +1,4 @@
+metric:
+  name: dialect_revenue
+  description: Order value including tax, in cents.
+  expr: "SUM({{ ref('orders', 'order_total') }})"

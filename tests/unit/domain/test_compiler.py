@@ -1,0 +1,456 @@
+"""Pure compiler records, reference resolution, and attachment."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.project import ParsedMember
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.parse.template import scan_template_calls
+from snowflake_semantic_tools.domain.resolve.members import attach_members, attach_view_members, effective_tables
+from snowflake_semantic_tools.domain.resolve.template import (
+    CUSTOM_INSTRUCTION_ITEM,
+    DESCRIPTION,
+    METRIC_EXPR,
+    TAG_NAME,
+    ResolveContext,
+    resolve_scalar,
+)
+
+
+def catalog() -> DbtCatalog:
+    return DbtCatalog(
+        "v12",
+        "1.11",
+        "fixture",
+        (
+            DbtModel(
+                "model.fixture.orders",
+                "orders",
+                "DB.SCH.ORDERS",
+                ("id",),
+                (),
+                (DbtColumn("id", None, "NUMBER", "dimension"),),
+            ),
+        ),
+    )
+
+
+def test_resolver_returns_resolved_text_and_poisoned_state() -> None:
+    resolved, diagnostics = resolve_scalar(
+        "COUNT({{ ref('orders', 'id') }})",
+        METRIC_EXPR,
+        Origin("metrics.yml", 3, 11),
+        ResolveContext(catalog(), frozenset(), {}),
+        field="expression",
+    )
+    assert resolved.text == "COUNT(ORDERS.ID)"
+    assert not resolved.poisoned
+    assert diagnostics == ()
+
+    failed, diagnostics = resolve_scalar(
+        "{{ ref('missing') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml", 4, 5),
+        ResolveContext(catalog()),
+        field="expression",
+    )
+    assert failed.poisoned
+    assert [diagnostic.code for diagnostic in diagnostics] == ["SST-REF001"]
+
+
+def test_attachment_is_deterministic_and_uses_subset_membership() -> None:
+    member = ParsedMember(
+        "metric",
+        "orders",
+        Origin("metrics.yml", 2, 3),
+        object(),
+        ("orders",),
+        scan_template_calls("COUNT({{ ref('orders', 'id') }})"),
+    )
+    views = {
+        "semantic_view:z": frozenset(("orders", "customers")),
+        "semantic_view:a": frozenset(("orders",)),
+    }
+    first = attach_members(views, (member,), SEMANTIC_REGISTRY)
+    second = attach_members(views, (member,), SEMANTIC_REGISTRY)
+    assert first == second
+    assert first[member.key] == ("semantic_view:a", "semantic_view:z")
+    assert effective_tables(member) == frozenset(("orders",))
+
+
+def test_resolver_handles_metric_instruction_var_and_tag_calls() -> None:
+    context = ResolveContext(
+        catalog(),
+        metric_names=frozenset(("order_count",)),
+        instruction_names=frozenset(("sql_rules",)),
+        variables={"state": "completed"},
+        tags={"domain": "DB.SCH.DOMAIN"},
+    )
+    metric, diagnostics = resolve_scalar(
+        "{{ metric('order_count') }} = '{{ var('state') }}'",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert metric.text == "ORDER_COUNT = 'completed'"
+    assert diagnostics == ()
+
+    instruction, diagnostics = resolve_scalar(
+        "{{ custom_instructions('sql_rules') }}",
+        CUSTOM_INSTRUCTION_ITEM,
+        Origin("views.yml"),
+        context,
+        field="custom_instructions",
+    )
+    assert instruction.text == "SQL_RULES"
+    assert diagnostics == ()
+
+    tag, diagnostics = resolve_scalar(
+        "{{ tag('domain') }}",
+        TAG_NAME,
+        Origin("views.yml"),
+        context,
+        field="tag",
+    )
+    assert tag.text == "DB.SCH.DOMAIN"
+    assert diagnostics == ()
+
+    # Each function names one thing; a wrong argument count is its own error.
+    for text, policy, field in (
+        ("{{ metric('a', 'b') }}", METRIC_EXPR, "expression"),
+        ("{{ var('a', 'b') }}", METRIC_EXPR, "expression"),
+        ("{{ custom_instructions('a', 'b') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions"),
+    ):
+        resolved, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
+        assert resolved.poisoned and [item.code for item in diagnostics] == ["SST-REF015"]
+        assert "takes 1 arguments, found 2" in diagnostics[0].message
+    unknown = (
+        ("{{ var('missing') }}", METRIC_EXPR, "expression", "SST-CFG029"),
+        ("{{ custom_instructions('missing') }}", CUSTOM_INSTRUCTION_ITEM, "custom_instructions", "SST-REF007"),
+    )
+    for text, policy, field, code in unknown:
+        _, diagnostics = resolve_scalar(text, policy, Origin("views.yml"), context, field=field)
+        assert [item.code for item in diagnostics] == [code]
+
+
+def test_resolver_reports_policy_arity_and_unknown_targets() -> None:
+    context = ResolveContext(catalog())
+    description, diagnostics = resolve_scalar(
+        "{{ ref('orders') }}",
+        DESCRIPTION,
+        Origin("views.yml"),
+        context,
+        field="description",
+    )
+    assert description.poisoned
+    assert diagnostics[0].code == "SST-REF008"
+    assert diagnostics[0].message == "description: 'description' does not accept template expressions"
+
+    bad_arity, diagnostics = resolve_scalar(
+        "{{ ref() }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert bad_arity.poisoned
+    assert diagnostics[0].code == "SST-REF015"
+    assert diagnostics[0].message == "{{ ref() }} takes 1 or 2 arguments, found 0"
+
+    unknown_metric, diagnostics = resolve_scalar(
+        "{{ metric('missing') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert unknown_metric.poisoned
+    assert diagnostics[0].code == "SST-REF006"
+
+
+def test_resolver_rejects_legacy_calls_and_required_missing_refs() -> None:
+    context = ResolveContext(catalog())
+    legacy, diagnostics = resolve_scalar(
+        "{{ table('orders') }} {{ column('orders', 'id') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert legacy.poisoned
+    assert {diagnostic.code for diagnostic in diagnostics} == {"SST-REF034", "SST-REF035"}
+
+    missing, diagnostics = resolve_scalar(
+        "plain text",
+        TAG_NAME,
+        Origin("views.yml"),
+        context,
+        field="tag",
+    )
+    assert missing.poisoned
+    assert diagnostics[0].code == "SST-REF003"
+
+
+def test_resolver_reports_unknown_columns_and_malformed_templates() -> None:
+    context = ResolveContext(catalog())
+    unknown, diagnostics = resolve_scalar(
+        "{{ ref('orders', 'missing') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert unknown.poisoned
+    assert diagnostics[0].code == "SST-REF002"
+
+    malformed, diagnostics = resolve_scalar(
+        "{{ ref('orders')",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert malformed.poisoned
+    assert diagnostics[0].code == "SST-LOD004"
+
+
+def test_resolver_covers_remaining_error_and_value_branches() -> None:
+    context = ResolveContext(
+        catalog(),
+        metric_names=frozenset(("m",)),
+        metric_values={"m": "ORDERS.M"},
+        instruction_names=frozenset(("rules",)),
+        variables={"empty": ""},
+        tags={"domain": "DB.SCH.DOMAIN"},
+    )
+    resolved, diagnostics = resolve_scalar(
+        "{{ metric('m') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        context,
+        field="expression",
+    )
+    assert resolved.text == "ORDERS.M"
+    assert diagnostics == ()
+
+    for text, policy in (
+        ("{{ custom_instructions() }}", CUSTOM_INSTRUCTION_ITEM),
+        ("{{ var('missing') }}", METRIC_EXPR),
+        ("{{ tag('missing') }}", TAG_NAME),
+        ("{{ tag() }}", TAG_NAME),
+    ):
+        resolved, diagnostics = resolve_scalar(
+            text,
+            policy,
+            Origin("bad.yml"),
+            context,
+            field="value",
+        )
+        assert resolved.poisoned
+        assert diagnostics
+
+    # A call that resolves to nothing would leave the field without the value it names.
+    empty, diagnostics = resolve_scalar(
+        "{{ var('empty') }}",
+        METRIC_EXPR,
+        Origin("bad.yml"),
+        context,
+        field="value",
+    )
+    assert empty.text == "{{ var('empty') }}"
+    assert empty.poisoned
+    assert [item.code for item in diagnostics] == ["SST-REF009"]
+
+    resolved, diagnostics = resolve_scalar(
+        "{{ ref('orders') }} + {{ ref('orders') }}",
+        TAG_NAME,
+        Origin("bad.yml"),
+        context,
+        field="tag",
+    )
+    assert resolved.poisoned
+    assert len(diagnostics) >= 2
+
+    relation, diagnostics = resolve_scalar(
+        "{{ ref('orders') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        ResolveContext(catalog()),
+        field="expression",
+    )
+    assert relation.text == "DB.SCH.ORDERS"
+    assert diagnostics == ()
+
+    column_kind, diagnostics = resolve_scalar(
+        "{{ column('orders', 'id') }}",
+        METRIC_EXPR,
+        Origin("legacy.yml"),
+        context,
+        field="expression",
+    )
+    assert column_kind.poisoned
+    assert diagnostics[0].code == "SST-REF035"
+
+    direct_column_kind, diagnostics = resolve_scalar(
+        "{{ column('orders', 'id') }}",
+        METRIC_EXPR,
+        Origin("legacy.yml"),
+        context,
+        field="expression",
+    )
+    assert direct_column_kind.poisoned
+
+    instruction, diagnostics = resolve_scalar(
+        "{{ custom_instructions('rules') }}",
+        CUSTOM_INSTRUCTION_ITEM,
+        Origin("views.yml"),
+        context,
+        field="custom_instructions",
+    )
+    assert instruction.text == "RULES"
+    assert diagnostics == ()
+
+    custom_kind, diagnostics = resolve_scalar(
+        "{{ custom_instructions('rules') }}",
+        CUSTOM_INSTRUCTION_ITEM,
+        Origin("views.yml"),
+        ResolveContext(catalog(), instruction_names=frozenset(("rules",))),
+        field="custom_instructions",
+    )
+    assert custom_kind.text == "RULES"
+    assert diagnostics == ()
+
+    table_kind, diagnostics = resolve_scalar(
+        "{{ ref('orders') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        ResolveContext(catalog()),
+        field="expression",
+    )
+    assert table_kind.text == "DB.SCH.ORDERS"
+    assert diagnostics == ()
+
+    empty_context = ResolveContext(catalog(), metric_names=frozenset(("m",)), metric_values={"m": ""})
+    empty_metric, diagnostics = resolve_scalar(
+        "{{ metric('m') }}",
+        METRIC_EXPR,
+        Origin("metrics.yml"),
+        empty_context,
+        field="expression",
+    )
+    assert empty_metric.poisoned
+    assert [item.message for item in diagnostics] == ["{{ metric('m') }} resolved to an empty string"]
+
+
+def test_resolver_reports_calls_last_first_then_the_call_count() -> None:
+    _, diagnostics = resolve_scalar(
+        "{{ ref('orders') }} {{ metric('m') }} {{ tag('missing') }}",
+        TAG_NAME,
+        Origin("views.yml"),
+        ResolveContext(catalog()),
+        field="tag",
+    )
+    assert [(item.code, item.message) for item in diagnostics] == [
+        ("SST-REF028", "{{ tag('missing') }} does not resolve"),
+        ("SST-REF041", "tag: metric() is not allowed in tag"),
+        ("SST-REF041", "tag: ref() is not allowed in tag"),
+        (
+            "SST-REF003",
+            "views.yml:1:1: malformed template expression '{{ ref('orders') }} {{ metric('m') }} {{ tag('missing') }}'",
+        ),
+    ]
+
+
+def test_parsed_project_groups_members_and_resolved_project_defaults() -> None:
+    from snowflake_semantic_tools.domain.model.project import ParsedProject, ResolvedProject
+
+    member = ParsedMember("metric", "m", Origin("metrics.yml"), object(), ("orders",))
+    parsed = ParsedProject((), (member,))
+    assert parsed.members_by_type == {"metric": (member,)}
+    resolved = ResolvedProject((), {})
+    assert resolved.custom_instruction_names == {}
+
+
+def test_attachment_handles_inference_poisoning_view_names_and_metric_dependencies() -> None:
+    metric = ParsedMember(
+        "metric",
+        "base",
+        Origin("metrics.yml"),
+        object(),
+        None,
+        scan_template_calls("COUNT({{ ref('orders', 'id') }})"),
+    )
+    derived = ParsedMember("metric", "derived", Origin("metrics.yml"), object(), None)
+    instruction = ParsedMember("custom_instruction", "rules", Origin("instructions.yml"), object(), None)
+    poisoned = ParsedMember("filter", "bad", Origin("filters.yml"), object(), ("orders",), poisoned=True)
+    views = {"semantic_view:sales": frozenset(("orders",))}
+    result = attach_view_members(
+        views,
+        (metric, derived, instruction, poisoned),
+        SEMANTIC_REGISTRY,
+        view_named_members={"semantic_view:sales": frozenset(("rules",))},
+        metric_dependencies={derived.key: (metric.key,)},
+    )
+    assert result[metric.key] == ("semantic_view:sales",)
+    assert result[derived.key] == ("semantic_view:sales",)
+    assert result[instruction.key] == ("semantic_view:sales",)
+    assert result[poisoned.key] == ()
+    assert effective_tables(metric) == frozenset(("orders",))
+
+
+def test_a_poisoned_derived_metric_stays_unattached_although_what_it_is_built_on_attaches() -> None:
+    base = ParsedMember("metric", "base", Origin("metrics.yml"), object(), ("orders",))
+    rejected = ParsedMember("metric", "windowed", Origin("metrics.yml"), object(), None, poisoned=True)
+    views = {"semantic_view:orders": frozenset(("orders",)), "semantic_view:sales": frozenset(("orders",))}
+    result = attach_view_members(
+        views, (base, rejected), SEMANTIC_REGISTRY, metric_dependencies={rejected.key: (base.key,)}
+    )
+    assert result[base.key] == ("semantic_view:orders", "semantic_view:sales")
+    assert result[rejected.key] == ()
+
+
+def test_metric_dependencies_do_not_widen_declared_table_attachment() -> None:
+    base = ParsedMember("metric", "base", Origin("metrics.yml"), object(), ("orders",))
+    constrained = ParsedMember("metric", "constrained", Origin("metrics.yml"), object(), ("customers",))
+    views = {
+        "semantic_view:orders": frozenset(("orders",)),
+        "semantic_view:sales": frozenset(("orders", "customers")),
+    }
+    result = attach_view_members(
+        views,
+        (base, constrained),
+        SEMANTIC_REGISTRY,
+        metric_dependencies={constrained.key: (base.key,)},
+    )
+    assert result[constrained.key] == ("semantic_view:sales",)
+
+    impossible = ParsedMember("metric", "impossible", Origin("metrics.yml"), object(), ("missing",))
+    result = attach_view_members(
+        views,
+        (base, impossible),
+        SEMANTIC_REGISTRY,
+        metric_dependencies={impossible.key: (base.key,)},
+    )
+    assert result[impossible.key] == ()
+
+
+def test_a_column_reference_is_quoted_as_its_column_is() -> None:
+    columns = (
+        DbtColumn("MixedCase", None, "NUMBER", "fact", quoted=True),
+        DbtColumn("order", None, "NUMBER", "fact"),
+        DbtColumn("Order Id", None, "NUMBER", "fact"),
+    )
+    models = (DbtModel("model.fixture.t", "t", "DB.S.T", (), (), columns),)
+    context = ResolveContext(DbtCatalog("v12", None, None, models))
+
+    def resolved(text: str) -> tuple[str, list[str]]:
+        value, found = resolve_scalar(text, METRIC_EXPR, Origin("m.yml", 1, 1), context, field="expression")
+        return value.text, [item.code for item in found]
+
+    assert resolved("SUM({{ ref('t', 'mixedcase') }})") == ('SUM(T."MixedCase")', [])
+    assert resolved("SUM({{ ref('t', 'order') }})") == ('SUM(T."ORDER")', [])
+    # A column that is not an identifier unquoted, and not declared quoted, cannot be referenced.
+    assert resolved("SUM({{ ref('t', 'Order Id') }})")[1] == ["SST-PRS005"]
+    assert [column.member_name for column in columns] == ['"MixedCase"', "order", "Order Id"]

@@ -1,0 +1,6 @@
+---
+metric:
+  name: product_count
+  description: |-
+    Number of distinct products sold.
+  expr: "COUNT(DISTINCT {{ ref('products', 'product_id') }})"

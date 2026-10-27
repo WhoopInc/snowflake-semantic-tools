@@ -1,0 +1,71 @@
+"""Composite artifacts the per-code PLN tests plan and publish: one skill.
+
+`publish_skills` plans the compiled artifacts against a recorded
+Snowflake through their lifecycle handlers, then apply the plan, as the lifecycle tests do.
+"""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.app.apply import ApplyArtifacts
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
+from snowflake_semantic_tools.app.manifest import build_manifest
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import ApplyOptions, ChangeSet
+from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.state import State
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import target
+from tests.helpers.clocks import FixedClock
+from tests.helpers.snowflake_fake import FakeSnowflake
+
+BUNDLE_STAGE = QualifiedName.parse("DB.S.SKILL_BUNDLES")
+STATE_TABLE = QualifiedName.parse("DB.S.SST_STATE")
+
+
+def month_close() -> dict[str, CompiledExtension]:
+    """The `month-close` skill, compiled to publish through the catalog channel."""
+    files = (
+        SkillFile("SKILL.md", b"---\nname: month-close\ndescription: Close.\n---\nRead reference/steps.md.\n"),
+        SkillFile("reference/steps.md", b"steps\n"),
+    )
+    found = Skill(
+        "month-close",
+        "skills/month-close",
+        "month-close",
+        "Close the month.",
+        "Read reference/steps.md.\n",
+        files,
+        Origin("skills/month-close/SKILL.md", 1),
+    )
+    channel = CatalogChannel("DB", "S", BUNDLE_STAGE)
+    result = CompileSkills(SkillCatalog((found,)), channel).run_result()
+    assert not result.diagnostics.has_errors, result.diagnostics
+    return {item.artifact_key: item for item in result.compiled if isinstance(item, CompiledExtension)}
+
+
+def plan_skills(
+    port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State, *, prune: bool = False
+) -> ChangeSet:
+    """Plan the skills against `port` through their lifecycle handler."""
+    releases = {key: item.release for key, item in compiled.items()}
+    handler = ExtensionLifecycleHandler(port, releases, "skill")
+    rendered = {key: item.rendered_artifact for key, item in compiled.items()}
+    manifest = build_manifest(CompileSkills(SkillCatalog(), None).run_result())
+    return PlanArtifacts(port, lifecycle_handlers={"skill": handler}).run(
+        rendered, manifest, previous, target(), fetched_at="now", include_prune=prune
+    )
+
+
+def publish_skills(port: FakeSnowflake, compiled: dict[str, CompiledExtension], previous: State) -> State:
+    """Plan and apply the skills, returning the state apply leaves."""
+    releases = {key: item.release for key, item in compiled.items()}
+    handlers = {"skill": ExtensionLifecycleHandler(port, releases, "skill")}
+    changeset = plan_skills(port, compiled, previous)
+    store = InMemoryStateStore(previous)
+    ApplyArtifacts(port, store, FixedClock(), state_table=STATE_TABLE, lifecycle_handlers=handlers).run(
+        changeset, previous, ApplyOptions()
+    )
+    return store.state or previous

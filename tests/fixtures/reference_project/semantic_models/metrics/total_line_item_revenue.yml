@@ -1,0 +1,6 @@
+---
+metric:
+  name: total_line_item_revenue
+  description: |-
+    Total line-item value, in cents.
+  expr: "SUM({{ ref('order_items', 'item_price') }})"

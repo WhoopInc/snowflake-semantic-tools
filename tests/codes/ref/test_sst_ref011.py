@@ -1,0 +1,36 @@
+"""SST-REF011: an Analyst tool names a semantic view that did not compile."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.app.compile.agents.resolve_tools import resolve_tool
+from snowflake_semantic_tools.domain.diagnostics import Origin, Severity
+from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentTool
+from tests.helpers.agent_context import agent_context
+from tests.helpers.diagnostic_filters import coded
+
+ORIGIN = Origin("agents/router/agent.yml", 4, 5)
+ROUTER = AgentModel("router", ORIGIN, ("agents/router/agent.yml",))
+
+
+def test_sst_ref011_fires() -> None:
+    _, diagnostics = resolve_tool(
+        ROUTER,
+        AgentTool("cortex_analyst_text_to_sql", ORIGIN, description="Sales.", semantic_view="nope"),
+        agent_context(),
+    )
+    [diagnostic] = coded(diagnostics, "SST-REF011")
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.message == "{{ semantic_view('nope') }} does not resolve"
+    assert diagnostic.subject == "agent:router"
+    # It is reported where the tool is written (GitHub #270).
+    assert diagnostic.origin == ORIGIN
+
+
+def test_sst_ref011_silent() -> None:
+    resolved, diagnostics = resolve_tool(
+        ROUTER,
+        AgentTool("cortex_analyst_text_to_sql", ORIGIN, description="Sales.", semantic_view="SALES"),
+        agent_context(),
+    )
+    assert resolved is not None
+    assert coded(diagnostics, "SST-REF011") == []

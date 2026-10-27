@@ -1,0 +1,8 @@
+$ sst validate --bogus
+--- exit 3
+--- stdout
+--- stderr
+Usage: sst validate [OPTIONS]
+error[SST-PRT100]: No such option '--bogus'. Did you mean '--verbose'?
+  = help: see sst <command> --help
+  = sst explain SST-PRT100

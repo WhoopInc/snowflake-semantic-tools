@@ -1,0 +1,384 @@
+"""Snowflake codes (SNO): an error Snowflake returned for a statement, classified by its signature."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
+
+TITLE: str = "Snowflake"
+
+SPECS: tuple[ErrorSpec, ...] = (
+    spec(
+        "SST-SNO001",
+        Severity.ERROR,
+        "Snowflake refused and SST does not recognize the refusal",
+        "Snowflake refused: {detail}",
+        "read internal_detail; if this recurs, add a signature",
+        internal_detail=True,
+        condition=(
+            "Snowflake refused a statement and no SST signature matches the error; also an eval "
+            "run whose results could not be read or checked, or an eval the gate finds no "
+            "completed, read attempt for"
+        ),
+        note=(
+            "The detail is Snowflake's error, or for an eval what could not be read. When the "
+            "failure ends a command's own connection, the command reports SST-PRT001 instead."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO002",
+        Severity.ERROR,
+        "Object already exists",
+        "{value} already exists",
+        "choose another name, or -- for a semantic view -- let the unconditional `CREATE OR REPLACE` handle it.",
+        condition="Snowflake reported error 2002 (SQLSTATE 42710), or a message saying `already exists`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO003",
+        Severity.ERROR,
+        "Object does not exist or is not authorized",
+        "{value} does not exist or is not authorized",
+        "publish the object, or grant access",
+        condition=(
+            "Snowflake reported error 2003 (SQLSTATE 02000), SQLSTATE 42S02, or a message saying "
+            "`does not exist` that names no schema, database or warehouse"
+        ),
+        note="Plan reports a missing referenced relation first, as SST-PLN007.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO004",
+        Severity.ERROR,
+        "Insufficient privileges",
+        "insufficient privileges for {value}: {detail}",
+        "grant the privilege to the deploying role",
+        condition=(
+            "Snowflake reported error 3001 (SQLSTATE 42501), SQLSTATE 28000, or a message saying "
+            "`insufficient privileges` or `not authorized`"
+        ),
+        note=(
+            "The message ends with what Snowflake said is missing, such as which privilege the "
+            "primary role must be granted on which object. Plan reports a missing CREATE "
+            "privilege on a schema first, as SST-PLN008."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO005",
+        Severity.ERROR,
+        "Schema does not exist or is not authorized",
+        "schema {value} does not exist or is not authorized",
+        "create the schema, or correct the target",
+        condition="Snowflake reported error 2043, or a message saying `schema '<name>' does not exist`",
+        note="Plan reports a missing schema first, as SST-PLN010.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO006",
+        Severity.ERROR,
+        "Database does not exist or is not authorized",
+        "database {value} does not exist or is not authorized",
+        "create the database, or correct the target",
+        condition="Snowflake reported a message saying `database '<name>' does not exist`",
+        note="Plan reports a missing database first, as SST-PLN011.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO007",
+        Severity.ERROR,
+        "Warehouse does not exist or is not authorized",
+        "warehouse {value} does not exist or is not authorized",
+        "grant USAGE, or name an existing warehouse",
+        condition="Snowflake reported a message saying `warehouse '<name>' does not exist`",
+        note="Plan reports an unusable warehouse first, as SST-PLN012.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO008",
+        Severity.ERROR,
+        "No active warehouse in the session",
+        "no active warehouse in the session",
+        "set a default warehouse for the connecting user",
+        condition="Snowflake reported a message saying `no active warehouse`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO009",
+        Severity.ERROR,
+        "SQL compilation error",
+        "SQL compilation error: {detail}",
+        "fix the statement",
+        condition=(
+            "Snowflake reported error 1003 (SQLSTATE 42000), SQLSTATE 42601, or a message saying "
+            "`syntax error` or `SQL compilation error`"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO010",
+        Severity.ERROR,
+        "SQL execution internal error",
+        "SQL execution internal error: {detail}",
+        "this is the query-time class the derived-metric restrictions exist to prevent",
+        condition="Snowflake reported `SQL execution internal error`, or a message carrying an incident number",
+        note=(
+            "Snowflake failed while running a statement it had accepted. If it recurs, the "
+            "incident number in the detail is what Snowflake support asks for."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO011",
+        Severity.ERROR,
+        "Statement timeout",
+        "statement timed out after {detail}",
+        "raise the timeout, or reduce the statement",
+        condition="Snowflake reported error 630 (SQLSTATE 57014), or a message saying `statement or warehouse timeout`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO012",
+        Severity.ERROR,
+        "Secure-object share restriction",
+        "{value}: share restriction",
+        "keep the object secure, or revoke the share grant",
+        condition="Snowflake reported error 93932, or a message naming both a secure object and a share",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO013",
+        Severity.ERROR,
+        "Authentication failed",
+        "authentication failed for {value}",
+        "refresh the credential",
+        condition=(
+            "Snowflake rejected a login: error 250001 with authentication wording, or error "
+            "390100, 390144, 390195, 390302, 390303, 390318 or 390422"
+        ),
+        note="When a command's own session is refused this way, the command reports SST-PRT002.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO014",
+        Severity.ERROR,
+        "Driver network failure",
+        "network failure: {detail}",
+        "retry",
+        condition=(
+            "the driver lost or could not open its connection: SQLSTATE 08000, 08003 (error "
+            "250002), 08006, or 08001 with timeout or connection wording; or Snowflake ended or "
+            "let expire a session that had connected (error 390111 or 390112)"
+        ),
+        note=(
+            "When a command's own connection fails this way, the command reports SST-PRT001; a "
+            "session Snowflake ended had connected, so it is reported as this code instead, and "
+            "`sst apply` reports SST-APL103."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO015",
+        Severity.ERROR,
+        "max_staleness rejected",
+        "max_staleness {found} rejected",
+        "raise it to at least 120",
+        condition="Snowflake rejected a statement with a message naming `max_staleness`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO016",
+        Severity.ERROR,
+        "Semantic view feature not enabled",
+        "semantic views are not enabled on this account",
+        "ask an account administrator to enable the feature",
+        condition=("Snowflake reported semantic views as an unsupported feature, or as not enabled or not available"),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO017",
+        Severity.ERROR,
+        "CREATE AGENT privilege required",
+        "CREATE AGENT required on {value}",
+        "grant CREATE AGENT on the schema",
+        condition="Snowflake reported a message naming CREATE AGENT as a missing or required privilege",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO018",
+        Severity.ERROR,
+        "CREATE DATASET privilege required",
+        "CREATE DATASET required on {value}",
+        "grant CREATE DATASET on the schema",
+        condition="Snowflake reported a message naming CREATE DATASET as a missing or required privilege",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO019",
+        Severity.ERROR,
+        "Duplicate synonym",
+        "duplicate synonym {value}",
+        "make synonyms unique within the view",
+        condition="Snowflake reported a message saying `duplicate synonym`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO036",
+        Severity.ERROR,
+        "Sample values the member's type cannot hold",
+        "Snowflake cannot read these sample values as their members' types: {detail}",
+        (
+            "delete the values, or run `sst enrich --force sample-values`; `sst validate` with "
+            "`validation.snowflake_syntax_check` on lists every one before apply"
+        ),
+        condition=("Snowflake reported error 10913 saying `Sample Values validation failed`, or that wording alone"),
+        note=(
+            "Snowflake casts each sample value to its member's type when it creates a semantic view. "
+            "Validation reports such a value first: SST-VAL341 offline, SST-VAL419 connected. The detail "
+            "names each member as `TABLE.MEMBER` with the values refused."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO020",
+        Severity.ERROR,
+        "Identifier too long",
+        "identifier {value} is too long",
+        "shorten the name",
+        condition=("Snowflake reported an identifier as too long, or a message saying it exceeds the maximum length"),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO022",
+        Severity.ERROR,
+        "Concurrent DDL or lock timeout",
+        "lock timeout on {value}",
+        "retry, or serialize the publishers",
+        condition="Snowflake reported a lock timeout or wait, a deadlock, or a concurrent change",
+        note="Plan warns of an object another session holds a lock on as SST-PLN019.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO023",
+        Severity.ERROR,
+        "Result set too large",
+        "result set too large for {value}",
+        "narrow the query",
+        condition="Snowflake reported a result as too large to return",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO024",
+        Severity.ERROR,
+        "Query queued beyond the wait limit",
+        "query queued beyond {detail}",
+        "raise the queue limit, or use a larger warehouse",
+        condition=("Snowflake reported a statement queued beyond its limit, or a `statement_queued_timeout`"),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO025",
+        Severity.ERROR,
+        "Unexpected DESCRIBE output shape",
+        "DESCRIBE {value} returned an unexpected shape",
+        "report this as a Snowflake drift finding",
+        condition="a DESCRIBE returned rows that lack a column SST reads, such as a table's `type`",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO030",
+        Severity.ERROR,
+        "Relation is missing or not visible",
+        "model '{model}': {relation} does not exist, or the role cannot see it",
+        "build the model in this target, or grant the role access to it",
+        condition="during enrich, a model's relation does not exist or the role cannot see it",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO031",
+        Severity.ERROR,
+        "Enrichment step failed",
+        "model '{model}': {step} failed: {detail}",
+        "fix the cause the message names, then run sst enrich again",
+        condition=(
+            "an enrich step failed for a model: reading its columns or values, or a Cortex call; "
+            "Cortex answered in another shape than requested; or a value to write holds template "
+            "syntax dbt would run, so nothing is written for that column"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO032",
+        Severity.ERROR,
+        "Synonym model does not answer",
+        "synonym model '{model}' refused a test completion: {detail}",
+        "set enrichment.synonym_model to a model AI_COMPLETE accepts in this account, such as a GA one "
+        "SHOW CORTEX BASE MODELS lists",
+        condition=(
+            "before enrich reads anything for a run that fills synonyms, a one-token AI_COMPLETE call to "
+            "`enrichment.synonym_model` fails; the run stops and nothing is written"
+        ),
+        note=(
+            "AI_COMPLETE refuses an embedding model, a retired model and a misspelt name alike, with "
+            "'unknown model', and a legacy model the account never used with 'has been in legacy "
+            "state'. Without the check, every model would read the warehouse and then fail its "
+            "synonyms with SST-SNO031."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO033",
+        Severity.WARNING,
+        "Synonym model is at risk",
+        "synonym model '{model}' is {reason}",
+        "move enrichment.synonym_model to a GA model before this one stops answering",
+        condition=(
+            "the synonym model answered enrich's test completion, but SHOW CORTEX BASE MODELS lists it as "
+            "INTERNAL, past end-of-life, legacy or in preview, or does not list it"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO034",
+        Severity.ERROR,
+        "CoWork profile run's router spans cannot be read",
+        "eval '{artifact}': the router spans of run '{value}' could not be read: {detail}",
+        (
+            "run the eval with a role that can read SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS (it may need "
+            "READ UNREDACTED AI OBSERVABILITY EVENTS TABLE)"
+        ),
+        condition=(
+            "a CoWork profile's eval run completed and its results were read, but the read of its router "
+            "spans from SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS failed, failed in transit on every try, "
+            "or returned rows SST cannot read; the attempt is not accepted, as an unread result is not"
+        ),
+        note=(
+            "Snowflake private preview: CoWork profiles. SST scores routing_accuracy from these spans. "
+            "They were measured read as ACCOUNTADMIN; what a narrower role needs, and whether the "
+            "router attributes are redacted without READ UNREDACTED AI OBSERVABILITY EVENTS TABLE, "
+            "is not measured. "
+            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-SNO035",
+        Severity.WARNING,
+        "CoWork profile run left questions untraced",
+        (
+            "eval '{artifact}': run '{value}' traced no route for {count} question(s) after {detail}; "
+            "each fails routing_accuracy"
+        ),
+        "run the eval again; if questions stay untraced, check what the role reads of the events table",
+        condition=(
+            "a question of a CoWork profile's eval run has a result, but the run's router spans hold no "
+            "root span for its record, after SST read them again within the attempt's deadline"
+        ),
+        note=(
+            "Snowflake private preview: CoWork profiles. A record with a root span and no routing span "
+            "was declined; one with no root span has not been traced yet, so it is not read as a "
+            "decline. Whether spans can land after a run's terminal status is not measured."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+)

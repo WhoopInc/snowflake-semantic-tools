@@ -1,0 +1,7 @@
+---
+# A metric whose expression names no column, so it has no table to attach under.
+snowflake_metrics:
+  - name: row_count_metric
+    description: |-
+      Counts rows without naming a column.
+    expr: "COUNT(*)"

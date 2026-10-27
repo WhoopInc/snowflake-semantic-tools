@@ -1,0 +1,43 @@
+---
+# Eval questions for the jaffle_concierge CoWork profile (a Snowflake private
+# preview): one question for each subagent, and one the profile should decline.
+#
+# A profile's eval is scored on where its router sends each question. Each row
+# names the subagents it accepts in `ground_truth_subagents`, written as the
+# profile's own `spec.subagents` entries are (one not among them is
+# SST-VAL881). SST renders each as the qualified name the router gives that
+# agent on the target, so dev and prod score against their own agents. Golden:
+#   tests/golden/expected/eval/jaffle_concierge_source.sql
+#
+# No `ground_truth_invocations` (SST-VAL883): the tool metrics that read them
+# never see a router's calls.
+
+name: jaffle_concierge_routing
+
+description: |-
+  Three records: one routed to each subagent, and one outside both.
+
+questions:
+  - question: Which location took the most orders across the whole menu?
+    ground_truth:
+      ground_truth_subagents:
+        - "{{ agent('jaffle_analytics_agent') }}"
+      ground_truth_output: |-
+        The reply names the location with the most orders, from the analytics
+        agent's answer.
+
+  - question: Has my jaffle order left the kitchen?
+    ground_truth:
+      ground_truth_subagents:
+        - "{{ agent('jaffle_delivery_agent') }}"
+      ground_truth_output: |-
+        The reply gives the order's delivery status, from the delivery agent's
+        answer.
+
+  # A decline: an empty list expects the router to choose no subagent. Without
+  # one, SST-VAL885 notes that no row checks the profile declines.
+  - question: Which flour supplier delivers late most often?
+    ground_truth:
+      ground_truth_subagents: []
+      ground_truth_output: |-
+        The reply declines: no agent of the profile holds supplier data.

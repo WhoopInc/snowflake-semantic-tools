@@ -1,0 +1,773 @@
+"""Plan and publish content-addressed Cortex Extension versions for skills and plugins.
+
+The version alias is the bundle digest, so a version is never rewritten: apply
+uploads the bundle under `@<stage>/<name>/<ALIAS>/`, verifies it byte for byte,
+and adds the version from that prefix only when the alias is absent. It then makes
+that version the default, unless a certified version outranks it. It never
+drops, grants, un-certifies, or changes discoverability. Lost state is recovered
+from the same content: the version and the prefix it was added from.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from hashlib import sha256
+from threading import Lock
+from types import MappingProxyType
+
+from snowflake_semantic_tools.app.compile.skills import ExtensionRelease
+from snowflake_semantic_tools.app.lifecycle.composite import (
+    CompositeHandler,
+    PublicationRun,
+    blocked,
+    create_sse_stage_sql,
+    details_stale,
+    failed,
+    read_back,
+    skipped,
+)
+from snowflake_semantic_tools.app.lifecycle.extension_versions import (
+    certified,
+    certified_instead,
+    default_elsewhere,
+    served_warning,
+)
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    ABSENT,
+    BUNDLE_DIFFERS,
+    BUNDLE_PREFIX_MISSING,
+    OTHER_DEFINITION,
+    RECORDED,
+    SSE_STAGE_TYPE,
+    UNOBSERVABLE,
+    Action,
+    ApplyOptions,
+    ApplyOutcome,
+    Change,
+    ChangeReason,
+    CompositeObservation,
+    CompositePlan,
+    ExecResult,
+    OutcomeStatus,
+    PhysicalResource,
+    RecoveryProof,
+    RenderedArtifact,
+)
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import ExtensionObservation, ExtensionVersion
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, ident, literal, qname, sql
+from snowflake_semantic_tools.domain.state import FAILED_AFTER_WRITE, AppliedEntry
+
+# The TYPEs a CORTEX EXTENSION is created with; an extension without one cannot be a skill.
+EXTENSION_TYPES = frozenset(("SKILL", "PLUGIN"))
+
+
+@dataclass(frozen=True, slots=True)
+class _Observed:
+    stage_type: str | None
+    staged: tuple[str, ...]
+    extension: ExtensionObservation | None
+    version: ExtensionVersion | None
+    version_files: tuple[str, ...]
+    versions: tuple[ExtensionVersion, ...] = ()
+
+    def details(self) -> tuple[tuple[str, str], ...]:
+        """Return what apply compares with the plan's observation: names and digests, `""` for absent."""
+        extension = self.extension
+        version = self.version
+        default = next((item.name for item in self.versions if item.is_default), "")
+        return (
+            ("stage_type", self.stage_type or ""),
+            ("staged", _digest(self.staged)),
+            ("extension_type", extension.extension_type if extension else ""),
+            ("comment", _text_digest(extension.comment) if extension and extension.comment is not None else ""),
+            ("version", version.name if version else ""),
+            ("version_files", _digest(self.version_files)),
+            ("certification", (version.certification_status or "") if version else ""),
+            ("default", default),
+        )
+
+
+class ExtensionLifecycleHandler(CompositeHandler[ExtensionRelease, _Observed, CatalogPublicationPort]):
+    """One handler per extension-backed artifact type (`skill` or `plugin`).
+
+    A prune never drops an extension or a version: it is report-only while the extension
+    exists, and forgets the state entry once it is gone; `sst drop` is what removes one.
+    """
+
+    def __init__(
+        self, port: CatalogPublicationPort, releases: Mapping[str, ExtensionRelease], artifact_type: str
+    ) -> None:
+        super().__init__(port)
+        self._releases = MappingProxyType(dict(releases))
+        self.artifact_type = artifact_type
+        self._stage_lock = Lock()
+
+    def _subject(self, artifact: RenderedArtifact) -> ExtensionRelease:
+        return self._releases[artifact.key]
+
+    def _observe(self, release: ExtensionRelease) -> _Observed:
+        stage_type = self._port.stage_type(release.stage)
+        staged = self._port.list_location(release.prefix) if stage_type is not None else ()
+        extension = self._port.observe_extension(release.target)
+        version = None
+        version_files: tuple[str, ...] = ()
+        versions: tuple[ExtensionVersion, ...] = ()
+        if extension is not None:
+            versions = self._port.extension_versions(release.target)
+            version = _aliased(versions, release.alias)
+            if version is not None:
+                version_files = self._port.list_location(version.location)
+        return _Observed(stage_type, tuple(sorted(staged)), extension, version, tuple(sorted(version_files)), versions)
+
+    def _decide(
+        self,
+        artifact: RenderedArtifact,
+        state_entry: AppliedEntry | None,
+        release: ExtensionRelease,
+        observed: _Observed,
+    ) -> CompositePlan:
+        observation = self._observation(release, observed)
+        refusal = _refusal(artifact.key, state_entry, release, observed, observation)
+        if refusal is not None:
+            return refusal
+        served = certified_instead(observed.extension, observed.versions, observed.version, certifies=release.certified)
+        warnings = served_warning(artifact.key, release.target.sql, release.alias, served)
+        action, reason = _action(artifact, state_entry, release, observed)
+        return CompositePlan(action, reason, observation, warnings)
+
+    def _publish(self, change: Change, artifact: RenderedArtifact) -> ApplyOutcome:
+        release = self._releases[change.key]
+        current = self._observe(release)
+        planned = change.composite_observation
+        if planned is None or _stale(planned.details, self._observation(release, current).details):
+            return failed(change, f"{release.target.sql} changed since the plan", code="SST-APL012")
+        return _Run(self._port, change, artifact, release, current, self._stage_lock).publish()
+
+    def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
+        """Forget an extension that is gone from the catalog; report one that is still there.
+
+        Reads only whether the extension state records still exists. Once it is gone the prune
+        is executable, and applying it forgets the state entry, so a later extension of that
+        name is never taken for SST's. One still there, or one that cannot be read, is
+        report-only: the report names `sst drop`, which removes it.
+
+        Diagnostics:
+            SST-PLN034: the extension still exists, or could not be read; how to remove it.
+            SST-VAL861: the extension is gone; apply with --prune forgets its state entry.
+        """
+        name = _parsed(state_entry.qualified_name)
+        unread = ""
+        try:
+            gone = name is not None and self._port.observe_extension(name) is None
+        except SnowflakePortError as exc:
+            gone, unread = False, f"whether it still exists could not be read ({_first_line(exc)}); "
+        if name is None or not gone:
+            remedy = _drop_remedy(state_entry.qualified_name or artifact_key, self.artifact_type)
+            return self._report_only(artifact_key, state_entry, unread + remedy)
+        observation = CompositeObservation(
+            artifact_key,
+            resources=(PhysicalResource("CORTEX EXTENSION", name, False),),
+            details=(("extension", name.sql),),
+        )
+        forgotten = D("SST-VAL861", subject=artifact_key, artifact=artifact_key, value=name.sql)
+        return Change(
+            artifact_key,
+            self.artifact_type,
+            Action.PRUNE,
+            ChangeReason.NOT_PRESENT,
+            None,
+            None,
+            (),
+            self._prune_order,
+            DiagnosticBag((forgotten,)),
+            composite_observation=observation,
+        )
+
+    def _apply_prune(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        """Forget a gone extension under --prune while it is still gone; skip a report-only prune.
+
+        A skipped prune reports the artifact's text if the change carries one. The applied
+        prune runs nothing: state forgets the entry, as `apply.state` records a NOT_PRESENT
+        prune. An extension that is back since the plan fails it (SST-APL012).
+        """
+        observation = change.composite_observation
+        if not change.prune_executable or not options.allow_prune or observation is None:
+            return skipped(change, change.rendered.ddl if change.rendered is not None else "")
+        name = QualifiedName.parse(dict(observation.details)["extension"])
+        try:
+            present = self._port.observe_extension(name) is not None
+        except SnowflakePortError as exc:
+            return failed(change, f"observation of {name.sql} failed: {_first_line(exc)}")
+        if present:
+            return failed(change, f"{name.sql} changed since the plan", code="SST-APL012")
+        return ApplyOutcome(change.key, change.action, OutcomeStatus.APPLIED, 0, 0, "")
+
+    def recover(self, change: Change) -> RecoveryProof:
+        """Prove an unrecorded extension serves this release's bundle under its alias, from its bundle prefix.
+
+        The plan's observation must show the compiled target as an extension of the release's
+        type and comment, its alias naming a version that holds exactly the bundle's paths, on
+        a server-side encrypted stage; then the stage prefix the version was added from must
+        list exactly the bundle, each file reading back byte for byte. The alias is a digest
+        prefix, so these, not the alias, prove the content. A version the release certifies but
+        that is not certified yet is recorded: the next apply certifies it.
+
+        Raises:
+            SnowflakePortError: the bundle prefix could not be read.
+        """
+        release = self._releases[change.key]
+        observation = change.composite_observation
+        details = dict(observation.details) if observation is not None else {}
+        target = release.target.sql
+        if not details:
+            return RecoveryProof(UNOBSERVABLE, qualified_name=target)
+        found = _unproven(release, details)
+        if found is None:
+            listed, unread = read_back(self._port, release.prefix, release.bundle.entries)
+            if not listed:
+                found = BUNDLE_PREFIX_MISSING
+            elif listed != tuple(sorted(release.paths)) or unread is not None:
+                found = BUNDLE_DIFFERS
+        if found is not None:
+            return RecoveryProof(found, qualified_name=target)
+        assert change.rendered is not None
+        return RecoveryProof(
+            RECORDED,
+            (*change.rendered.component_fingerprints, ("version", details["version"])),
+            (("CORTEX EXTENSION", target), ("STAGE", release.stage.sql)),
+            target,
+        )
+
+    def _observation(self, release: ExtensionRelease, observed: _Observed) -> CompositeObservation:
+        return CompositeObservation(
+            key=release.key,
+            resources=(
+                PhysicalResource("CORTEX EXTENSION", release.target, observed.extension is not None),
+                PhysicalResource("STAGE", release.stage, observed.stage_type is not None),
+            ),
+            stage_exists=observed.stage_type is not None,
+            config_path=release.prefix,
+            config_exists=bool(observed.staged),
+            details=observed.details(),
+        )
+
+
+class _Run(PublicationRun[CatalogPublicationPort]):
+    """One publication attempt, tracking what has been written so a failure reports it.
+
+    The steps run in order: ensure the bundle stage, upload the bundle and read it back,
+    create the extension from the bundle, add the version unless the create made it, then
+    verify the version, align the comment, make it the default, and certify it. When the version
+    the plan observed already exists, the bundle is neither uploaded nor read back from its
+    stage prefix: the version's own files are what `_check_version` verifies.
+    """
+
+    def __init__(
+        self,
+        port: CatalogPublicationPort,
+        change: Change,
+        artifact: RenderedArtifact,
+        release: ExtensionRelease,
+        current: _Observed,
+        stage_lock: Lock,
+    ) -> None:
+        super().__init__(port, change, artifact)
+        self._release = release
+        self._current = current
+        self._stage_lock = stage_lock
+        self._certification_done = False
+        self._created_with_bundle = False
+
+    def publish(self) -> ApplyOutcome:
+        """Publish the release, reporting a port error as a failure that keeps what was written."""
+        # A read-back error after CREATE must still report the write, or state would
+        # forget the extension and every later plan would call it unmanaged.
+        try:
+            failure = self._run_steps(
+                self._ensure_stage,
+                self._upload_bundle,
+                self._verify_bundle,
+                self._create_extension,
+                self._add_version,
+            )
+            return failure if failure is not None else self._check_version()
+        except SnowflakePortError as exc:
+            return self.fail(f"{exc}")
+
+    def _owns_write(self) -> bool:
+        # State takes ownership only of an extension that exists. Uploads alone are
+        # content-addressed leftovers, and recording them would let a retry treat a
+        # same-named extension someone else created as SST's.
+        return self._written and ("CORTEX EXTENSION", self._release.target.sql) in self._verified
+
+    def _certification_pending(self) -> bool:
+        return self._release.certified and not self._certification_done
+
+    def _ensure_stage(self) -> ApplyOutcome | None:
+        stage = self._release.stage
+        if self._current.stage_type is not None:
+            self._verified.append(("STAGE", stage.sql))
+            return None
+        # Several artifacts share one bundle stage; create it once.
+        with self._stage_lock:
+            if self._port.stage_type(stage) is None:
+                failure = self._execute(create_sse_stage_sql(stage))
+                if failure is not None:
+                    return failure
+            found = self._port.stage_type(stage)
+        if found is None or found.upper() != SSE_STAGE_TYPE:
+            return self.fail(f"stage {stage.sql} is {found or 'absent'} after creation", "SST-APL016")
+        self._verified.append(("STAGE", stage.sql))
+        return None
+
+    def _upload_bundle(self) -> ApplyOutcome | None:
+        if self._current.version is not None:
+            # The version already holds the bundle and is what the extension serves, which
+            # `_check_version` reads back; its stage prefix is only the source an ADD VERSION
+            # copies, so whatever that prefix holds now is neither rewritten nor required.
+            return None
+        release = self._release
+        failed_upload = self._upload_missing(release.prefix, release.bundle.entries, set(self._current.staged))
+        if failed_upload is None:
+            return None
+        entry, error = failed_upload
+        return self.fail(f"upload of {entry.path} failed: {error}")
+
+    def _verify_bundle(self) -> ApplyOutcome | None:
+        if self._current.version is not None:
+            return None
+        release = self._release
+        return self._verify_staged(
+            release.prefix,
+            release.bundle.entries,
+            lambda listed: f"{release.prefix} differs from the bundle ({_difference(listed, release.paths)})",
+        )
+
+    def _create_extension(self) -> ApplyOutcome | None:
+        """Create the extension with the bundle as its first version, named by the alias.
+
+        MEASURED: CREATE without `FROM ... VERSION` leaves an empty, unaliased VERSION$1,
+        which no statement can drop or alias and which the catalog serves until a version is
+        added. A PLUGIN whose bundle the create refuses is created bare instead, so
+        `_add_version` can fall back to a live version for it.
+        """
+        release = self._release
+        if self._current.extension is None:
+            bundled = _create_sql(release, with_bundle=True)
+            result = self._run_statement(bundled)
+            if not result.ok and release.extension_type != "PLUGIN":
+                return self._failure(bundled, result)
+            if not result.ok:
+                failure = self._execute(_create_sql(release, with_bundle=False))
+                if failure is not None:
+                    return failure
+            self._created_with_bundle = result.ok
+        self._verified.append(("CORTEX EXTENSION", release.target.sql))
+        return None
+
+    def _add_version(self) -> ApplyOutcome | None:
+        # The create that carried the bundle made the version. Should it have lost a race to
+        # another create, IF NOT EXISTS still reports success, and `_check_version` finds the
+        # alias absent (SST-APL016) rather than this adding a version to someone else's object.
+        if self._current.version is not None or self._created_with_bundle:
+            return None
+        release = self._release
+        result = self._run_statement(
+            sql(
+                "ALTER CORTEX EXTENSION {target} ADD VERSION {alias} FROM {location}",
+                target=qname(release.target),
+                alias=_alias(release.alias),
+                location=release.location,
+            )
+        )
+        if result.ok:
+            return None
+        detail = result.error.message if result.error else "ADD VERSION failed"
+        if "ALREADY EXISTS" in detail.upper():
+            # Another deploy minted this version name between the plan and this statement.
+            return self.fail(f"ADD VERSION failed: {detail}", "SST-APL020", value=release.alias)
+        if release.extension_type != "PLUGIN":
+            return self.fail(f"ADD VERSION failed: {detail}")
+        return self._add_live_version()
+
+    def _add_live_version(self) -> ApplyOutcome | None:
+        """The PLUGIN fallback: a LIVE version built from empty, never `FROM LAST`."""
+        release = self._release
+        target = qname(release.target)
+        abort = sql("ALTER CORTEX EXTENSION {target} ABORT", target=target)
+        self._port.execute_script((abort,))
+        failure = self._execute(
+            sql("ALTER CORTEX EXTENSION {target} ADD LIVE VERSION {alias}", target=target, alias=_alias(release.alias))
+        )
+        if failure is not None:
+            return failure
+        live = f"snow://cortex_extension/{release.target.sql}/versions/live/"
+        failed_upload = self._upload_missing(live, release.bundle.entries, ())
+        if failed_upload is not None:
+            entry, error = failed_upload
+            self._port.execute_script((abort,))
+            return self.fail(f"upload of {entry.path} into the live version failed: {error}")
+        failure = self._execute(sql("ALTER CORTEX EXTENSION {target} COMMIT", target=target))
+        if failure is not None:
+            self._port.execute_script((abort,))
+        return failure
+
+    def _check_version(self) -> ApplyOutcome:
+        """Require the aliased version to hold the bundle, align the comment and the default, then certify."""
+        release = self._release
+        target = release.target.sql
+        versions = self._port.extension_versions(release.target)
+        version = _aliased(versions, release.alias)
+        if version is None:
+            return self.fail(f"alias {release.alias} is absent from {target} after ADD VERSION", "SST-APL016")
+        # Snowflake publishes no CORTEX EXTENSION reference; the server adds an empty version from a
+        # path that holds nothing, so the files are checked (docs/design/snowflake-behavior.md).
+        published = tuple(sorted(self._port.list_location(version.location)))
+        leftover = sorted(set(published) - set(release.paths))
+        if leftover and set(published) > set(release.paths):
+            return self.fail(f"{version.name} of {target} still holds {leftover[0]}", "SST-APL019", value=leftover[0])
+        if published != tuple(sorted(release.paths)):
+            return self.fail(
+                f"{version.name} of {target} differs from the bundle ({_difference(published, release.paths)})",
+                "SST-APL016",
+            )
+        failure = self._align_comment() or self._point_default(versions, version)
+        if failure is not None:
+            return failure
+        if release.certified and not certified(self._current.extension, version):
+            return self._certify()
+        self._certification_done = True
+        return self._published(version)
+
+    def _align_comment(self) -> ApplyOutcome | None:
+        extension = self._current.extension
+        release = self._release
+        if extension is None or (extension.comment or "") == release.comment:
+            return None
+        return self._execute(
+            sql(
+                "ALTER CORTEX EXTENSION {target} SET COMMENT = {comment}",
+                target=qname(release.target),
+                comment=literal(release.comment),
+            )
+        )
+
+    def _point_default(self, versions: tuple[ExtensionVersion, ...], version: ExtensionVersion) -> ApplyOutcome | None:
+        """Make the release's version the default unless a certified version outranks it, then read it back.
+
+        MEASURED: SET DEFAULT_VERSION takes a version's system name and refuses its alias, and a
+        default set so stays put when a version is added (docs/design/snowflake-behavior.md).
+        A default that does not read back fails the change (SST-APL016).
+        """
+        release = self._release
+        if not default_elsewhere(self._current.extension, versions, version, certifies=release.certified):
+            return None
+        failure = self._execute(
+            sql(
+                "ALTER CORTEX EXTENSION {target} SET DEFAULT_VERSION = {version}",
+                target=qname(release.target),
+                version=literal(version.name),
+            )
+        )
+        if failure is not None:
+            return failure
+        named = version.name.upper()
+        if any(
+            item.name.upper() == named and item.is_default for item in self._port.extension_versions(release.target)
+        ):
+            return None
+        return self.fail(
+            f"{version.name} of {release.target.sql} is not the default after SET DEFAULT_VERSION", "SST-APL016"
+        )
+
+    def _certify(self) -> ApplyOutcome:
+        """Tag the version CERTIFIED, then require the catalog to report it certified.
+
+        A failure is SST-APL007, or SST-APL021 when the extension already carries grants, so
+        its readers reach a version whose certification did not succeed.
+        """
+        outcome = self._tag_certified()
+        if outcome.status is OutcomeStatus.FAILED and self._granted():
+            return self.fail(outcome.error.message if outcome.error else "certification failed", "SST-APL021")
+        return outcome
+
+    def _granted(self) -> bool:
+        """Whether a role holds an explicit grant on the extension; grants that cannot be read count as none."""
+        try:
+            grants = self._port.show_grants("CORTEX EXTENSION", self._release.target)
+        except SnowflakePortError:
+            return False
+        return any(grant.is_explicit for grant in grants)
+
+    def _tag_certified(self) -> ApplyOutcome:
+        """Tag the version CERTIFIED, then require the catalog to report it certified (SST-APL007)."""
+        release = self._release
+        target = release.target.sql
+        failure = self._execute(
+            sql(
+                "ALTER CORTEX EXTENSION {target} VERSION {alias} "
+                "SET TAG SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'",
+                target=qname(release.target),
+                alias=_alias(release.alias),
+            ),
+            code="SST-APL007",
+        )
+        if failure is not None:
+            return failure
+        version = self._version()
+        if version is None or not certified(self._port.observe_extension(release.target), version):
+            found = version.certification_status if version is not None else "absent"
+            return self.fail(
+                f"{release.alias} of {target} reports certification {found or 'unset'} after tagging",
+                "SST-APL007",
+            )
+        self._certification_done = True
+        return self._published(version)
+
+    def _published(self, version: ExtensionVersion) -> ApplyOutcome:
+        release = self._release
+        return self.applied(
+            write_succeeded=self._written or self._change.action is Action.UPDATE,
+            component_fingerprints=(*self._artifact.component_fingerprints, ("version", version.name)),
+            physical_resources=(("CORTEX EXTENSION", release.target.sql), ("STAGE", release.stage.sql)),
+        )
+
+    def _version(self) -> ExtensionVersion | None:
+        return _aliased(self._port.extension_versions(self._release.target), self._release.alias)
+
+    def _execute(self, statement: Sql, *, code: str = "SST-APL001") -> ApplyOutcome | None:
+        result = self._run_statement(statement)
+        return None if result.ok else self._failure(statement, result, code)
+
+    def _failure(self, statement: Sql, result: ExecResult, code: str = "SST-APL001") -> ApplyOutcome:
+        detail = result.error.message if result.error else "statement failed"
+        return self.fail(f"{str(statement).split(' FROM ')[0][:120]} failed: {detail}", code)
+
+
+def _refusal(
+    key: str,
+    state_entry: AppliedEntry | None,
+    release: ExtensionRelease,
+    observed: _Observed,
+    observation: CompositeObservation,
+) -> CompositePlan | None:
+    """Block the plan when the stage, extension, or version is not one SST may publish into.
+
+    Diagnostics:
+        SST-VAL807: the release certifies an extension state records in another schema, so
+            certification would move it, changing the name every pinned reference uses.
+        SST-PLN026: the bundle stage encrypts client-side.
+        SST-PLN024: the extension exists, but state does not record it as SST's.
+        SST-VAL802: the extension exists with no TYPE, or one SST does not recognize.
+        SST-PLN002: the extension exists with another type.
+        SST-PLN027: the alias names a version whose files are not the bundle's.
+        SST-VAL824: the bundle's stage prefix holds a file the bundle no longer has, which
+            ADD VERSION would publish.
+    """
+    if release.certified and state_entry is not None and _moved_schema(state_entry, release):
+        return blocked(
+            observation,
+            D("SST-VAL807", subject=key, artifact=release.bundle.name),
+            ChangeReason.TARGET_MOVED,
+        )
+    if observed.stage_type is not None and observed.stage_type.upper() != SSE_STAGE_TYPE:
+        return blocked(
+            observation,
+            D("SST-PLN026", subject=key, artifact=key, value=release.stage.sql, found=observed.stage_type),
+        )
+    extension = observed.extension
+    if extension is not None:
+        if state_entry is None or not _recorded_target(state_entry, release):
+            return blocked(
+                observation,
+                D("SST-PLN024", subject=key, artifact=key, value=release.target.sql),
+                ChangeReason.UNMANAGED_OBJECT,
+            )
+        if extension.extension_type.upper() not in EXTENSION_TYPES:
+            found = repr(extension.extension_type) if extension.extension_type else "absent"
+            return blocked(
+                observation,
+                D("SST-VAL802", subject=key, artifact=release.bundle.name, found=found),
+                ChangeReason.UNMANAGED_OBJECT,
+            )
+        if extension.extension_type != release.extension_type:
+            return blocked(
+                observation,
+                D(
+                    "SST-PLN002",
+                    subject=key,
+                    artifact=key,
+                    value=release.target.sql,
+                    found=f"{extension.extension_type} extension",
+                ),
+                ChangeReason.UNMANAGED_OBJECT,
+            )
+    leftover = sorted(set(observed.staged) - set(release.paths))
+    if observed.version is None and leftover:
+        return blocked(
+            observation,
+            D("SST-VAL824", subject=key, artifact=release.bundle.name, path=f"{release.prefix}{leftover[0]}"),
+        )
+    if observed.version is not None and observed.version_files != tuple(sorted(release.paths)):
+        return blocked(
+            observation,
+            D(
+                "SST-PLN027",
+                subject=key,
+                artifact=key,
+                value=release.alias,
+                detail=_difference(observed.version_files, release.paths),
+            ),
+        )
+    return None
+
+
+def _action(
+    artifact: RenderedArtifact,
+    state_entry: AppliedEntry | None,
+    release: ExtensionRelease,
+    observed: _Observed,
+) -> tuple[Action, ChangeReason]:
+    """Decide what an unblocked release needs: extension, version, comment, default, or certification."""
+    extension = observed.extension
+    version = observed.version
+    comment_drift = extension is not None and (extension.comment or "") != release.comment
+    uncertified = release.certified and (version is None or not certified(extension, version))
+    if extension is None:
+        return Action.CREATE, ChangeReason.NOT_PRESENT
+    if version is None or comment_drift or uncertified:
+        return Action.UPDATE, ChangeReason.FINGERPRINT_DIFFERS
+    if default_elsewhere(extension, observed.versions, version, certifies=release.certified):
+        # A revert, or a default moved by hand: nothing is published, but the version
+        # becomes the default again and state records which one the project declares.
+        return Action.UPDATE, ChangeReason.DEFAULT_VERSION_DIFFERS
+    if state_entry is not None and (
+        state_entry.fingerprint != artifact.fingerprint or state_entry.outcome == FAILED_AFTER_WRITE
+    ):
+        # A revert the default already serves or a certified version outranks, or a publish
+        # that failed after writing it: nothing is published, but the run re-verifies the
+        # version and state records which one the project now declares.
+        return Action.UPDATE, ChangeReason.STATE_MANIFEST_MISMATCH
+    return Action.NOOP, ChangeReason.UNCHANGED
+
+
+def _moved_schema(entry: AppliedEntry, release: ExtensionRelease) -> bool:
+    """Whether state records the extension in another database or schema than the release targets."""
+    try:
+        recorded = QualifiedName.parse(entry.qualified_name).folded
+    except ValueError:
+        return False
+    return recorded[:2] != release.target.folded[:2]
+
+
+def _recorded_target(entry: AppliedEntry, release: ExtensionRelease) -> bool:
+    recorded = _parsed(entry.qualified_name)
+    return recorded is not None and recorded.folded == release.target.folded
+
+
+def _parsed(name: str) -> QualifiedName | None:
+    """The qualified name `name` spells; None when it spells none."""
+    try:
+        return QualifiedName.parse(name)
+    except ValueError:
+        return None
+
+
+def _drop_remedy(name: str, artifact_type: str) -> str:
+    """How to remove an extension a prune keeps, as SST-PLN034's detail says it."""
+    return (
+        f"an agent elsewhere may pin one of its versions; once none does, `sst drop {name} --type {artifact_type} "
+        "--target <target> --yes` drops it and forgets it, and one dropped by hand is forgotten by the next "
+        "`sst apply --prune`"
+    )
+
+
+def _first_line(error: Exception) -> str:
+    return (str(error).splitlines() or [type(error).__name__])[0]
+
+
+def _aliased(versions: tuple[ExtensionVersion, ...], alias: str) -> ExtensionVersion | None:
+    """The version carrying an alias, compared casefolded; None when none does."""
+    folded = alias.casefold()
+    return next((item for item in versions if (item.alias or "").casefold() == folded), None)
+
+
+def _stale(planned: tuple[tuple[str, str], ...], current: tuple[tuple[str, str], ...]) -> bool:
+    """Changed since plan, ignoring a sibling artifact creating the shared bundle stage."""
+    return details_stale(planned, current, creatable={"stage_type": ("", SSE_STAGE_TYPE)})
+
+
+def _unproven(release: ExtensionRelease, details: Mapping[str, str]) -> str | None:
+    """Say why the observed extension is not this release, from the plan's details; None when it may be.
+
+    What the bundle prefix holds is not read here: `recover` reads it once this holds.
+    """
+    if not details.get("extension_type"):
+        return ABSENT
+    # The details read an extension with no comment as "", which an empty release comment matches.
+    comments = {_text_digest(release.comment), *(("",) if not release.comment else ())}
+    if details["extension_type"] != release.extension_type or details.get("comment", "") not in comments:
+        return OTHER_DEFINITION
+    if not details.get("version"):
+        # Another alias, an older bundle, may be there; this release's is not.
+        return OTHER_DEFINITION
+    if details.get("version_files") != _digest(release.paths):
+        return BUNDLE_DIFFERS
+    stage_type = details.get("stage_type", "")
+    if not stage_type:
+        return BUNDLE_PREFIX_MISSING
+    return None if stage_type.upper() == SSE_STAGE_TYPE else OTHER_DEFINITION
+
+
+def _difference(found: tuple[str, ...], expected: tuple[str, ...]) -> str:
+    missing = sorted(set(expected) - set(found))
+    unexpected = sorted(set(found) - set(expected))
+    parts = []
+    if missing:
+        parts.append(f"missing {', '.join(missing[:3])}{' ...' if len(missing) > 3 else ''}")
+    if unexpected:
+        parts.append(f"unexpected {', '.join(unexpected[:3])}{' ...' if len(unexpected) > 3 else ''}")
+    return "; ".join(parts) or "file sets differ"
+
+
+def _digest(paths: tuple[str, ...]) -> str:
+    return sha256("\n".join(sorted(paths)).encode("utf-8")).hexdigest()
+
+
+def _text_digest(value: str) -> str:
+    return sha256(value.encode("utf-8")).hexdigest()
+
+
+def _create_sql(release: ExtensionRelease, *, with_bundle: bool) -> Sql:
+    """Render the CREATE, with the bundle as VERSION$1 under the release's alias or bare.
+
+    `IF NOT EXISTS` keeps a create that loses a race from replacing the winner, whose grants a
+    replace would drop. MEASURED: `FROM` and `VERSION` must precede `TYPE`.
+    """
+    target, kind, comment = qname(release.target), literal(release.extension_type), literal(release.comment)
+    if not with_bundle:
+        return sql(
+            "CREATE CORTEX EXTENSION IF NOT EXISTS {target} TYPE = {kind} COMMENT = {comment}",
+            target=target,
+            kind=kind,
+            comment=comment,
+        )
+    return sql(
+        "CREATE CORTEX EXTENSION IF NOT EXISTS {target} FROM {location} VERSION {alias} "
+        "TYPE = {kind} COMMENT = {comment}",
+        target=target,
+        location=release.location,
+        alias=_alias(release.alias),
+        kind=kind,
+        comment=comment,
+    )
+
+
+def _alias(value: str) -> Sql:
+    """A version alias, which compile builds from a checked prefix and the bundle's hex digest."""
+    return ident(Identifier.parse(value))

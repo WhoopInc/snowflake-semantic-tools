@@ -1,0 +1,6 @@
+---
+# A Cortex Code profile whose model is not in snowflake.orchestration_models.
+edits:
+  coco_profiles/jaffle_analyst/coco_profile.yml:
+    - old: "model: auto\n"
+      new: "model: claude-sonnet-9\n"

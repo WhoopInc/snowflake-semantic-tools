@@ -1,0 +1,18 @@
+---
+# A view that drops customers.lifetime_spend, which its dbt metadata already excludes from every
+# view; no metric reads the column, so excluding it removes nothing else.
+files:
+  semantic_models/semantic_views/customers_without_spend.yml: |
+    semantic_views:
+      - name: customers_without_spend
+        description: |-
+          Use this view for questions about customers and how many there are.
+        tables:
+          - "{{ ref('customers') }}"
+        exclude_columns:
+          - "{{ ref('customers', 'lifetime_spend') }}"
+manifest:
+  model: customers
+  column: lifetime_spend
+  meta:
+    exclude: true

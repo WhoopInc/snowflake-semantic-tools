@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# tools/platform/order_tier_lookup.yml -- reference project
+# =============================================================================
+# A member that writes `relations:` is a reference: owned elsewhere, so no DDL
+# is emitted, and it may write no key only creating it needs, such as `on:`
+# or `body:` (SST-VAL605). It sits beside the defined members of platform/,
+# which is not immutable.
+# =============================================================================
+
+tool:
+  name: order_tier_lookup
+  type: procedure
+  description: |-
+    Returns the loyalty tier an order qualifies for under current rules. Owned
+    by the ordering platform team, not by this repo.
+  # One relation per dbt target; a key profiles.yml does not declare is
+  # SST-REF018. dev and prod name different objects: for a member that is not
+  # immutable, one object for both is SST-REF023. `ci` is left unmapped, so
+  # `--target ci` reports SST-REF018 here.
+  relations:
+    dev: SST_TEST.REFERENCE.ORDER_TIER_LOOKUP
+    prod: SST_REF_PROD.JAFFLE.ORDER_TIER_LOOKUP
+    verify: SST_REF_VERIFY.JAFFLE.ORDER_TIER_LOOKUP
+  meta:
+    owner: ordering-platform

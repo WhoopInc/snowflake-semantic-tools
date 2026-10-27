@@ -1,0 +1,213 @@
+"""`sst plan` flags that shape what is read and shown: grants, prior definitions, detail, names."""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+from pathlib import Path
+from typing import Any
+
+import pytest
+from click.testing import CliRunner, Result
+
+from snowflake_semantic_tools.cli.main import cli
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, ShowRow
+from snowflake_semantic_tools.domain.state import AppliedEntry
+from tests.helpers.cli_projects import common, invoke_with_port
+from tests.helpers.reference_project import project_copy
+from tests.helpers.snowflake_fake import FakeSnowflake
+
+VIEW = "jaffle_minimal"
+RECORDED = "c" * 64
+OTHER_MANIFEST = "d" * 64
+DEFINITION = "create or replace semantic view JAFFLE_MINIMAL\n  tables (orders)\n  COPY GRANTS"
+
+
+def _target(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, str]:
+    """A project, and the target the view it plans is published to."""
+    project = project_copy(tmp_path)
+    first = invoke_with_port(monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "-o", "json"])
+    change = next(item for item in json.loads(first.stdout)["data"]["changes"] if item["name"] == VIEW)
+    return project, str(change["target"])
+
+
+def _published(target: str) -> FakeSnowflake:
+    """Snowflake holding the view as an earlier manifest published it, with one explicit grant."""
+    database, schema, name = target.split(".")
+    row = ShowRow(name, database, schema, "OWNER", "now", f"[sst:{OTHER_MANIFEST}:{RECORDED}]")
+    entry = AppliedEntry(RECORDED, target, "now", "run", "applied", RECORDED, OTHER_MANIFEST)
+    return FakeSnowflake(
+        objects={("SEMANTIC VIEW", f"{database}.{schema}"): (row,)},
+        grants={target: (GrantRow("SELECT", "ROLE", "ANALYST"),)},
+        definitions={target: DEFINITION},
+        state={f"semantic_view:{VIEW}": entry},
+    )
+
+
+def _plan(project: Path, port: FakeSnowflake, monkeypatch: pytest.MonkeyPatch, *flags: str) -> Result:
+    return invoke_with_port(monkeypatch, port, ["plan", *common(project), "--select", VIEW, "--no-plan-out", *flags])
+
+
+def _update(result: Result) -> dict[str, Any]:
+    changes = json.loads(result.stdout)["data"]["changes"]
+    return next(item for item in changes if item["name"] == VIEW)
+
+
+def _codes(result: Result) -> set[str]:
+    return {item["code"] for item in json.loads(result.stdout)["diagnostics"]}
+
+
+def _grant_reads(port: FakeSnowflake) -> list[str]:
+    """Record the name of each object the plan reads the grants of."""
+    reads: list[str] = []
+    original = port.show_grants
+
+    def show_grants(object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()) -> Any:
+        reads.append(qualified_name.sql)
+        return original(object_type, qualified_name, routine_signature)
+
+    port.show_grants = show_grants  # type: ignore[method-assign]
+    return reads
+
+
+def test_grants_are_read_by_default_and_no_grants_skips_them(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, target = _target(tmp_path, monkeypatch)
+    port = _published(target)
+    reads = _grant_reads(port)
+    read = _plan(project, port, monkeypatch, "-o", "json")
+    assert read.exit_code == 2, read.output
+    assert _update(read)["action"] == "update"
+    assert reads == [target]
+    # The replace says COPY GRANTS, so the grant it reads is kept and nothing is reported.
+    assert "SST-PLN013" not in _codes(read)
+    port = _published(target)
+    reads = _grant_reads(port)
+    skipped = _plan(project, port, monkeypatch, "--no-grants", "-o", "json")
+    assert skipped.exit_code == 2, skipped.output
+    assert reads == []
+    port = _published(target)
+    reads = _grant_reads(port)
+    _plan(project, port, monkeypatch, "--grants", "-o", "json")
+    assert reads == [target]
+
+
+def test_capture_prior_reads_the_definition_an_update_replaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, target = _target(tmp_path, monkeypatch)
+    assert _update(_plan(project, _published(target), monkeypatch, "-o", "json"))["prior_definition"] is None
+    captured = _plan(project, _published(target), monkeypatch, "--capture-prior", "-o", "json")
+    assert _update(captured)["prior_definition"] == DEFINITION
+    refused = _published(target)
+    refused.definitions.clear()
+    unreadable = _plan(project, refused, monkeypatch, "--capture-prior", "-o", "json")
+    assert _update(unreadable)["prior_definition"] is None
+    # A definition that cannot be read is a warning; the plan still exits as it would without it.
+    assert unreadable.exit_code == 2, unreadable.output
+    assert "SST-PLN037" in _codes(unreadable) and "SST-PLN001" not in _codes(unreadable)
+
+
+def test_full_names_the_properties_an_update_changes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, target = _target(tmp_path, monkeypatch)
+    update = _update(_plan(project, _published(target), monkeypatch, "-o", "json"))
+    assert [item["property"] for item in update["properties"]] == ["fingerprint", "manifest_id"]
+    assert update["properties"][0]["before"] == RECORDED
+    plain = _plan(project, _published(target), monkeypatch)
+    assert "fingerprint:" not in plain.output
+    full = _plan(project, _published(target), monkeypatch, "--full", "--capture-prior")
+    assert f"      fingerprint: {RECORDED} → " in full.output
+    assert f"      manifest_id: {OTHER_MANIFEST} → " in full.output
+    assert "      prior definition:\n        create or replace semantic view JAFFLE_MINIMAL\n" in full.output
+
+
+def test_names_only_prints_each_changed_name_and_nothing_else(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    project, target = _target(tmp_path, monkeypatch)
+    result = _plan(project, _published(target), monkeypatch, "--names-only", "--full")
+    assert result.exit_code == 2
+    assert result.stdout.splitlines() == [VIEW]
+    every = invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "--names-only", "--no-plan-out"]
+    )
+    data = invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), ["plan", *common(project), "--no-plan-out", "-o", "json"]
+    )
+    changes = json.loads(data.stdout)["data"]
+    assert every.stdout.splitlines() == [item["name"] for item in changes["changes"]]
+    assert changes["counts"] == {"create": 17, "update": 0, "noop": 0, "prune": 0, "blocked": 0, "report_only": 0}
+
+
+def test_no_validate_skips_strict_promotion_and_refuses_a_syntax_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    original = __import__("snowflake_semantic_tools.cli.wiring.compile", fromlist=["compile_result"]).compile_result
+
+    def with_warning(*args: Any, **kwargs: Any) -> Any:
+        result = original(*args, **kwargs)
+        return dataclasses.replace(result, diagnostics=DiagnosticBag((D("SST-LOD003", file="warning.yml"),)))
+
+    monkeypatch.setattr("snowflake_semantic_tools.cli.wiring.compile.compile_result", with_warning)
+    args = ["plan", *common(project), "--strict", "--no-plan-out"]
+    assert invoke_with_port(monkeypatch, FakeSnowflake(state={}), args).exit_code == 1
+    unvalidated = invoke_with_port(monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "-o", "json"])
+    # The compile's warning is not promoted, so it refuses nothing; strict still promotes the
+    # warning planning itself reports outside git (SST-VAL714), which `sst validate` never sees.
+    assert unvalidated.exit_code == 1, unvalidated.output
+    errors = [item["code"] for item in json.loads(unvalidated.output)["diagnostics"] if item["severity"] == "error"]
+    assert errors == ["SST-VAL714"]
+    assert "SST-VAL020" not in _codes(unvalidated)
+    refused = invoke_with_port(
+        monkeypatch, FakeSnowflake(state={}), [*args, "--no-validate", "--snowflake-syntax-check"]
+    )
+    assert refused.exit_code == 3
+    assert "SST-PRT104" in refused.output
+
+
+# The extension the reference analytics agent consumes, and the version it pins.
+_CONSUMED = "SST_REF_DEV.PARTNER.PARTNER_GLOSSARY"
+
+
+def _dangling() -> FakeSnowflake:
+    """Snowflake holding the consumed extension without the version the agent pins."""
+    port = FakeSnowflake(state={})
+    location = f"snow://cortex_extension/{_CONSUMED}/versions/version$1/"
+    version: dict[str, object] = {"name": "VERSION$1", "alias": None, "location": location, "files": []}
+    version.update(is_default=True, certification=None)
+    port.extensions[_CONSUMED] = {"type": "SKILL", "comment": None, "versions": [version]}
+    return port
+
+
+def _consumed_findings(result: Result) -> list[tuple[str, str]]:
+    payload = json.loads(result.stdout)
+    return [(item["code"], item["severity"]) for item in payload["diagnostics"] if item["code"] == "SST-VAL531"]
+
+
+def test_plan_looks_up_a_consumed_extension_with_the_syntax_checks_off(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    config = project / "sst_config.yml"
+    # Without the fixture's demotion, SST-VAL531 is an error and stops the plan.
+    config.write_text(config.read_text(encoding="utf-8").replace("    SST-VAL531: warning\n", ""), encoding="utf-8")
+    args = ["plan", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json", "--no-plan-out"]
+    stopped = invoke_with_port(monkeypatch, _dangling(), args)
+    assert stopped.exit_code == 1, stopped.output
+    assert _consumed_findings(stopped) == [("SST-VAL531", "error")]
+    assert f"'{_CONSUMED} version VERSION$3' does not exist in target 'dev'" in stopped.stdout
+
+
+def test_a_demoted_dangling_extension_lets_the_plan_through_and_offline_validate_never_looks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    args = ["plan", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json", "--no-plan-out"]
+    # The fixture's diagnostics.severity_overrides demotes SST-VAL531 to a warning, which, as
+    # every validation warning, a plan that goes ahead does not repeat.
+    passed = invoke_with_port(monkeypatch, _dangling(), args)
+    assert passed.exit_code == 2, passed.output
+    assert _consumed_findings(passed) == []
+    offline = CliRunner().invoke(
+        cli, ["validate", *common(project), "--no-snowflake-syntax-check", "--no-strict", "-o", "json"]
+    )
+    assert offline.exit_code == 0, offline.output
+    assert _consumed_findings(offline) == []

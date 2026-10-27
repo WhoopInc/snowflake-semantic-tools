@@ -1,0 +1,38 @@
+---
+# Four verified queries, one per authoring variant. This file lists the last
+# two; order_count_by_state and revenue_by_location are single-item
+# `verified_query:` files beside it. Verified queries render sorted by name,
+# whichever file holds them:
+#
+#   order_count_by_state    inline sql, onboarding, verified_at as epoch seconds
+#   product_mix_by_type     a file() sidecar, no optional keys
+#   revenue_by_location     inline sql, onboarding, verified_at as a date string
+#   total_revenue_all_time  inline sql, no optional keys
+#
+# An absent optional key is left out of the rendered entry, not rendered empty.
+# A query's SQL names each table with {{ ref('<model>') }}, which renders as the
+# table's logical name in the view; its tables are those models, and it
+# attaches to every view that holds all of them. SQL bodies render as
+# multi-line literals with single quotes doubled.
+
+snowflake_verified_queries:
+
+  # file() resolves against this file's directory, and the sidecar's ref()
+  # calls give the query its tables. SST drops the sidecar's leading comment
+  # block, so the rendered SQL starts at SELECT.
+  - name: product_mix_by_type
+    description: |-
+      Units sold split by whether the item is food or drink. Held in a sidecar so
+      the fixture exercises the external-SQL path.
+    question: "How many units did we sell of food versus drink?"
+    sql: "{{ file('sql/product_mix_by_type.sql') }}"
+
+  # The minimal entry: it renders only QUESTION and SQL. Keep it that way.
+  - name: total_revenue_all_time
+    description: |-
+      A single total. The smallest valid verified query in this fixture.
+    question: "What is our total revenue?"
+    sql: |-
+      SELECT
+          SUM(orders.order_total) / 100 AS revenue
+      FROM {{ ref('orders') }} AS orders

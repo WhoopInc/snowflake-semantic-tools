@@ -1,0 +1,6 @@
+---
+# A view that names a custom instruction custom_instructions/ does not hold.
+edits:
+  semantic_models/semantic_views/semantic_views.yml:
+    - old: "{{ custom_instructions('jaffle_question_scope') }}"
+      new: "{{ custom_instructions('jaffle_sql_style') }}"

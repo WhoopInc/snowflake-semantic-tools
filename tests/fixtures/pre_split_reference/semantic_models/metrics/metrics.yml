@@ -1,0 +1,168 @@
+---
+# A metric's table is the model its expr names with ref(), and it renders
+# under that table, as ORDERS.TOTAL_REVENUE. A metric whose expr combines
+# metric() calls and names no column is derived, and renders unqualified. A
+# window: block makes a table-scoped metric a window function metric, which is
+# never derived (SST-VAL102).
+
+snowflake_metrics:
+
+  # Over orders and customers.
+
+  # COUNT DISTINCT over an identifier.
+  - name: order_count
+    description: |-
+      Number of distinct orders placed.
+    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
+    synonyms:
+      - orders
+      - order volume
+
+  - name: customer_count
+    description: |-
+      Number of distinct customers who placed at least one order.
+    expr: "COUNT(DISTINCT {{ ref('customers', 'customer_id') }})"
+    synonyms:
+      - customers
+      - buyers
+
+  # A window function metric: a running total of customer_count in order of
+  # each customer's first order. A query that returns it must also return
+  # customers.first_ordered_at, the dimension its window excludes from the
+  # partition and orders by.
+  - name: cumulative_customer_count
+    description: |-
+      Running count of customers, by the date of their first order.
+    expr: "SUM({{ metric('customer_count') }})"
+    window:
+      partition_by_excluding:
+        - "{{ ref('customers', 'first_ordered_at') }}"
+      order_by:
+        - ref: "{{ ref('customers', 'first_ordered_at') }}"
+          sort_direction: ascending
+          null_order: last
+      frame: RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+
+  # SUM over a fact.
+  - name: total_revenue
+    description: |-
+      Total order value including tax, in cents.
+    expr: "SUM({{ ref('orders', 'order_total') }})"
+    synonyms:
+      - revenue
+      - gross sales
+
+  - name: total_tax_collected
+    description: |-
+      Total tax collected across all orders, in cents.
+    expr: "SUM({{ ref('orders', 'tax_paid') }})"
+
+  # AVG, a second aggregate.
+  - name: avg_order_value
+    description: |-
+      Mean order value including tax, in cents.
+    expr: "AVG({{ ref('orders', 'order_total') }})"
+    synonyms:
+      - AOV
+      - average basket
+
+  # Reads the NUMBER view variable large_order_cents as a bare identifier; it
+  # renders as LARGE_ORDER_CENTS.
+  - name: large_order_count
+    description: |-
+      Number of orders whose value exceeds the large-order threshold.
+    expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_total') }} > large_order_cents THEN {{ ref('orders', 'order_id') }} END)"
+    synonyms:
+      - big orders
+
+  # Reads the BOOLEAN view variable tax_inclusive.
+  - name: revenue_on_policy
+    description: |-
+      Revenue measured with or without collected tax, per the view's tax policy.
+    expr: "SUM(CASE WHEN tax_inclusive THEN {{ ref('orders', 'order_total') }} ELSE {{ ref('orders', 'subtotal') }} END)"
+
+  # CASE WHEN over the order_state enum; the literal comes from the
+  # returned_state var.
+  - name: returned_order_count
+    description: |-
+      Number of orders that were returned.
+    expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}' THEN {{ ref('orders', 'order_id') }} END)"
+
+  # Over order_items, products and supplies.
+
+  # Plain COUNT, naming its join path: USING (ORDER_ITEMS_TO_ORDERS). SST
+  # requires using_relationships only when two relationships join a metric's
+  # table to the same table (SST-VAL116); here it is optional.
+  - name: line_item_count
+    description: |-
+      Number of line items sold.
+    expr: "COUNT({{ ref('order_items', 'order_item_id') }})"
+    using_relationships:
+      - order_items_to_orders
+    synonyms:
+      - units sold
+      - items
+
+  - name: product_count
+    description: |-
+      Number of distinct products sold.
+    expr: "COUNT(DISTINCT {{ ref('products', 'product_id') }})"
+
+  - name: total_line_item_revenue
+    description: |-
+      Total line-item value, in cents.
+    expr: "SUM({{ ref('order_items', 'item_price') }})"
+
+  # Rows sort by snapshot_month and only the last month's rows are summed; the
+  # default ascending order makes that the latest month.
+  - name: total_supply_cost
+    description: |-
+      Cost of supplying the products sold, in cents. Not additive across months.
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - dimension: snapshot_month
+
+  # The same measure at the EARLIEST month: `descending` puts the earliest month
+  # last in sort order, and `null_order: first` keeps a row with no month from
+  # ever being that last row.
+  - name: opening_supply_cost
+    description: |-
+      Cost of supplying the products sold, in cents, in the earliest month on
+      record. Not additive across months.
+    expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+    non_additive_dimensions:
+      - table: supplies
+        dimension: snapshot_month
+        sort_direction: descending
+        null_order: first
+
+  # Derived.
+
+  # DIV0 rather than /, so a zero denominator returns zero, not an error.
+  - name: revenue_per_order
+    description: |-
+      Mean revenue per order, derived from two table-scoped metrics.
+    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('order_count') }})"
+    synonyms:
+      - revenue per order
+
+  - name: revenue_per_customer
+    description: |-
+      Mean revenue per customer over the period in scope.
+    expr: "DIV0({{ metric('total_revenue') }}, {{ metric('customer_count') }})"
+
+  # Only a derived metric may reference the non-additive total_supply_cost
+  # (SST-VAL107).
+  - name: gross_margin
+    description: |-
+      Line-item revenue less the cost of supplying what was sold, in cents.
+    expr: "{{ metric('total_line_item_revenue') }} - {{ metric('total_supply_cost') }}"
+
+  # Derived from gross_margin, itself derived; it renders GROSS_MARGIN by name.
+  - name: gross_margin_rate
+    description: |-
+      Gross margin as a share of line-item revenue.
+    expr: "DIV0({{ metric('gross_margin') }}, {{ metric('total_line_item_revenue') }})"
+    synonyms:
+      - margin rate
+      - margin percentage

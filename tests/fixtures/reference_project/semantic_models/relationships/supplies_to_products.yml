@@ -1,0 +1,13 @@
+---
+# The only relationship of the snapshot table. With it, jaffle_menu's five
+# tables and four relationships form a tree: one path between any two
+# tables, so no ambiguous path (SST-VAL209) and no cycle (SST-VAL215).
+relationship:
+  name: supplies_to_products
+  description: |-
+    Each supply-cost snapshot row belongs to exactly one product. Many monthly
+    snapshots to one product, so `supplies` is the left table.
+  left_table: "{{ ref('supplies') }}"
+  right_table: "{{ ref('products') }}"
+  relationship_conditions:
+    - "{{ ref('supplies', 'product_id') }} = {{ ref('products', 'product_id') }}"

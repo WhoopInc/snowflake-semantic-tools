@@ -1,0 +1,11 @@
+---
+# A second path between order_items and orders, which the project already joins
+# by ASOF, so a metric over both no longer has one join path.
+snowflake_relationships:
+  - name: order_items_to_orders_equality
+    description: |-
+      A plain equality join beside the existing ASOF one.
+    left_table: "{{ ref('order_items') }}"
+    right_table: "{{ ref('orders') }}"
+    relationship_conditions:
+      - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"

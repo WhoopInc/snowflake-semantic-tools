@@ -1,0 +1,11 @@
+$ sst --project-dir <project> --manifest <manifest> eval --target dev
+--- exit 0
+--- stdout
+eval:jaffle_analytics_agent  COMPLETED  4/4 questions passed
+|-- run  EVAL_JAFFLE_ANALYTICS_AGENT_RUN
+|-- answer_correctness       4/4 passed  average 1.000
+|-- tool_selection_accuracy  4/4 passed  average 1.000  needs at least 0.8
+|-- cost  <n>s agent time - agent 155,448 in / 2,860 out - 8 LLM calls - judge 160 tokens
+`-- all 4 questions passed  (-v lists them)
+--- stderr
+ok eval gate passed: 1 eval, no regressions - <n>s

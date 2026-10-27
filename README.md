@@ -1,157 +1,159 @@
 # Snowflake Semantic Tools (SST)
 
-Build, validate, and deploy Snowflake Semantic Views from your dbt project.
+An agent platform as code for Snowflake: define semantic views, the tools agents
+call, Cortex Agents, their evals, and the skills that shape them, all beside your
+dbt models, and publish them with the same validate, plan, apply loop you use for
+infrastructure.
 
-[![Python](https://img.shields.io/badge/python-3.10--3.11-blue.svg)](https://www.python.org/downloads/)
+[![Python](https://img.shields.io/badge/python-3.11--3.13-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 ---
 
 ## What is SST?
 
-SST helps you build **Snowflake Semantic Views**—a standardized semantic layer that lives in Snowflake and powers AI and BI tools—all from within your dbt projects.
+SST started as a way to keep a Snowflake semantic layer as code. It now covers
+the whole path from a dbt model to an agent people talk to: the semantic views
+that describe your data, the search services and procedures an agent calls, the
+agents themselves, the evals that decide whether a change ships, and the skills
+and Cortex Code profiles that put it all in front of people.
 
-**Why Semantic Views matter:**
+Every piece is a file in your repository, reviewed like code, and published the
+way infrastructure is: validate offline, review a plan of exactly what changes in
+Snowflake, and apply that plan. Nothing is clicked together in a UI, and nothing
+changes that the plan did not show.
 
-- **Cortex Analyst & Agents** — Semantic views give Snowflake's AI the context it needs to accurately answer natural language questions about your data
-- **BI Tools** — Sigma, Tableau, and other tools can consume semantic views for consistent metrics and definitions across your organization
-- **Single source of truth** — Define metrics, relationships, and business logic once in Snowflake, use everywhere
+One project publishes eight artifact types:
 
-**What SST does:**
+- **Semantic views**, assembled from dbt models plus metrics, relationships,
+  filters, verified queries, and custom instructions written in YAML;
+- **tools** that agents call: Cortex Search services, procedures, functions, and
+  stages, a routine's body naming its tables with `{{ ref() }}` as a view does;
+- **Cortex Agents**, with every tool, view, and skill they use resolved and pinned;
+- **CoWork profiles**[^preview]: an agent that routes each
+  question to one of the agents it lists;
+- **evals** that score an agent or CoWork profile against a fixed question set and gate a change
+  on the result;
+- **skills** and **plugins**, published as Cortex Extensions and versioned by
+  their content;
+- **Cortex Code profiles**[^preview]: Cortex Code agent profiles, an AGENT in
+  `CORTEX_CODE.CONFIG` holding a model, instructions, and pinned skills.
 
-- **Define semantics as code** — Metrics, relationships, filters, verified queries as YAML in your dbt project
-- **Deploy to Snowflake** — Generate native SEMANTIC VIEW objects from your definitions
-- **Enrich automatically** — Pull column types, samples, and metadata from Snowflake schemas (including dbt sources)
-- **Validate before deploy** — 50+ validation rules catch errors before they reach Snowflake
-- **Compile locally** — Build a manifest for offline tooling, diffing, and CI/CD
-- **Diff before deploy** — Preview exactly what will change before touching Snowflake
-- **Incremental deploys** — Only regenerate views affected by your changes (`--only-modified`)
-- **Version control everything** — Your semantic layer lives in git alongside your dbt models
+It records the lineage between them as it compiles, from each dbt source,
+through the models built on it, to the view members, tools, agents and evals
+that read them. `sst lineage` shows what any of them is built from and what a
+change to it reaches, and `--select model:orders+` plans only that.
 
----
+Before anything publishes, `sst ask` lets you talk to an agent exactly as it
+compiles now, on scratch copies of your edits, and `sst eval` scores it against a
+fixed question set and fails the change if it got worse.
 
-## Quick Start
+[^preview]: A Snowflake private preview, as of 2026-10-23.
 
-### Installation
+## Quick start
 
 ```bash
 pip install snowflake-semantic-tools
-```
-
-### Setup
-
-```bash
-cd your-dbt-project
-sst init  # Interactive setup wizard
-```
-
-The wizard will:
-- Detect your dbt project and profile
-- Create `sst_config.yml` with defaults
-- Set up the semantic models directory
-- Generate example files
-
-### Basic Usage
-
-```bash
-# Enrich models with metadata from Snowflake
-sst enrich --models customers,orders
-
-# Validate your semantic models (offline, no Snowflake needed)
+cd your-dbt-project        # profiles.yml lives here
+sst init
+sst enrich --target prod models/marts   # column and data types, read from a production target
 sst validate
-
-# Preview what will change
-sst diff
-
-# Deploy to Snowflake (validates first, then generates)
-sst generate --all
-
-# Only deploy views affected by recent changes
-sst generate --all --only-modified
+sst compile                # writes the manifest plan and apply read
+sst plan                   # exit 2 means there are changes to apply
+sst apply --plan sst_target/plan.json --yes   # or a bare `sst apply`, which reuses a fresh saved plan
 ```
 
----
+The [getting started guide](docs/getting-started.md) walks through a first
+semantic view end to end.
 
 ## Commands
 
+Listed in the order you meet them: set up, author, publish, test, inspect,
+maintain, and, last, the one-time upgrade from 0.3.
+
 | Command | Purpose |
 |---------|---------|
-| `sst init` | Interactive setup wizard |
-| `sst enrich` | Add metadata to YAML from Snowflake (models + sources) |
-| `sst format` | YAML linter for consistency |
-| `sst compile` | Build local manifest (offline, for tooling/CI) |
-| `sst validate` | Check for errors (no Snowflake needed) |
-| `sst diff` | Preview semantic view changes before deployment |
-| `sst extract` | Load metadata to Snowflake tables |
-| `sst generate` | Create semantic views (with `--dry-run` and SQL file output) |
-| `sst deploy` | ~~One-step: validate → extract → generate~~ [DEPRECATED] |
-| `sst drop` | Remove semantic views (specific or prune orphans) |
-| `sst list` | Explore components from compiled manifest |
-| `sst clean` | Remove generated artifacts |
-| `sst debug` | Show config and test connection |
-| `sst migrate-meta` | Migrate legacy `meta.sst` to `config.meta.sst` |
+| **Set up** | |
+| `sst init` | Write `sst_config.yml` and the semantic-model directory into a dbt project, never overwriting a file |
+| `sst debug` | Show the resolved configuration, profile, target, and state table, and test the connection (`--no-connect` skips it) |
+| `sst agent-kit` | Install, upgrade, show the status of, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
+| **Author** | |
+| `sst enrich` | Fill missing column types, data types, sample values, enums, and synonyms from the warehouse, editing the YAML in place |
+| `sst format` | Rewrite YAML into canonical form; `--check` exits 2 when a file would change |
+| `sst validate` | Check every artifact, offline or with Snowflake syntax checks |
+| `sst explain` | Explain one diagnostic code, offline |
+| **Publish** | |
+| `sst compile` | Render every artifact and write the SST manifest; `--emit-ddl` writes each rendered payload |
+| `sst plan` | Compare the project with Snowflake and save a reviewable plan |
+| `sst apply` | Execute a saved plan |
+| `sst diff` | Compare two states -- local, a dbt target, or a saved plan |
+| **Test** | |
+| `sst ask` | Talk to an agent as it compiles now, on scratch copies of your edits, publishing nothing |
+| `sst test` | Run smoke probes against what `sst apply` published |
+| `sst eval` | Run agent evals in Snowflake and gate them against their baselines |
+| **Inspect** | |
+| `sst list` | List compiled artifacts and their status |
+| `sst lineage` | Show what a dbt node, member, or artifact reads and what reads it, from dbt sources to agents and evals |
+| `sst docs` | Regenerate the reference pages from the engine's registries |
+| **Maintain** | |
+| `sst baseline` | Turn on `--strict` in an existing project without fixing every warning first: record today's known warnings so only new ones block, with entries that expire |
+| `sst clean` | Remove local build output |
+| `sst drop` | Break-glass: drop one object SST owns from one target |
+| `sst state recover` | Record lost state entries from ownership markers and content digests |
+| `sst state convert` | Rebuild the state tables as hybrid or standard tables |
+| `sst state unlock` | Release a named run's lock |
+| **Upgrade from 0.3** | |
+| `sst migrate refs` | Write every bare reference as its `{{ }}` call, 0.3 `table()` / `column()` as `ref()`, and old item settings under `config:`; a dry run unless `--write` |
+| `sst migrate split` | Write each listed member to its own single-item file, and tool groups into folders; a dry run unless `--write` |
 
----
-
-## Key Features
-
-### Semantic Modeling
-- Define metrics, relationships, filters, verified queries, and custom instructions as YAML
-- Compose semantic views from multiple tables with join relationships
-- Template metrics with `{{ metric('name') }}` references
-
-### Enrichment
-- Auto-populate YAML with column types, sample values, synonyms, and enums
-- Enrich dbt sources (`--include-sources`, `--sources-only`, `--source raw.orders`)
-- AI-powered descriptions and synonym generation via Cortex
-
-### Validation
-- 50+ rules covering references, types, expressions, and structure
-- SQL syntax validation against Snowflake
-- Schema verification with fuzzy column matching
-- Cross-table metric column validation
-
-### Deployment
-- Incremental deploys with `--only-modified` (detects YAML + SQL changes)
-- Dry-run mode with SQL file output (`--dry-run --output-dir`)
-- Diff before deploy to preview additions, removals, and modifications
-- Compile to local manifest for CI/CD pipelines
-
----
+Every command that reports results takes `--output json` for one machine-readable
+result on stdout.
 
 ## Documentation
 
-See the `docs/` directory for comprehensive documentation:
-
-- [**Documentation Index**](docs/index.md) — Complete documentation navigation
-- [**Getting Started**](docs/getting-started.md) — Installation and first steps
-- [**CLI Reference**](docs/cli/index.md) — All commands and options
-- [**Semantic Models Guide**](docs/concepts/semantic-models.md) — Writing metrics and relationships
-- [**Validation Rules**](docs/concepts/validation-rules.md) — Complete list of all validation checks
-- [**Authentication**](docs/guides/authentication.md) — Snowflake connection setup
-- [**Configuration Reference**](docs/reference/config.md) — sst_config.yml options
-
----
+- [Documentation index](docs/index.md)
+- [Getting started](docs/getting-started.md) and [concepts](docs/concepts.md)
+- Guides: [semantic views](docs/guides/semantic-views.md),
+  [enriching models](docs/guides/enrich.md),
+  [importing live objects](docs/guides/importing.md),
+  [agents](docs/guides/agents.md), [CoWork profiles](docs/guides/cowork-profiles.md),
+  [evals](docs/guides/evals.md), [asking an agent](docs/guides/ask.md),
+  [skills](docs/guides/skills.md),
+  [plugins and profiles](docs/guides/plugins-and-coco-profiles.md),
+  [configuration](docs/guides/configuration.md),
+  [references](docs/guides/references.md), [lineage](docs/guides/lineage.md),
+  [CI/CD](docs/guides/ci-cd.md),
+  [security](docs/guides/security.md),
+  [troubleshooting](docs/guides/troubleshooting.md),
+  [agent kit](docs/guides/agent-kit.md),
+  [testing SST](docs/guides/testing-live.md)
+- Reference: [CLI](docs/reference/cli.md), [configuration keys](docs/reference/config.md),
+  [error codes](docs/reference/error-codes.md), [artifact types](docs/reference/artifacts.md),
+  [coverage matrix](docs/reference/coverage.md)
+- Upgrading: [migrating from 0.3](docs/guides/migrating-from-0.3.md)
 
 ## Requirements
 
-- Python 3.10–3.11
-- Snowflake account
-- dbt project (dbt Core or dbt Cloud CLI)
+- Python 3.11–3.13
+- A Snowflake account
+- A dbt project on the Snowflake adapter, for semantic views, tools, agents, and
+  evals. A project that publishes only skills, plugins, and Cortex Code profiles does not
+  need dbt (see [projects without dbt](docs/guides/configuration.md#projects-without-dbt)).
 
 ---
 
-## Development Setup
+## Development setup
 
 ```bash
 git clone https://github.com/WhoopInc/snowflake-semantic-tools.git
 cd snowflake-semantic-tools
 
-poetry install --with dev
-pre-commit install
+poetry install
+poetry run pre-commit install   # optional: a fast subset of the gates on every commit
 
-sst --version
-pytest tests/unit/
+poetry run sst --version
+poetry run pytest               # offline: no account and no dbt install needed
+poetry run sst docs --check     # the generated reference pages are current
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed development guidelines.

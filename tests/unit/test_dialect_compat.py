@@ -1,0 +1,174 @@
+"""The 0.3 authoring dialect: rejected as authored, converted by `sst migrate split` and `refs`.
+
+The corpus is synthetic, so the guarantee is asserted in public CI without any
+production content. Assertion numbers follow the compatibility suite contract:
+converted files parse with no errors (1) and render the committed DDL (2); the
+legacy globals are rejected with their specific codes and render nothing (3, 6);
+the codemod is idempotent (4); an indented root key still yields its
+relationships (5); and the 0.3 key spellings, which the codemod leaves alone, are
+errors naming the 1.0 keys (7). The split leaves one file per member, as the
+migration guide runs it: `split`, then `refs`.
+"""
+
+from __future__ import annotations
+
+import json
+import shutil
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+from click.testing import CliRunner
+
+from snowflake_semantic_tools.app.migrate_refs import KINDS
+from snowflake_semantic_tools.cli.main import cli
+
+ROOT = Path(__file__).parents[2]
+CORPUS = ROOT / "tests" / "fixtures" / "v1_dialect"
+MANIFEST = ROOT / "tests" / "fixtures" / "reference_project_manifest.json"
+
+
+def invoke(*args: str) -> tuple[int, dict[str, Any]]:
+    result = CliRunner().invoke(cli, [*args, "--output", "json"])
+    return result.exit_code, json.loads(result.output)
+
+
+def codes(payload: dict[str, object]) -> Counter[tuple[str, str]]:
+    """Count each code and severity, leaving out the info that reports what attached where."""
+    diagnostics = payload["diagnostics"]
+    assert isinstance(diagnostics, list)
+    return Counter((item["code"], item["severity"]) for item in diagnostics if item["severity"] != "info")
+
+
+def converted_copy(tmp_path: Path) -> Path:
+    project = tmp_path / "project"
+    shutil.copytree(CORPUS, project, ignore=shutil.ignore_patterns("expected", "target"))
+    return project
+
+
+def counts(**found: int) -> dict[str, int]:
+    return {kind: found.get(kind, 0) for kind in KINDS}
+
+
+def rename_0_3_keys(project: Path) -> None:
+    """The hand edit SST-PRS020 asks for after the codemod: the 1.0 key names."""
+    models = project / "semantic_models"
+    instructions = models / "custom_instructions" / "dialect_conventions.yml"
+    text = instructions.read_text(encoding="utf-8")
+    text = text.replace("  sql_generation:", "  ai_sql_generation:")
+    instructions.write_text(text.replace("  question_categorization:", "  ai_question_categorization:"), "utf-8")
+    relationships = models / "relationships" / "orders_to_customers.yml"
+    relationships.write_text(
+        relationships.read_text(encoding="utf-8").replace(
+            "  relationship_columns:\n"
+            "    - left_column: \"{{ ref('orders', 'customer_id') }}\"\n"
+            "      right_column: \"{{ ref('customers', 'customer_id') }}\"\n",
+            "  relationship_conditions:\n"
+            "    - \"{{ ref('orders', 'customer_id') }} = {{ ref('customers', 'customer_id') }}\"\n",
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_legacy_globals_are_rejected_with_their_codes_and_render_nothing() -> None:
+    exit_code, payload = invoke("compile", "--project-dir", str(CORPUS), "--manifest", str(MANIFEST))
+    assert exit_code == 1
+    assert codes(payload) == Counter(
+        {
+            ("SST-MAN008", "error"): 1,
+            ("SST-REF034", "error"): 10,
+            ("SST-REF035", "error"): 7,
+            # The metrics' and filter's `tables:`, which 1.0 infers.
+            ("SST-PRS126", "error"): 3,
+            ("SST-VAL405", "error"): 1,
+            ("SST-PRS021", "error"): 1,
+            ("SST-VAL012", "error"): 2,
+        }
+    )
+
+
+def test_codemod_converts_idempotently_and_the_result_renders_the_committed_ddl(tmp_path: Path) -> None:
+    project = converted_copy(tmp_path)
+    pending, plan = invoke("migrate", "split", "--project-dir", str(project))
+    assert pending == 2
+    assert {item["path"]: len(item["into"]) for item in plan["data"]["files"]} == {
+        "semantic_models/custom_instructions/custom_instructions.yml": 1,
+        "semantic_models/filters/filters.yml": 1,
+        "semantic_models/metrics/metrics.yml": 2,
+        "semantic_models/relationships/relationships.yml": 2,
+        "semantic_models/semantic_views/views.yml": 1,
+    }
+    split, _ = invoke("migrate", "split", "--project-dir", str(project), "--write")
+    assert split == 0
+    pending, report = invoke("migrate", "refs", "--project-dir", str(project))
+    assert pending == 2
+    files = report["data"]["files"]
+    assert {item["path"]: item["rewrites"] for item in files} == {
+        "semantic_models/filters/dialect_completed_order.yml": counts(ref=1, column=1, inferred=1, labels=1),
+        "semantic_models/metrics/dialect_order_count.yml": counts(ref=1, column=1, inferred=1),
+        "semantic_models/metrics/dialect_revenue.yml": counts(ref=1, column=1, inferred=1),
+        "semantic_models/relationships/orders_to_customers.yml": counts(endpoint=2, column=2),
+        "semantic_models/relationships/orders_to_locations.yml": counts(endpoint=2, column=2),
+        "semantic_models/semantic_views/dialect_sales.yml": counts(ref=3),
+    }
+    written, _ = invoke("migrate", "refs", "--project-dir", str(project), "--write")
+    assert written == 0
+    expected = CORPUS / "expected" / "converted"
+    converted = sorted(path.relative_to(project) for path in (project / "semantic_models").rglob("*.yml"))
+    assert converted == sorted(path.relative_to(expected) for path in expected.rglob("*.yml"))
+    for relative in converted:
+        assert (project / relative).read_bytes() == (expected / relative).read_bytes(), relative
+    again, report = invoke("migrate", "refs", "--project-dir", str(project))
+    assert again == 0 and report["data"]["files"] == []
+    again, plan = invoke("migrate", "split", "--project-dir", str(project))
+    assert again == 0 and plan["data"]["files"] == []
+
+    # The codemod rewrites references and drops the keys 1.0 infers, but renames no key: the 0.3
+    # spellings remain. The custom instruction spellings are errors that name the 1.0 key; so is
+    # the relationship shape.
+    exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
+    assert exit_code == 1
+    assert codes(payload) == Counter(
+        {("SST-PRS021", "error"): 1, ("SST-VAL012", "error"): 2, ("SST-MAN008", "error"): 1}
+    )
+    renames = {
+        (item["params"]["field"], item["params"]["expected"])
+        for item in payload["diagnostics"]
+        if item["code"] == "SST-VAL012"
+    }
+    assert renames == {
+        ("sql_generation", "ai_sql_generation"),
+        ("question_categorization", "ai_question_categorization"),
+    }
+
+    rename_0_3_keys(project)
+    exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
+    assert exit_code == 0, payload
+    assert codes(payload) == Counter()
+    rendered = tmp_path / "ddl"
+    CliRunner().invoke(
+        cli, ["compile", "--project-dir", str(project), "--manifest", str(MANIFEST), "--emit-ddl", str(rendered)]
+    )
+    ddl = (rendered / "semantic_view" / "dialect_sales.sql").read_text(encoding="utf-8")
+    assert ddl == (CORPUS / "expected" / "ddl" / "dialect_sales.sql").read_text(encoding="utf-8")
+    assert "ORDERS_TO_CUSTOMERS AS ORDERS (CUSTOMER_ID) REFERENCES CUSTOMERS (CUSTOMER_ID)" in ddl
+    assert "ORDERS_TO_LOCATIONS AS ORDERS (LOCATION_ID) REFERENCES LOCATIONS (LOCATION_ID)" in ddl
+    assert "ORDERS.DIALECT_COMPLETED_ORDER LABELS = (FILTER)" in ddl
+    assert "AI_SQL_GENERATION 'Monetary columns" in ddl and "AI_QUESTION_CATEGORIZATION 'Decline" in ddl
+
+
+def test_a_0_3_spelling_beside_its_1_0_key_is_an_error(tmp_path: Path) -> None:
+    project = converted_copy(tmp_path)
+    CliRunner().invoke(cli, ["migrate", "split", "--project-dir", str(project), "--write"])
+    CliRunner().invoke(cli, ["migrate", "refs", "--project-dir", str(project), "--write"])
+    rename_0_3_keys(project)
+    instructions = project / "semantic_models" / "custom_instructions" / "dialect_conventions.yml"
+    instructions.write_text(
+        instructions.read_text(encoding="utf-8").replace(
+            "  ai_sql_generation: |-", "  sql_generation: Older text.\n  ai_sql_generation: |-"
+        ),
+        encoding="utf-8",
+    )
+    exit_code, payload = invoke("compile", "--project-dir", str(project), "--manifest", str(MANIFEST))
+    assert exit_code == 1
+    assert codes(payload) == Counter({("SST-PRS020", "error"): 1, ("SST-MAN008", "error"): 1})

@@ -1,0 +1,30 @@
+---
+# A metric's table is the model its expr names with ref(), and it renders
+# under that table, as ORDERS.TOTAL_REVENUE. A metric whose expr combines
+# metric() calls and names no column is derived, and renders unqualified. A
+# window: block makes a table-scoped metric a window function metric, which is
+# never derived (SST-VAL102).
+#
+# Every other metric in this folder is a single-item file: one `metric:`
+# mapping, named for the metric. This file keeps the list form, which stays
+# valid, so the fixture covers both: SST reads a `metric:` file as a one-item
+# `snowflake_metrics:` list.
+
+snowflake_metrics:
+
+  # COUNT DISTINCT over an identifier.
+  - name: order_count
+    description: |-
+      Number of distinct orders placed.
+    expr: "COUNT(DISTINCT {{ ref('orders', 'order_id') }})"
+    synonyms:
+      - orders
+      - order volume
+
+  - name: customer_count
+    description: |-
+      Number of distinct customers who placed at least one order.
+    expr: "COUNT(DISTINCT {{ ref('customers', 'customer_id') }})"
+    synonyms:
+      - customers
+      - buyers

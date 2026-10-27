@@ -1,0 +1,110 @@
+---
+# =============================================================================
+# tools/jaffle_platform.yml -- reference project
+# =============================================================================
+# The mutable tool group: `define:` members this repo creates, which emit DDL,
+# and `reference:` members it only points at. The immutable counterpart is
+# tools/jaffle_partner.yml. One group per file, named for the group.
+# =============================================================================
+
+tools:
+  - group: jaffle_platform
+    description: |-
+      Tool backing objects for the jaffle analytics surface. Search over the menu,
+      plus lookups owned by the ordering platform team.
+    owner: analytics-platform
+    # No `immutable:`: an immutable group cannot carry `define:` (SST-VAL606).
+
+    # =======================================================================
+    # define: -- created by this repo
+    # =======================================================================
+    define:
+      # Renders tests/golden/expected/tool/menu_docs_search.sql.
+      - name: menu_docs_search
+        type: cortex_search_service
+        description: |-
+          Full-text search over menu item DESCRIPTIONS -- the prose saying what
+          is in each item. Answers what an item contains, how items differ, and
+          which items suit a diet. Filter on `dietary_class` for vegan,
+          vegetarian or omnivore rather than searching the prose for the word
+          vegetarian.
+          Does NOT answer questions about how many were sold -- that is an order
+          question and belongs to the Analyst tools.
+        on:
+          database: null
+          schema: null
+          # `product_docs` holds the menu prose. Putting that prose on
+          # `products` would make it a member of every view listing that table,
+          # where it would need a column_type (SST-VAL308).
+          table: "{{ ref('product_docs') }}"
+          # The indexed text. It and every attribute must be a column of the
+          # model (SST-VAL609).
+          search_column: product_description
+          attributes:
+            - product_type
+            # An attribute, so a closed set like diet is filtered exactly rather
+            # than matched by similarity in the prose.
+            - dietary_class
+        # Every column listed is selected into the service. The searchable or
+        # filterable ones also render into the agent's tool resources, and
+        # product_id and product_name supply its default id and title columns.
+        columns_and_descriptions:
+          product_id:
+            description: Stable product identifier used to join search results.
+            type: string
+            searchable: false
+            filterable: false
+          product_name:
+            description: Display name of the menu item.
+            type: string
+            searchable: true
+            filterable: false
+          product_type:
+            description: Menu category used to group related products.
+            type: string
+            searchable: false
+            filterable: true
+          dietary_class:
+            description: Closed dietary classification for precise filtering.
+            type: string
+            searchable: false
+            filterable: true
+          product_description:
+            description: Menu prose indexed for semantic retrieval.
+            type: string
+            searchable: true
+            filterable: false
+        target_lag: 1 hour
+        # Unset: tools.+warehouse in sst_config.yml applies.
+        warehouse: null
+
+    # =======================================================================
+    # reference: -- owned elsewhere; no DDL is emitted
+    # =======================================================================
+      - name: order_status
+        type: procedure
+        description: |-
+          Returns the status of one order, given its id. Answers where an order is,
+          not how many orders there were -- that is a question for the Analyst tools.
+        language: sql
+        returns: VARCHAR
+        signature:
+          - name: order_id
+            type: VARCHAR
+            description: The order's id, as the customer quotes it.
+        body_file: tools/sql/order_status.sql
+
+    reference:
+      - name: order_tier_lookup
+        type: procedure
+        description: |-
+          Returns the loyalty tier an order qualifies for under current rules. Owned
+          by the ordering platform team, not by this repo.
+        # One relation per dbt target; a key profiles.yml does not declare is
+        # SST-REF018. dev and prod name different objects: in a mutable group,
+        # one object for both is SST-REF023. `ci` is left unmapped, so
+        # `--target ci` reports SST-REF018 here.
+        relations:
+          dev: SST_TEST.REFERENCE.ORDER_TIER_LOOKUP
+          prod: SST_REF_PROD.JAFFLE.ORDER_TIER_LOOKUP
+          verify: SST_REF_VERIFY.JAFFLE.ORDER_TIER_LOOKUP

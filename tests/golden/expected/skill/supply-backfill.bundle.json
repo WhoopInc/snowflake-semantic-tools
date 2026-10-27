@@ -1,0 +1,19 @@
+{
+  "alias": "SST_5EEE74F03EF2",
+  "comment": "Use when a jaffle supply month is incomplete and must be backfilled before its\nmargin can be reported. Invoke for terms like backfill, missing snapshot, late\nsupply data. Do NOT invoke to answer margin questions; that is jaffle-operations.",
+  "digest": "5eee74f03ef29501b03c8a3a3f83e3381cbdf989ad647b397c652c2dcef6df28",
+  "extension": "SST_REF_DEV.JAFFLE.SUPPLY_BACKFILL",
+  "files": [
+    {
+      "path": "skills/supply-backfill/SKILL.md",
+      "sha256": "880957ea6ddba707ec24d492b71b590b5322c85d0d1ba204fa3f57f740115435",
+      "size": 801
+    },
+    {
+      "path": "skills/supply-backfill/reference/checklist.md",
+      "sha256": "a94e6d5d97087d3702de5082d10acbafffd1f4a257dc54d0673990fed000644d",
+      "size": 166
+    }
+  ],
+  "type": "SKILL"
+}

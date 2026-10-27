@@ -1,0 +1,9 @@
+---
+# A custom judge whose score bands overlap and whose prompt names a placeholder
+# the judge is never given.
+edits:
+  eval_metrics/answer_grounding.yml:
+    - old: "  min_score:    [0, 1]\n"
+      new: "  min_score:    [0, 2]\n"
+    - old: "  You will be given the question, the view the answer cites, and the answer.\n"
+      new: "  You will be given the question, the view the answer cites, and the answer.\n  Unsupported context: {{ unsupported_context }}\n"

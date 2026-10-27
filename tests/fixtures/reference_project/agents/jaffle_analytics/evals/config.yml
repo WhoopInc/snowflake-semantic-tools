@@ -1,0 +1,124 @@
+---
+# Run configuration for jaffle_analytics_agent's eval: two pinned system metrics
+# and one custom judge. It renders to a Snowflake evaluation YAML holding only
+# `evaluation:` and `metrics:`; the gating, retry, baseline and retention
+# settings under `config:` stay in SST. Golden:
+#   tests/golden/expected/eval/jaffle_analytics_agent_repeat.yaml
+# Apply uploads that YAML to the eval config stage, and a run is a
+# CALL EXECUTE_AI_EVALUATION('START', ...) against it.
+#
+# Every run re-invokes the agent, so scores can vary with everything pinned.
+# Pinning fixes what is under test; the gate compares runs with a captured
+# baseline rather than trusting a single score.
+
+# The file names no agent: it sits in jaffle_analytics_agent's evals/ folder,
+# which says whose eval it is (an `agent:` key is SST-PRS126).
+
+# What the agent's `{{ eval_config() }}` names this file by; unique among the
+# configs in this folder (`SST-VAL765`). Never rendered.
+name: jaffle_analytics_repeat
+
+# The eval's own settings: the `evals:` keys of sst_config.yml without their
+# `+` (SST-CFG053 for any other key). Each wins over the folder routes over the
+# agent's folder and the block root; these restate the root's, to show them.
+config:
+  # `committed`, `alias:<name>` or `VERSION$<n>`. `LIVE`, or no version set
+  # anywhere, is `SST-VAL719`. `committed` renders as `LAST`, and each run
+  # resolves it to a concrete `VERSION$<n>` recorded with the results.
+  agent_version: committed
+  # A regression against the baseline fails the run; `report` would only
+  # report it.
+  eval_tier: blocking
+  # One extra attempt per run. Every attempt is reported, not just the last.
+  retry: 1
+  # Parallel eval runs; a value above the root's `evals.+concurrency` is
+  # `SST-VAL731`. Each run re-invokes the agent, so this is real load and spend.
+  concurrency: 2
+  # Completed runs a baseline capture needs. A threshold with no baseline runs
+  # is `SST-VAL735`.
+  baseline_runs: 5
+  # The retention class each run's results record. SST never deletes eval runs
+  # or eval objects on the strength of it.
+  retention: audit
+
+dataset:
+  # Datasets are content-addressed. Apply creates the source table and DATASET
+  # only when the hash-named objects are absent, and the rendered run YAML never
+  # carries a `dataset:` block, so a repeat run reuses the existing dataset.
+  # `mint: auto` is that behaviour; `never` creates nothing and requires the
+  # dataset to exist, publishing only the run config.
+  mint: auto
+  # `sha7` here hashes the questions and their expectations, not the commit, so
+  # an unchanged question set keeps its dataset and old runs keep resolving. The
+  # agent token is required (`SST-PRS002`): agents sharing a schema would
+  # otherwise collide (`SST-VAL701`). Names are capped at 128 characters
+  # (`SST-VAL702`).
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}"
+  # Both templates are required (`SST-VAL762`). The table and the DATASET built
+  # from it land in the agent's database and schema.
+  source_table_template: "EVAL_SRC_{{ agent | upper }}_{{ sha7 }}"
+  # The source table's two columns, and the only mapping the renderer accepts.
+  column_mapping:
+    query_text: input_query
+    ground_truth: ground_truth
+
+metrics:
+  system:
+    # The gated metric. It uses no LLM judge (`SST-VAL725`), so its score moves
+    # only when the agent's tool calls change.
+    - name: tool_selection_accuracy
+      # A system metric needs a pinned version (`SST-VAL722`), and only `v3` is
+      # accepted. Scores from different versions are not comparable, so changing
+      # it invalidates the baseline (`SST-VAL759`).
+      version: v3
+      gate: true
+      # A range, `{min, max}`, with either bound optional; a bare number is
+      # `SST-PRS003`, and a gated metric with no usable bound is `SST-VAL733`.
+      # A floor set below a perfect score on purpose: tool paths vary between
+      # runs, so a gate at the ceiling would fail on ordinary variance.
+      threshold: {min: 0.80}
+    # Judged and reported, not gated, so no threshold (one on an ungated metric
+    # is `SST-VAL733`). No `judge_model` either: a system metric's judge comes
+    # from its version (`SST-VAL724`).
+    - name: answer_correctness
+      version: v3
+      gate: false
+
+  # Resolved by name from eval_metrics/ (`project.eval_metrics_dir`); an unknown
+  # name is `SST-REF026`. A judge has no Snowflake object: its prompt is inlined
+  # into the rendered YAML, so this file carries only the reference.
+  custom:
+    - "{{ eval_metric('answer_grounding') }}"
+
+run:
+  # Unique per agent (`SST-VAL717`), because results are read back by agent and
+  # run name, and must carry the commit SHA (`SST-VAL718`). `ts` is compact UTC
+  # (`YYYYMMDDTHHMMSSZ`), so the name stays a valid unquoted identifier. Retries
+  # append `_R2`, `_R3` and so on.
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"
+  # `label` and `description` render into the YAML's `run_params`.
+  label: order-analytics-ci
+  description: |-
+    Continuous integration run for the order analytics agent. Gates on tool
+    selection; reports answer correctness.
+  # Why the run happened; fills the variant token in the run name.
+  variant: ci
+  # Only `COMPLETED` is accepted here (`SST-PRS013` otherwise). A partial
+  # terminal status is reported as `SST-APL024` and never counts as a pass.
+  accept_statuses:
+    - COMPLETED
+
+# No `sweep:` block: this release runs no model sweeps and refuses one
+# (`SST-CFG044`).
+#
+# Outside this file:
+# - The config stage (`apply.eval_config_stage` in sst_config.yml) always sits
+#   in the agent's schema. Apply creates it with CREATE STAGE IF NOT EXISTS and
+#   the file format EXECUTE_AI_EVALUATION needs; if it exists with another
+#   format, apply stops with `SST-APL028` instead of altering a stage it may not
+#   own. CREATE OR REPLACE is never used, because it would drop the staged configs.
+# - Starting a run needs CREATE TASK, CREATE STAGE and CREATE FILE FORMAT in the
+#   agent's schema, held by the session's primary role. `sst eval`
+#   checks this before any run starts: `SST-VAL727` when only a secondary role
+#   holds one, `SST-VAL728` when no role does. A start Snowflake still refuses is
+#   `SST-APL023`.

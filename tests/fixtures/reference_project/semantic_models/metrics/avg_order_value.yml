@@ -1,0 +1,10 @@
+---
+# AVG, a second aggregate.
+metric:
+  name: avg_order_value
+  description: |-
+    Mean order value including tax, in cents.
+  expr: "AVG({{ ref('orders', 'order_total') }})"
+  synonyms:
+    - AOV
+    - average basket

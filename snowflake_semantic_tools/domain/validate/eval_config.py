@@ -1,0 +1,379 @@
+"""Check an eval's run config: agent version, metrics, dataset templates, settings, and the run block.
+
+The rules run in a fixed order, which fixes the order of their diagnostics. The run name
+is claimed in a map shared by every eval of the catalog, so the evals must be checked in
+catalog order: a name that collides is reported on the eval that claims it second. A setting
+is checked as the eval resolved it, and named where it was written.
+"""
+
+from __future__ import annotations
+
+import re
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.eval.model import (
+    EVAL_COMPLETED,
+    EVAL_CONCURRENCY_MIN,
+    EVAL_PASS_STATUSES,
+    EVAL_RETRY_MIN,
+    SYSTEM_EVAL_METRIC_VERSION,
+    SYSTEM_EVAL_METRICS,
+    EvalDefaults,
+    EvalRoutingMetric,
+    EvalRunConfig,
+    EvalSystemMetric,
+    ResolvedEval,
+    ThresholdRange,
+)
+from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE, ROOT_SOURCE, ROUTE_PREFIX
+from snowflake_semantic_tools.domain.resolve.eval_name import NAME_LIMIT, PROBE_SHA7, probe_name
+from snowflake_semantic_tools.domain.validate.shared import Emitter
+
+_PINNED_VERSION = re.compile(r"VERSION\$[1-9]\d*")
+_BASELINE_RUNS_MIN = 1
+# A comparison runs each model at least once.
+EVAL_COMPARE_RUNS_MIN = 1
+# The orchestration model Snowflake picks per request, which no comparison runs as a candidate.
+AUTO_MODEL = "auto"
+# Agent tool types an eval run skips rather than fails (SST-VAL732).
+_SKIPPED_TOOL_TYPES = ("agent_toolset",)
+
+
+def validate_eval_config(
+    resolved: ResolvedEval,
+    defaults: EvalDefaults,
+    run_names: dict[tuple[str, str], str],
+) -> tuple[Diagnostic, ...]:
+    """Check one eval's config, and claim its rendered run name in `run_names`.
+
+    Args:
+        defaults: The `evals:` block root's settings: what an eval that resolved none of its own
+            reads, and whose `concurrency` bounds the eval's.
+        run_names: Rendered run names claimed so far, keyed by the eval's key and the
+            casefolded run name, each mapped to the eval that claimed it; this eval's is added
+            when free.
+
+    Diagnostics:
+        SST-VAL719: the resolved agent_version is not committed, alias:<name> or VERSION$<n>.
+        SST-VAL721: a custom metric the config names did not resolve, or a system metric
+            name is unknown.
+        SST-VAL762: dataset.name_template or dataset.source_table_template is not set.
+        SST-PRS010: the rendered source table name is empty or longer than 128 characters.
+        SST-PRS101: the config enables no system metric and names no custom metric.
+        SST-VAL888: a CoWork profile's config would enable a system metric only through an
+            inherited `metrics` setting whose metrics are all blind to its router.
+        SST-VAL722: a system metric has no version, here or in its `metric_version` setting.
+        SST-PRS013: a system metric's effective version is not v3, or run.accept_statuses
+            lists a status other than COMPLETED.
+        SST-VAL723: a system metric pins a legacy version other than v1.
+        SST-VAL764: a system metric's effective version is v1, which Snowflake refuses; it
+            replaces SST-VAL723, whose advice to record a score shift a refused run cannot take.
+        SST-VAL724: a system metric sets judge_model.
+        SST-VAL725: tool_selection_accuracy uses no LLM judge (info).
+        SST-VAL726: logical_consistency is gated.
+        SST-VAL733: a gated system or routing metric has no usable threshold, or an ungated one
+            has one.
+        SST-PRS016: the resolved retry, concurrency, baseline_runs or compare_runs is below its
+            minimum.
+        SST-VAL731: the concurrency a folder route or the config sets exceeds the root's.
+        SST-VAL718: the rendered run name does not include the commit SHA.
+        SST-VAL717: another eval of the same agent already claimed the rendered run name.
+        SST-VAL735: a system or routing metric has a threshold and the resolved baseline_runs
+            is not positive; reported per such metric.
+        SST-VAL732: the agent has tools an eval run skips, one per tool type (info).
+    """
+    return (
+        *_agent_version(resolved, defaults),
+        *_unresolved_custom_metrics(resolved),
+        *_dataset_templates(resolved),
+        *_source_table_name(resolved),
+        *_declares_metrics(resolved),
+        *(
+            diagnostic
+            for metric in resolved.config.system_metrics
+            for diagnostic in _system_metric(resolved, defaults, metric)
+        ),
+        *(
+            diagnostic
+            for metric in resolved.config.routing_metrics
+            for diagnostic in _gated_threshold(resolved, metric)
+        ),
+        *_limits(resolved, defaults),
+        *_run(resolved, run_names),
+    )
+
+
+def _emitter(resolved: ResolvedEval) -> Emitter:
+    return Emitter(subject=resolved.key, origin=resolved.config.origin, artifact=resolved.name)
+
+
+def _agent_version(resolved: ResolvedEval, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    version = resolved.options.agent_version or defaults.agent_version
+    if version != "committed" and not (
+        isinstance(version, str) and (version.startswith("alias:") or _PINNED_VERSION.fullmatch(version))
+    ):
+        emit("SST-VAL719", found=version)
+    return emit.diagnostics
+
+
+def _unresolved_custom_metrics(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    configured = {name.casefold() for name in resolved.config.custom_metric_names}
+    found = {metric.name.casefold() for metric in resolved.custom_metrics}
+    for name in sorted(configured - found):
+        emit("SST-VAL721", name=name)
+    return emit.diagnostics
+
+
+def _dataset_templates(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    dataset = resolved.config.dataset
+    for field_name in ("name_template", "source_table_template"):
+        if dataset is None or getattr(dataset, field_name) is None:
+            emit("SST-VAL762", field=field_name)
+    return emit.diagnostics
+
+
+def _source_table_name(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    # Only the source table's length is checked here: the dataset name's is SST-VAL702, so
+    # one over-long name is never reported twice.
+    dataset = resolved.config.dataset
+    template = dataset.source_table_template if dataset is not None else None
+    name = probe_name(template, resolved.name) if template is not None else None
+    if name is not None and (not name or len(name) > NAME_LIMIT):
+        return (
+            D(
+                "SST-PRS010",
+                name=name,
+                size=len(name),
+                expected=NAME_LIMIT,
+                origin=resolved.config.origin,
+                subject=resolved.key,
+            ),
+        )
+    return ()
+
+
+def _declares_metrics(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    """Refuse a config that leaves Snowflake no metric to score, saying why when filling emptied it."""
+    emit = _emitter(resolved)
+    config = resolved.config
+    if config.system_metrics or config.custom_metric_names:
+        return ()
+    if config.inherited_blind_metrics:
+        # Snowflake private preview (PrPr): CoWork profiles. The metrics inherited were all blind.
+        names = " and ".join(str(metric.name) for metric in config.inherited_blind_metrics)
+        emit("SST-VAL888", detail=names)
+    else:
+        emit("SST-PRS101", artifact=config.source_file, field="metrics")
+    return emit.diagnostics
+
+
+def _system_metric(resolved: ResolvedEval, defaults: EvalDefaults, metric: EvalSystemMetric) -> tuple[Diagnostic, ...]:
+    """Check one system metric: that it exists, its version and judge, and its gate and threshold.
+
+    An unknown name is reported alone; none of the metric's other checks apply to it.
+    """
+    emit = Emitter(subject=resolved.key, origin=metric.origin, artifact=resolved.name)
+    name = metric.name or ""
+    if name not in SYSTEM_EVAL_METRICS:
+        emit("SST-VAL721", name=name)
+        return emit.diagnostics
+    version = metric.version or resolved.options.metric_version or defaults.metric_version
+    if version is None:
+        emit("SST-VAL722", name=name)
+    elif version != SYSTEM_EVAL_METRIC_VERSION:
+        emit(
+            "SST-PRS013",
+            artifact=resolved.config.source_file,
+            field=f"metrics.system.{name}.version",
+            found=version,
+            expected=SYSTEM_EVAL_METRIC_VERSION,
+        )
+        # Snowflake's docs list v1 among the versions a metric may name; the server rejects
+        # `version: v1` (docs/design/snowflake-behavior.md), so that refusal is not demotable.
+        if version.casefold() == "v1":
+            emit("SST-VAL764", name=name, found=version)
+        else:
+            emit("SST-VAL723", name=name, found=version)
+    if metric.judge_model is not None:
+        emit("SST-VAL724", name=name)
+    if name == "tool_selection_accuracy":
+        emit("SST-VAL725", name=name, detail="uses no LLM judge")
+    if name == "logical_consistency" and metric.gate:
+        emit("SST-VAL726")
+    return (*emit.diagnostics, *_gated_threshold(resolved, metric))
+
+
+def _gated_threshold(resolved: ResolvedEval, metric: EvalSystemMetric | EvalRoutingMetric) -> tuple[Diagnostic, ...]:
+    """Check that a gated metric has a usable threshold and an ungated one none, as SST-VAL733 says."""
+    emit = Emitter(subject=resolved.key, origin=metric.origin, artifact=resolved.name)
+    name = metric.name or ""
+    if metric.gate:
+        if not _usable_threshold(metric.threshold):
+            emit("SST-VAL733", name=name, detail="no bound" if metric.threshold is None else "inverted bounds")
+    elif metric.threshold is not None:
+        emit("SST-VAL733", name=name, detail="a threshold on an ungated metric")
+    return emit.diagnostics
+
+
+def _run(resolved: ResolvedEval, run_names: dict[tuple[str, str], str]) -> tuple[Diagnostic, ...]:
+    # A config without a run block gets none of these checks, SST-VAL732 included.
+    run = resolved.config.run
+    if run is None:
+        return ()
+    return (
+        *_run_name(resolved, run, run_names),
+        *_threshold_baseline(resolved),
+        *_accept_statuses(resolved, run),
+        *_skipped_tool_types(resolved),
+    )
+
+
+def _run_name(
+    resolved: ResolvedEval, run: EvalRunConfig, run_names: dict[tuple[str, str], str]
+) -> tuple[Diagnostic, ...]:
+    if run.name_template is None:
+        return ()
+    run_name = probe_name(run.name_template, resolved.name, run.variant)
+    if run_name is None:
+        return ()
+    emit = _emitter(resolved)
+    if PROBE_SHA7 not in run_name:
+        emit("SST-VAL718", value=run_name)
+    run_key = (resolved.key, run_name.casefold())
+    if run_key in run_names:
+        emit("SST-VAL717", value=run_name)
+    else:
+        run_names[run_key] = resolved.name
+    return emit.diagnostics
+
+
+def _limits(resolved: ResolvedEval, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
+    # The ceiling is checked between the minimums, so SST-VAL731 keeps its place among the SST-PRS016s.
+    options = resolved.options
+    return (
+        *_below_minimum(resolved, "retry", options.retry, EVAL_RETRY_MIN),
+        *_below_minimum(resolved, "concurrency", options.concurrency, EVAL_CONCURRENCY_MIN),
+        *_concurrency_ceiling(resolved, defaults),
+        *_below_minimum(resolved, "baseline_runs", options.baseline_runs, _BASELINE_RUNS_MIN),
+        *_below_minimum(resolved, "compare_runs", options.compare_runs, EVAL_COMPARE_RUNS_MIN),
+    )
+
+
+def _written(resolved: ResolvedEval, key: str) -> str:
+    """Name where a setting the eval resolved was written: `config.<key>`, a route's, or the root's."""
+    source = resolved.settings[key].source
+    if source == CONFIG_SOURCE:
+        return f"config.{key}"
+    if source == ROOT_SOURCE:
+        return f"evals.+{key}"
+    return f"evals.{source.removeprefix(ROUTE_PREFIX).replace('/', '.')}.+{key}"
+
+
+def candidate_model_problems(
+    models: tuple[str, ...],
+    allowed: frozenset[str],
+    *,
+    artifact: str,
+    field: str,
+    subject: str,
+    origin: Origin | None = None,
+) -> tuple[Diagnostic, ...]:
+    """Report each orchestration model a comparison may not commit a candidate version for.
+
+    `auto` is no model: Snowflake picks one per request, so a version on it compares nothing,
+    and it is never a candidate. With `snowflake.orchestration_models` set, a candidate must be
+    one it lists, as an agent's own model must (SST-VAL543); `auto` is reported only as `auto`.
+
+    Args:
+        allowed: `snowflake.orchestration_models`, casefolded; empty when it is not set.
+        field: Where the list was written, such as `evals.+candidate_models` or `--compare-models`.
+
+    Diagnostics:
+        SST-VAL770: a candidate is `auto`.
+        SST-VAL771: a candidate is not in `snowflake.orchestration_models`.
+    """
+    emit = Emitter(subject=subject, origin=origin, artifact=artifact)
+    for model in models:
+        if model.strip().casefold() == AUTO_MODEL:
+            emit("SST-VAL770", field=field)
+        elif allowed and model.casefold() not in allowed:
+            emit("SST-VAL771", field=field, model=model)
+    return emit.diagnostics
+
+
+def eval_candidate_problems(resolved: ResolvedEval, allowed: frozenset[str]) -> tuple[Diagnostic, ...]:
+    """Check the candidate models an eval resolved, named where the setting was written.
+
+    Diagnostics:
+        Those of `candidate_model_problems`.
+    """
+    models = resolved.options.candidate_models
+    if not models:
+        return ()
+    field = _written(resolved, "candidate_models")
+    return candidate_model_problems(
+        models, allowed, artifact=resolved.name, field=field, subject=resolved.key, origin=resolved.config.origin
+    )
+
+
+def _below_minimum(resolved: ResolvedEval, key: str, value: int | None, minimum: int) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    if value is not None and value < minimum:
+        field = _written(resolved, key)
+        emit("SST-PRS016", artifact=resolved.config.source_file, field=field, found=value, expected=f">= {minimum}")
+    return emit.diagnostics
+
+
+def _concurrency_ceiling(resolved: ResolvedEval, defaults: EvalDefaults) -> tuple[Diagnostic, ...]:
+    # A concurrency the eval inherits from the root is the ceiling itself.
+    emit = _emitter(resolved)
+    asked = resolved.options.concurrency
+    if defaults.concurrency is not None and asked is not None and asked > defaults.concurrency:
+        emit("SST-VAL731", found=asked, expected=defaults.concurrency)
+    return emit.diagnostics
+
+
+def _threshold_baseline(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    baseline_runs = resolved.options.baseline_runs
+    if (baseline_runs or 0) > 0:
+        return ()
+    metrics: tuple[EvalSystemMetric | EvalRoutingMetric, ...] = (
+        *(metric for metric in resolved.config.system_metrics if metric.name in SYSTEM_EVAL_METRICS),
+        *resolved.config.routing_metrics,
+    )
+    return tuple(
+        D("SST-VAL735", artifact=resolved.name, name=metric.name, origin=metric.origin, subject=resolved.key)
+        for metric in metrics
+        if metric.threshold is not None
+    )
+
+
+def _accept_statuses(resolved: ResolvedEval, run: EvalRunConfig) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    for status in run.accept_statuses:
+        if status not in EVAL_PASS_STATUSES:
+            emit(
+                "SST-PRS013",
+                artifact=resolved.config.source_file,
+                field="run.accept_statuses",
+                found=status,
+                expected=EVAL_COMPLETED,
+            )
+    return emit.diagnostics
+
+
+def _skipped_tool_types(resolved: ResolvedEval) -> tuple[Diagnostic, ...]:
+    emit = _emitter(resolved)
+    tools = agent.tools if (agent := resolved.agent) is not None else ()
+    for tool_type in sorted({tool.type for tool in tools if tool.type in _SKIPPED_TOOL_TYPES}):
+        emit("SST-VAL732", value=tool_type)
+    return emit.diagnostics
+
+
+def _usable_threshold(value: ThresholdRange | None) -> bool:
+    if value is None or (value.min is None and value.max is None):
+        return False
+    return value.min is None or value.max is None or value.min <= value.max

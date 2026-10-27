@@ -1,0 +1,219 @@
+"""Pure complete-spec renderer for Cortex Agents.
+
+The sections a specification shares with a CoWork profile's -- instructions, tool entries and
+resources, skills, and the JSON payload -- render here, and `cowork_profile` renders through them.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping, Sequence
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.agent import (
+    BUILTIN_AGENT_TOOLS,
+    AgentModel,
+    AgentProfile,
+    AgentSkill,
+    ResolvedAgentTool,
+)
+from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel
+from snowflake_semantic_tools.domain.render.invariants import dollar_quote_offset
+from snowflake_semantic_tools.domain.state import canonical_json
+
+
+def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> dict[str, object]:
+    """Render an agent's complete specification as a JSON-ready document.
+
+    `models.orchestration` is always present; every other section appears only when it has
+    content. A built-in tool, or one with no resources, gets no `tool_resources` entry, and a
+    skill without a name renders no `name`, which only a STAGE source has once skills resolve.
+    The `passthrough` keys go in last, so they replace any section of the same name.
+
+    Example:
+        An agent whose one tool is a Cortex Analyst tool over the view `DB.S.SALES` renders:
+            {"models": {"orchestration": "auto"},
+             "tools": [{"tool_spec": {"type": "cortex_analyst_text_to_sql", "name": "SALES", ...}}],
+             "tool_resources": {"SALES": {"semantic_view": "DB.S.SALES", ...}}}
+    """
+    document: dict[str, object] = {"models": {"orchestration": model.orchestration_model}}
+    orchestration: dict[str, object] = {}
+    budget = {
+        key: value
+        for key, value in (("seconds", model.budget_seconds), ("tokens", model.budget_tokens))
+        if value is not None
+    }
+    if budget:
+        orchestration["budget"] = budget
+    if model.tool_not_accessible is not None:
+        orchestration["tool_not_accessible"] = model.tool_not_accessible
+    if model.analytical_search is not None:
+        orchestration["capabilities"] = {"analytical_search": model.analytical_search}
+    if orchestration:
+        document["orchestration"] = orchestration
+    instructions = render_instructions(
+        model.orchestration_instructions, model.response_instructions, model.sample_questions
+    )
+    if instructions:
+        document["instructions"] = instructions
+    if tools:
+        document["tools"] = [render_tool_entry(tool) for tool in tools]
+        resources = render_tool_resources(tools)
+        if resources:
+            document["tool_resources"] = resources
+    if model.skills:
+        document["skills"] = render_skills(model.skills)
+    document.update(model.passthrough)
+    return document
+
+
+def render_instructions(
+    orchestration: str | None, response: str | None, sample_questions: Sequence[str]
+) -> dict[str, object]:
+    """Render the `instructions` section: each instruction that is set, then any sample questions.
+
+    Empty when none of them is set, so the caller leaves the section out.
+    """
+    instructions: dict[str, object] = {}
+    if orchestration is not None:
+        instructions["orchestration"] = orchestration
+    if response is not None:
+        instructions["response"] = response
+    if sample_questions:
+        instructions["sample_questions"] = sample_question_entries(sample_questions)
+    return instructions
+
+
+def sample_question_entries(questions: Sequence[str]) -> list[dict[str, object]]:
+    """Render sample questions as a specification lists them: one `{"question": ...}` per question."""
+    return [{"question": value} for value in questions]
+
+
+def render_tool_resources(tools: Sequence[ResolvedAgentTool]) -> dict[str, object]:
+    """Render the `tool_resources` entries of `tools`, by tool name: none for a built-in, nor when empty."""
+    return {
+        tool.name: dict(tool.resources) for tool in tools if tool.type not in BUILTIN_AGENT_TOOLS and tool.resources
+    }
+
+
+def render_skills(skills: Sequence[AgentSkill]) -> list[dict[str, object]]:
+    """Render the `skills` section: each entry's source, under its name when it has one."""
+    return [
+        {
+            # Resolution names each owned entry; a STAGE source is kept as authored.
+            **({"name": skill.name} if skill.name else {}),
+            "source": {
+                "type": skill.source_type,
+                "path": skill.path,
+                "version": skill.version,
+            },
+        }
+        for skill in skills
+    ]
+
+
+def render_agent_json(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -> str:
+    """Render the specification as the agent's JSON payload, as `render_spec_json` serializes it.
+
+    Raises:
+        TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
+    """
+    return render_spec_json(render_agent_spec(model, tools))
+
+
+def render_spec_json(document: Mapping[str, object]) -> str:
+    """Serialize a rendered specification as an AGENT object's payload, indented by two, with a newline.
+
+    Keys keep the document's order rather than being sorted, and non-ASCII text is kept.
+
+    Raises:
+        TypeError: a value, such as one from `passthrough`, is not JSON-encodable.
+    """
+    return json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+
+
+def render_agent_profile(profile: AgentProfile) -> str:
+    """Render an agent's profile as the compact JSON `SET PROFILE` takes, leaving out each unset key.
+
+    Example:
+        A profile with only a display name renders `{"display_name":"Sales"}`; one with
+        nothing set renders `{}`.
+    """
+    value = {
+        key: item
+        for key, item in (("display_name", profile.display_name), ("avatar", profile.avatar), ("color", profile.color))
+        if item is not None
+    }
+    return json.dumps(value, separators=(",", ":"))
+
+
+def agent_render_checks(
+    model: AgentModel | CoworkProfileModel, tools: tuple[ResolvedAgentTool, ...], payload: str
+) -> tuple[Diagnostic, ...]:
+    """Report what the rendered spec `payload` holds that publication will not check or survive.
+
+    A CoWork profile's spec is checked here too, with its router among `tools`
+    (`cowork_profile_render_checks`).
+
+    Diagnostics:
+        SST-RND010: the spec renders with no tools.
+        SST-RND011: the spec holds `$$`, which ends the dollar-quoted literal an inline agent's
+            specification is published in; at its character offset.
+        SST-RND013: a generic tool renders resources, which CREATE AGENT does not validate;
+            one per such tool, in tool order.
+    """
+    found: list[Diagnostic] = []
+    if not tools:
+        found.append(D("SST-RND010", subject=model.key, artifact=model.name))
+    offset = dollar_quote_offset(payload)
+    if offset is not None:
+        found.append(D("SST-RND011", subject=model.key, artifact=model.name, value=offset))
+    found.extend(
+        D("SST-RND013", subject=model.key, artifact=model.name, name=tool.name)
+        for tool in tools
+        if tool.type == "generic" and tool.resources
+    )
+    return tuple(found)
+
+
+def desired_agent_definition(model: AgentModel, spec: Mapping[str, object]) -> bytes:
+    """Encode the agent's whole definition as the canonical JSON its fingerprint is a hash of.
+
+    Besides the spec, the definition holds the comment, `secure`, profile, alias, tags,
+    `enabled`, and `meta`, so a change to any of them changes the fingerprint.
+
+    Raises:
+        ValueError: a value is NaN or an infinity.
+        TypeError: a value, such as one in `meta`, is not JSON-encodable.
+    """
+    return bytes(
+        canonical_json(
+            {
+                "comment": model.comment,
+                "secure": model.secure is True,
+                "profile": {
+                    "display_name": model.profile.display_name,
+                    "avatar": model.profile.avatar,
+                    "color": model.profile.color,
+                },
+                "alias": model.alias,
+                "tags": list(model.tags),
+                "enabled": model.enabled,
+                "meta": dict(model.meta),
+                "spec": dict(spec),
+            }
+        )
+    )
+
+
+def render_tool_entry(tool: ResolvedAgentTool) -> dict[str, object]:
+    """Render one `tools` entry: its type, name, and description, its input schema, then its passthrough."""
+    spec: dict[str, object] = {
+        "type": tool.type,
+        "name": tool.name,
+        "description": tool.description,
+    }
+    if tool.input_schema:
+        spec["input_schema"] = dict(tool.input_schema)
+    spec.update(tool.tool_spec_passthrough)
+    return {"tool_spec": spec}

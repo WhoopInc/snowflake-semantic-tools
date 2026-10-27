@@ -1,0 +1,457 @@
+"""`sst baseline`: write and maintain the baseline file, the record of warnings a project knows about.
+
+`add` records every current instance of one code, or with `--all-warnings` of every warning,
+and never removes an entry. `prune` removes only the entries no current diagnostic matches.
+`show` lists the entries. `renew` re-dates the file and records why. The current diagnostics are
+those an offline `sst validate` reports, for `--target` when it is given. A code only a
+connection finds -- its precheck is not `local` -- is looked for by the connected `sst validate
+--target`, and its entries record that target; every other entry is an offline one, since an
+offline validate finds it. An offline run cannot see what only a connected one finds, so an
+offline `prune` keeps every connected entry, and `prune --target` judges that target's connected
+entries as well, connecting only when it holds one. An error, or any non-demotable code, cannot
+be baselined: a baseline suppresses and never demotes. The file is the global `--baseline`, else
+`.sst/baseline.json`.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from datetime import date
+from pathlib import Path
+
+import click
+
+from snowflake_semantic_tools._version import __version__ as VERSION
+from snowflake_semantic_tools.adapters.clock import SystemClock
+from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, baseline_text, read_baseline
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import output_root
+from snowflake_semantic_tools.app.baseline import clock_stamp, clock_today, days_after
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.app.validate_models import model_check
+from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
+from snowflake_semantic_tools.cli.exit_codes import ERROR
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
+from snowflake_semantic_tools.cli.group import SstUsageError
+from snowflake_semantic_tools.cli.help_form import SstSubGroup
+from snowflake_semantic_tools.cli.options import Decorator, selection_options
+from snowflake_semantic_tools.cli.render.diagnostics import plural
+from snowflake_semantic_tools.cli.runner import CommandResult, command_body, project_path, write_text
+from snowflake_semantic_tools.cli.settings import project_config
+from snowflake_semantic_tools.cli.wiring import compile as compiling
+from snowflake_semantic_tools.cli.wiring.manifest import lineage_of
+from snowflake_semantic_tools.cli.wiring.project import connect
+from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, DiagnosticBag
+from snowflake_semantic_tools.domain.diagnostics.baseline import (
+    DEFAULT_EXPIRY_DAYS,
+    MAX_EXPIRY_DAYS,
+    Baseline,
+    BaselineEntry,
+    baselinable,
+    baseline_refusal,
+    chosen_for_baseline,
+    found_offline,
+    renewed,
+    unknown_codes,
+    with_entries,
+    without_stale,
+)
+from snowflake_semantic_tools.domain.model.config_schema import governance_config
+
+_SUBCOMMANDS = ("add", "prune", "show", "renew")
+
+
+def _connected_target() -> Decorator:
+    """`--target`: run the connected validate against it.
+
+    Never read from `$SST_TARGET`, so a baseline command stays offline unless asked by name.
+    """
+    return click.option("--target", "-t", "target_name")
+
+
+@click.group(cls=SstSubGroup)
+@click.pass_context
+def baseline(ctx: click.Context) -> None:
+    """Write and maintain the baseline file of known, not yet fixed, diagnostics.
+
+    The file is the global --baseline, else `.sst/baseline.json`. Only a code below error that
+    the registry lets be demoted can be baselined: a baseline suppresses and never demotes.
+    `add`, `prune`, and `renew` write the file and `show` only reads it. Each runs offline;
+    `add --target` connects to look for a code only a connection finds, or for every warning,
+    and `prune --target` to judge an entry only a connection found there. `$SST_TARGET` is
+    never read.
+    """
+    inherited = dict(ctx.default_map or {})
+    ctx.default_map = {name: dict(inherited) for name in _SUBCOMMANDS}
+
+
+@baseline.command(cls=SstCommand, name="add")
+@click.argument("code", metavar="[CODE]", required=False)
+@_connected_target()
+@selection_options()
+@click.option("--all-warnings", is_flag=True)
+@click.option("--expires-in", type=click.IntRange(1, MAX_EXPIRY_DAYS), default=DEFAULT_EXPIRY_DAYS)
+@click.option("--note")
+@click.option("--yes", "-y", "assume_yes", is_flag=True)
+@command_body("baseline add", applies_baseline=False)
+def add_command(
+    paths: ProjectPaths,
+    options: GlobalOptions,
+    manifest_path: Path | None,
+    code: str | None,
+    target_name: str | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    all_warnings: bool,
+    expires_in: int,
+    note: str | None,
+    assume_yes: bool,
+) -> CommandResult:
+    """Baseline every current instance of CODE, or with --all-warnings every current warning.
+
+    CODE is a registered code, in any case. The current diagnostics are those an offline
+    `sst validate` reports, for --target when it is given, narrowed by --select and --exclude.
+    With --target, a CODE only a connection finds (its precheck is not `local`), or with
+    --all-warnings every warning, is looked for by the connected `sst validate --target`
+    instead, and each entry of such a code records the target; an entry of a code an offline
+    validate finds records none, and a `local` CODE never connects. Additive: an entry is never
+    removed, and a diagnostic already recorded, or sharing its fingerprint with another current
+    one, is not added. A new file expires in --expires-in days; an existing one keeps its date,
+    which only `renew` moves. --all-warnings asks first when there are warnings to add, on a
+    terminal; off one (stdin and stderr must both be terminals), or with --output json or agent, it needs
+    --yes.
+
+    Exit 0 when the file is written, even with nothing added; 1 when CODE is an error or
+    non-demotable; 3 when CODE is missing, unregistered, or given with --all-warnings, or a
+    needed --yes is missing; 5 when --target cannot be reached; 130 when the question is
+    declined.
+
+    Diagnostics:
+        SST-PRT100: no CODE and no --all-warnings, or CODE is not registered; raised. Also, at
+            exit 1, CODE cannot be baselined.
+        SST-PRT104: CODE and --all-warnings were both given; raised.
+        SST-PRT109: --all-warnings without --yes off a terminal, or with --output json or agent; raised.
+    """
+    wanted = _wanted_code(code, all_warnings)
+    if wanted is not None and (refusal := baseline_refusal(wanted)) is not None:
+        return CommandResult(ERROR, DiagnosticBag((D("SST-PRT100", subject="cli", detail=refusal),)))
+    path, current = _read(paths, options)
+    today = _today()
+    start = current or Baseline(_name(options), _date(today, expires_in), (), _now(), VERSION)
+    compiled, notes = _compiled(paths, manifest_path, selected, excluded, target_name)
+    connected = target_name if wanted is None or not found_offline(wanted) else None
+    chosen = chosen_for_baseline(_validated(paths, compiled, connected), wanted)
+    if all_warnings:
+        _confirm(options, len(chosen), assume_yes=assume_yes)
+    written, added = with_entries(
+        start, chosen, lambda found: note or f"pre-existing at adoption of {found}", target_name or ""
+    )
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
+    data = _data(path, written, added=added)
+    return CommandResult(
+        diagnostics=notes, data=data, headline=f"baselined {plural(len(added), 'diagnostic')} in {path}"
+    )
+
+
+@baseline.command(cls=SstCommand, name="prune")
+@_connected_target()
+@selection_options()
+@command_body("baseline prune", applies_baseline=False)
+def prune_command(
+    paths: ProjectPaths,
+    options: GlobalOptions,
+    manifest_path: Path | None,
+    target_name: str | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+) -> CommandResult:
+    """Remove the entries no current diagnostic matches; the only way an entry leaves the file.
+
+    The project is compiled once, for --target when it is given. The offline entries are judged
+    by an offline validate of that compile, and so is an entry recording --target whose code an
+    offline validate finds, as an earlier SST recorded one. Any other entry recording --target is
+    judged by the connected validate, which runs only when there is one; an entry recording
+    another target is kept. With --select or --exclude, only the entries of the artifacts chosen,
+    by artifact or source file, are considered. An expired baseline is pruned all the same, and
+    an entry whose code SST no longer reports is removed whichever validate recorded it.
+
+    Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
+    file; 5 when --target cannot be reached.
+
+    Diagnostics:
+        SST-PRT009: there is no baseline file to prune.
+    """
+    path, current = _read(paths, options)
+    if current is None:
+        return _absent(path)
+    compiled, notes = _compiled(paths, manifest_path, selected, excluded, target_name)
+    in_scope = _in_scope(compiled, chosen=bool(selected or excluded))
+    offline = _judged_offline(in_scope, target_name)
+    unknown = {entry.fingerprint for entry in current.entries if entry.code not in ERROR_REGISTRY}
+    written, pruned = without_stale(
+        current, _validated(paths, compiled, None), lambda entry: offline(entry) or entry.fingerprint in unknown
+    )
+    if target_name is not None:
+        connected = _judged_connected(in_scope, target_name)
+        if any(connected(entry) for entry in written.entries):
+            written, dropped = without_stale(written, _validated(paths, compiled, target_name), connected)
+            pruned = (*pruned, *dropped)
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
+    data = _data(path, written, pruned=pruned)
+    return CommandResult(diagnostics=notes, data=data, headline=f"pruned {plural(len(pruned), 'entry')} from {path}")
+
+
+@baseline.command(cls=SstCommand, name="show")
+@click.option("--code")
+@click.option("--expired", is_flag=True)
+@_connected_target()
+@command_body("baseline show", applies_baseline=False)
+def show_command(
+    paths: ProjectPaths, options: GlobalOptions, code: str | None, expired: bool, target_name: str | None
+) -> CommandResult:
+    """List the baseline's entries: those of one --code, or with --expired only once it has expired.
+
+    Prints the file's entry count and expiry, then one line per entry shown: its code, artifact,
+    file, fingerprint, and `offline` or `connected:<target>` for the validate that found it. An
+    entry whose code SST no longer reports is warned of (SST-CFG062).
+    With --target, only the entries a validate against it can match are listed: the offline
+    ones and that target's connected ones. Nothing connects. Without a baseline file it says so
+    and exits 0.
+    """
+    path, current = _read(paths, options)
+    if current is None:
+        data = _data(path, Baseline(_name(options), "", ()))
+        return CommandResult(data=data, human=lambda: click.echo(f"no baseline at {path}"))
+    lapsed = date.fromisoformat(current.expires_on) < _today()
+    shown = tuple(
+        entry
+        for entry in current.entries
+        if (code is None or entry.code == code.strip().upper())
+        and (lapsed or not expired)
+        and (target_name is None or entry.judged_by(None) or entry.judged_by(target_name))
+    )
+    data = _data(path, current, shown=shown)
+    return CommandResult(
+        diagnostics=DiagnosticBag(unknown_codes(current)),
+        data=data,
+        human=lambda: _print_entries(current, shown, lapsed=lapsed),
+    )
+
+
+def _require_reason(reason: str | None) -> None:
+    """Refuse `renew` without `--reason`, before anything is resolved.
+
+    Diagnostics:
+        SST-PRT100: --reason was not given, or is blank; raised.
+    """
+    if not (reason or "").strip():
+        diagnostic = D("SST-PRT100", subject="cli", detail="sst baseline renew requires --reason")
+        raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+
+
+@baseline.command(cls=SstCommand, name="renew")
+@click.option("--reason")
+@click.option("--expires-in", type=click.IntRange(min=1), default=DEFAULT_EXPIRY_DAYS)
+@command_body("baseline renew", applies_baseline=False, refusals=_require_reason)
+def renew_command(paths: ProjectPaths, options: GlobalOptions, reason: str, expires_in: int) -> CommandResult:
+    """Re-date the baseline --expires-in days from today, recording --reason as its audit record.
+
+    Each renewal is kept in the file, oldest first, with its date, reason, and the expiry it set;
+    the entries are untouched. Exit 1 when asked for more than 365 days or there is no baseline
+    file, and 3 when --reason is missing or blank.
+
+    Diagnostics:
+        SST-PRT100: --reason is missing or blank; raised. Also, at exit 1, --expires-in is above
+            365 days.
+        SST-PRT009: there is no baseline file to renew.
+    """
+    if expires_in > MAX_EXPIRY_DAYS:
+        detail = f"--expires-in {expires_in} is more than {MAX_EXPIRY_DAYS} days; a baseline cannot last longer"
+        return CommandResult(ERROR, DiagnosticBag((D("SST-PRT100", subject="cli", detail=detail),)))
+    path, current = _read(paths, options)
+    if current is None:
+        return _absent(path)
+    today = _today()
+    written = renewed(current, today=today.isoformat(), expires_on=_date(today, expires_in), reason=reason)
+    write_text(output_root(paths.project_dir, path.parent), path, baseline_text(written))
+    data = _data(path, written)
+    return CommandResult(data=data, headline=f"renewed {path}; it expires on {written.expires_on}")
+
+
+def _wanted_code(code: str | None, all_warnings: bool) -> str | None:
+    """Return the registered code `add` baselines; None for every warning.
+
+    Diagnostics:
+        SST-PRT104: CODE and --all-warnings were both given; raised.
+        SST-PRT100: neither was given, or CODE is not registered; raised.
+    """
+    if code is not None and all_warnings:
+        diagnostic = D("SST-PRT104", subject="cli", a="CODE", b="--all-warnings")
+        raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+    if code is None:
+        if all_warnings:
+            return None
+        diagnostic = D("SST-PRT100", subject="cli", detail="sst baseline add needs a CODE, or --all-warnings")
+        raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+    wanted = code.strip().upper()
+    if wanted not in ERROR_REGISTRY:
+        diagnostic = D("SST-PRT100", subject="cli", detail=f"'{code}' is not a registered code")
+        raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+    return wanted
+
+
+def _confirm(options: GlobalOptions, count: int, *, assume_yes: bool) -> None:
+    """Confirm baselining every warning: by `--yes`, else by a question on a terminal; none for none.
+
+    Diagnostics:
+        SST-PRT109: there is no terminal to ask on, or the output is JSON or agent text; raised.
+    """
+    if assume_yes or not count:
+        return
+    command = "sst baseline add --all-warnings"
+    if options.output in ("json", "agent"):
+        diagnostic = D("SST-PRT109", subject="cli", command=command)
+        raise SstUsageError(diagnostic.message, diagnostic=diagnostic)
+    require_answerable(command)
+    confirm(f"baseline all {count} current warning(s)?")
+
+
+def _read(paths: ProjectPaths, options: GlobalOptions) -> tuple[Path, Baseline | None]:
+    """Return the baseline file's path and what it holds; None when there is no file yet."""
+    path = project_path(paths, options.baseline or BASELINE_FILE)
+    return path, read_baseline(path, _name(options)) if path.is_file() else None
+
+
+def _name(options: GlobalOptions) -> str:
+    return (options.baseline or BASELINE_FILE).as_posix()
+
+
+def _compiled(
+    paths: ProjectPaths,
+    manifest_path: Path | None,
+    selected: tuple[str, ...],
+    excluded: tuple[str, ...],
+    target_name: str | None,
+) -> tuple[CompileResult, DiagnosticBag]:
+    """Compile the project for `target_name`, narrowed to the chosen artifacts, with the selectors' report.
+
+    The selectors' report is not among what validate reports, so it is never baselined.
+    """
+    compiled = compiling.compile_result(paths, target_name, manifest_path)
+    if not (selected or excluded):
+        return compiled, DiagnosticBag()
+    graph = lineage_of(paths, compiled, manifest_path, target_name)
+    narrowed = compiling.selected_within(paths.project_dir, compiled, selected, excluded, graph=graph)
+    return narrowed.result, narrowed.report
+
+
+def _validated(paths: ProjectPaths, compiled: CompileResult, target_name: str | None) -> tuple[Diagnostic, ...]:
+    """Return what `sst validate` of `compiled` reports: offline, or connected to `target_name`."""
+    if target_name is None:
+        result = ValidateArtifacts(None, catalog=None, target="", clock=SystemClock()).run(
+            compiled, strict=False, connected=False
+        )
+        return tuple(result.diagnostics)
+    profile, port = connect(paths, target_name)
+    try:
+        models = model_check(project_config(paths), Fanout(port), profile.identity)
+        result = ValidateArtifacts(
+            port,
+            catalog=port,
+            target=profile.target_name,
+            clock=SystemClock(),
+            models=models,
+            governance=governance_config(project_config(paths)),
+        ).run(compiled, strict=False, connected=True)
+    finally:
+        port.close()
+    return tuple(result.diagnostics)
+
+
+def _judged_offline(in_scope: Callable[[BaselineEntry], bool], target: str | None) -> Callable[[BaselineEntry], bool]:
+    """Return which entries in scope the offline validate of a compile for `target` may prune.
+
+    The offline entries, and those recording `target` whose code an offline validate finds, as
+    an earlier SST recorded every entry `add --target` wrote.
+    """
+    return lambda entry: in_scope(entry) and (entry.judged_by(None) or _offline_code_on(entry, target))
+
+
+def _judged_connected(in_scope: Callable[[BaselineEntry], bool], target: str) -> Callable[[BaselineEntry], bool]:
+    """Return which entries in scope only the validate connected to `target` may prune."""
+    return lambda entry: in_scope(entry) and entry.judged_by(target) and not _offline_code_on(entry, target)
+
+
+def _offline_code_on(entry: BaselineEntry, target: str | None) -> bool:
+    """Whether `entry` records `target` and holds a code an offline validate finds."""
+    return entry.judged_by(target) and baselinable(entry.code) and found_offline(entry.code)
+
+
+def _in_scope(compiled: CompileResult, *, chosen: bool) -> Callable[[BaselineEntry], bool]:
+    """Return which entries `prune` considers: all, else the chosen artifacts', by key or source file."""
+    if not chosen:
+        return lambda entry: True
+    keys = {item.artifact_key for item in compiled.compiled}
+    files = {path for item in compiled.compiled for path in item.source_files}
+    return lambda entry: entry.artifact in keys or entry.file in files
+
+
+def _absent(path: Path) -> CommandResult:
+    diagnostic = D("SST-PRT009", subject="cli", path=str(path), detail="there is no baseline file")
+    return CommandResult(ERROR, DiagnosticBag((diagnostic,)))
+
+
+def _data(
+    path: Path,
+    baseline_now: Baseline,
+    *,
+    added: tuple[BaselineEntry, ...] = (),
+    pruned: tuple[BaselineEntry, ...] = (),
+    shown: tuple[BaselineEntry, ...] | None = None,
+) -> dict[str, object]:
+    entries = baseline_now.entries if shown is None else shown
+    counts: dict[str, int] = {}
+    for entry in entries:
+        counts[entry.code] = counts.get(entry.code, 0) + 1
+    return {
+        "file": str(path),
+        "entries": [_entry(entry) for entry in entries],
+        "added": [_entry(entry) for entry in added],
+        "pruned": [_entry(entry) for entry in pruned],
+        "expires_on": baseline_now.expires_on or None,
+        "counts": dict(sorted(counts.items())),
+    }
+
+
+def _entry(entry: BaselineEntry) -> dict[str, object]:
+    return {
+        "fingerprint": entry.fingerprint,
+        "code": entry.code,
+        "artifact": entry.artifact,
+        "file": entry.file,
+        "note": entry.note,
+        "connected": entry.connected,
+        "target": entry.target or None,
+    }
+
+
+def _print_entries(current: Baseline, shown: tuple[BaselineEntry, ...], *, lapsed: bool) -> None:
+    state = "expired on" if lapsed else "expires on"
+    click.echo(f"{current.path}: {len(current.entries)} entry(ies), {state} {current.expires_on}")
+    for entry in shown:
+        found = f"connected:{entry.target}" if entry.connected else "offline"
+        click.echo(f"  {entry.code} {entry.artifact or '-'} {entry.file or '-'} {entry.fingerprint} {found}")
+
+
+def _today() -> date:
+    return clock_today(SystemClock())
+
+
+def _now() -> str:
+    return clock_stamp(SystemClock())
+
+
+def _date(today: date, days: int) -> str:
+    return days_after(today, days)

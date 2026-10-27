@@ -1,0 +1,54 @@
+{
+  "alias": "SST_A52873E3F1B1",
+  "comment": "The jaffle analytics toolkit: which semantic view answers which question, and\nthe month-close procedure for supply cost.",
+  "digest": "a52873e3f1b17d2f26b9d600f0d668ee1bc9c241c2ce5c598b358a57360f5886",
+  "extension": "SST_REF_DEV.JAFFLE.JAFFLE_TOOLKIT",
+  "files": [
+    {
+      "path": ".cortex-plugin/plugin.json",
+      "sha256": "64a2321d4ca22b5e726eb9feee8ce3a94e0d967479239489a3ce20c5bd26127a",
+      "size": 248
+    },
+    {
+      "path": "skills/jaffle-operations/SKILL.md",
+      "sha256": "481be433eff375d76cdbc8264cd116c660b8746d27e19c1d02a374dcbdfcf6f5",
+      "size": 2967
+    },
+    {
+      "path": "skills/jaffle-operations/check-supply-month.sql",
+      "sha256": "aa41cf1ffb3f63e1fc0faf92970168d8eac03751d23ab1830f71eacd8c53cf55",
+      "size": 1983
+    },
+    {
+      "path": "skills/jaffle-operations/reference/month-close.md",
+      "sha256": "1e53842737369b5b291c53db4b20c522dde82ca397095b1bb778b204610e5b74",
+      "size": 1657
+    },
+    {
+      "path": "skills/jaffle-operations/supply-backfill/SKILL.md",
+      "sha256": "880957ea6ddba707ec24d492b71b590b5322c85d0d1ba204fa3f57f740115435",
+      "size": 801
+    },
+    {
+      "path": "skills/jaffle-operations/supply-backfill/reference/checklist.md",
+      "sha256": "a94e6d5d97087d3702de5082d10acbafffd1f4a257dc54d0673990fed000644d",
+      "size": 166
+    },
+    {
+      "path": "skills/jaffle-semantics/SKILL.md",
+      "sha256": "5dace22a3910addea823d87de2fec40136706d0b468bc07f039a489801a7731f",
+      "size": 3750
+    },
+    {
+      "path": "skills/jaffle-semantics/reference/join-paths.md",
+      "sha256": "183f3a6b83108a6c1812c5cdcb673e7c975aa5cef4760412572d4c6358ce3a36",
+      "size": 1998
+    },
+    {
+      "path": "skills/jaffle-semantics/reference/metric-shapes.md",
+      "sha256": "fe2db95802f3b0ac4694eb15abf3e12ddd4854c7f64171f9a37348b54c8186d4",
+      "size": 1871
+    }
+  ],
+  "type": "PLUGIN"
+}

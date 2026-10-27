@@ -1,0 +1,330 @@
+---
+# =============================================================================
+# sst_config.yml -- reference project
+# =============================================================================
+# Targeting and policy only; content (descriptions, owners, signatures) lives in
+# the spec files. Every number is a threshold, limit, count or timeout, never
+# member data.
+#
+# Every database is written `{{ target.database }}`, so each dbt target in
+# profiles.yml publishes to its own database; the goldens resolve against `dev`.
+# A `+` key sets a default that folder routes inherit. An artifact -- a view,
+# an agent, a skill, a plugin, a profile, or an eval config -- overrides it in
+# its own `config:` block, writing the key without its `+`: its own value, then
+# the closest folder route, then the block root, then SST's default. An absent
+# key inherits; a `+` key with no value is SST-CFG054.
+#
+# An unknown key is a warning (SST-CFG003) and a misspelled top-level block an
+# error (SST-CFG007). A removed key is SST-CFG043 unless it has its own
+# code; a deprecated spelling is SST-CFG200, an error, and is still read as
+# the key that replaced it.
+# =============================================================================
+
+snowflake:
+  # The orchestration models agents may name (SST-VAL543). Snowflake's served
+  # set is not an enum and changes, so this list is the gate. `auto` is what an
+  # agent resolves to when neither it nor `agents:` names a model. `tool_types`
+  # is absent: it only adds a type Snowflake shipped after this release.
+  orchestration_models:
+    - auto
+    - claude-haiku-4-5
+    - claude-opus-4-5
+    - claude-opus-4-6
+    - claude-opus-4-7
+    - claude-opus-4-8
+    - claude-opus-5
+    - claude-opus-5-5
+    - claude-sonnet-4-5
+    - claude-sonnet-4-6
+    - claude-sonnet-5
+    - gemini-3.1-pro
+    - gemini-3.5-flash
+    - gemini-3.7-flash
+    - gemini-3.8-flash
+    - grok-4.6
+    - openai-1p-gpt-5.4
+    - openai-gpt-4.1
+    - openai-gpt-5
+    - openai-gpt-5-mini
+    - openai-gpt-5.1
+    - openai-gpt-5.2
+    - openai-gpt-5.4
+    - openai-gpt-5.5
+
+project:
+  # Every value is the default, written out so each root is visible; a root
+  # written here must exist (SST-CFG047). There is no key for dbt models: SST
+  # reads them from dbt's manifest.
+  semantic_models_dir: semantic_models
+  agents_dir: agents
+  tools_dir: tools
+  skills_dir: skills
+  # Custom LLM-judge metrics. They create no Snowflake object: each is inlined
+  # into the rendered eval config of the agents that use it.
+  eval_metrics_dir: eval_metrics
+  # Plugins group skills into one extension; Cortex Code agent profiles (a
+  # Snowflake private preview) pin skills and plugins as agents do.
+  plugins_dir: plugins
+  coco_profiles_dir: coco_profiles
+  # Snowflake CoWork profiles (a Snowflake private preview), each routing a
+  # question to one of this project's agents.
+  cowork_profiles_dir: cowork_profiles
+
+# `{{ var('<name>') }}` reads this block; an undeclared name is SST-CFG029. A var
+# is substituted at compile time, so it means the same in every view. These two
+# name `order_state` values used by filters.yml and metrics.yml. `sha_version`
+# is supplied by SST; declaring it here is SST-CFG040.
+vars:
+  completed_state: completed
+  returned_state: returned
+
+# Apply records what it published here, keyed by target, and plan reads it to
+# tell changed artifacts from unchanged ones. These are the defaults: each
+# target keeps its state in its own database and schema.
+state:
+  +database: "{{ target.database }}"
+  +schema: "{{ target.schema }}"
+  +table: SST_STATE
+
+# Tag object names for `{{ tag('<name>') }}`; an undeclared name is SST-REF028.
+# A name resolves to default_prefix plus the upper-cased key. SST applies tag
+# values but never creates a tag object, so these must already exist.
+tags:
+  default_prefix: "{{ target.database }}.{{ target.schema }}"
+  cost_center: {}                       # -> <db>.<schema>.COST_CENTER
+  data_domain: {}                       # -> <db>.<schema>.DATA_DOMAIN
+  metric_tier: {}                       # -> <db>.<schema>.METRIC_TIER
+
+validation:
+  # Every warning becomes an error; --strict/--no-strict on validate, plan and
+  # apply overrides this. Offline, the fixture carries deliberate warnings:
+  # jaffle_delivery's agent toolset (SST-VAL528), jaffle_minimal's empty tool list
+  # (SST-RND010), the analytics agent's generic tool resources (SST-RND013) and
+  # the tools/partner/ members nothing references (SST-CFG018). A strict run
+  # fails on them, so the offline CLI tests pass --no-strict.
+  strict: true
+
+  # The default: validate and plan compile expressions against Snowflake, which
+  # needs a connection. Offline runs pass --no-snowflake-syntax-check, and
+  # validate reports the skip as SST-VAL020 rather than as a pass.
+  snowflake_syntax_check: true
+
+  # Removed (SST-CFG043): `expression_rules` (the metric-expression rules
+  # SST-VAL102 to SST-VAL107 always run), `multipath_check` (always on; a metric
+  # with an ambiguous join path declares using_relationships, SST-VAL116) and
+  # `smoke_query` (smoke probes run under `sst test`).
+
+diagnostics:
+  severity_overrides:
+    # An error by default. The tools/partner/ members call stand-ins that a
+    # connected target may not hold, so here an absent one is a warning and
+    # --no-strict applies past it (tools/partner/).
+    SST-VAL531: warning
+
+tools:
+  # Defaults for the members SST defines; a member that writes `relations:` is
+  # a reference and never created. A member overrides any of these in its own
+  # `config:`, and `+enabled` is removed (SST-CFG043).
+  +database: "{{ target.database }}"
+  +schema: JAFFLE
+
+  # Defined search services and procedures run on this warehouse.
+  +warehouse: SST_REF_WH
+
+  +target_lag: "1 hour"
+
+  # Pinned rather than left to Snowflake's default: the embedding model decides
+  # retrieval, and so the answers built on it.
+  +embedding_model: snowflake-arctic-embed-m-v1.5
+
+  # Defined procedures run with the caller's rights; `owner` would let one read
+  # data the calling user cannot.
+  +execute_as: caller
+
+  # Folder routes, as under semantic_views: an unprefixed key names a directory
+  # under tools/ (SST-CFG041 if it is missing). Everything in tools/partner/ is
+  # immutable: owned by a partner, so a member there that SST would define is
+  # SST-VAL606, and its relations may name one object for every target.
+  # tools/platform/ restates the root's schema.
+  partner:
+    +immutable: true
+  platform:
+    +schema: JAFFLE
+
+semantic_views:
+  +database: "{{ target.database }}"
+  +schema: JAFFLE
+
+  # A folder route. An unprefixed key names a directory under semantic_models/,
+  # as a `models:` key does under models/ (SST-CFG041 if it is missing); routes
+  # nest as folders do, and its `+` keys override per key: views in
+  # semantic_views/core/ publish to <db>.CORE and still inherit +database and
+  # +enabled from this block. A view's own `config:` wins over both.
+  semantic_views:
+    core:
+      +schema: CORE
+  +enabled: true
+
+  # Views publish as CREATE OR REPLACE SEMANTIC VIEW ... COPY GRANTS, so explicit
+  # grants survive a republish. `+tags` and `+max_staleness` would apply to
+  # every view that does not set its own under `config:`; `+meta` is removed
+  # (SST-CFG043).
+
+agents:
+  # Evals publish into their agent's schema, so these also place the evals.
+  # Agents are created once and then versioned, so `+create_mode` and
+  # `+copy_grants` are removed (SST-CFG043).
+  +database: "{{ target.database }}"
+  +schema: JAFFLE
+  +enabled: true
+
+  # Pinned, not `auto`: `auto` lets Snowflake change the model between runs, so
+  # a blocking eval could not attribute a score change.
+  +orchestration_model: claude-sonnet-4-6
+
+  # `+warehouse` is absent: agent tools run on the target warehouse
+  # (SST_REF_WH on dev). Written with no value it would be SST-CFG054. A
+  # generic tool must resolve some warehouse (SST-VAL527).
+
+  +query_timeout: 60
+
+  +budget_seconds: 120
+  +budget_tokens: 16000
+
+  # `reject`: a caller who lacks access to a tool gets an error instead of an
+  # answer from fewer tools, which an eval running under another role would miss.
+  +tool_not_accessible: reject
+
+  # Needs a cortex_search tool (SST-VAL546) and adds AI function cost.
+  +analytical_search: false
+
+  # Moved to each newly published version. LIVE, FIRST, LAST and DEFAULT are
+  # reserved (SST-PRS025); SST writes this one unquoted, as PROMOTED.
+  +alias: promoted
+
+  # A folder route, as under semantic_views: the agents under agents/ops/
+  # publish to <db>.OPS and inherit every other key above (SST-CFG041 if the
+  # folder is missing). An agent's own `config:` still wins over any route.
+  ops:
+    +schema: OPS
+
+cowork_profiles:
+  # Snowflake CoWork profiles, a Snowflake private preview; each publishes an
+  # AGENT after the agents it routes to, staged under
+  # <apply.agent_spec_stage>/cowork-profiles/<name>/. CoWork lists only the
+  # profiles in SNOWFLAKE_INTELLIGENCE.PROFILES (SST-VAL878 notes any other
+  # schema); this rehearsal schema keeps each target's profiles in its own
+  # database, apart from the agents' schemas (one schema for both is SST-VAL879).
+  +database: "{{ target.database }}"
+  +schema: PROFILES
+  +orchestration_model: auto
+  +enabled: true
+
+evals:
+  # No +database or +schema: eval objects live in their agent's schema, and
+  # setting either is SST-CFG015. `+enabled` is removed (SST-CFG043). Every
+  # other key is a default an eval config overrides in its own `config:`.
+  +eval_tier: blocking
+
+  +metrics:
+    # Deterministic (no LLM judge), so it is the metric the eval config gates on.
+    - tool_selection_accuracy
+    # Judged; the eval config reports it without gating.
+    - answer_correctness
+
+  # Pinned so scores stay comparable across runs; an unpinned system metric is
+  # SST-VAL722.
+  +metric_version: v3
+
+  # The last committed version. LIVE, or no version, is SST-VAL719.
+  +agent_version: committed
+
+  +retry: 1
+  +concurrency: 2
+
+  # Scores vary between runs, so a baseline takes five completed attempts.
+  +baseline_runs: 5
+
+  +retention: audit
+
+  # A folder route under agents/: the evals of the agents in agents/ops/ only
+  # report a regression. jaffle_minimal has none yet, so nothing changes.
+  ops:
+    +eval_tier: report
+
+skills:
+  # A skill publishes as a Cortex Extension wherever +bundle_stage resolves for
+  # it: its own `config:` in SKILL.md, then the closest folder route below,
+  # then this root. With none, it is not published (SST-VAL856 names the reason
+  # to an agent that references it). `+enabled` and `+grant_read_to` are removed
+  # (SST-CFG043): SST issues no grants on extensions.
+  +database: "{{ target.database }}"
+  +schema: JAFFLE
+
+  # The internal stage ADD VERSION reads from, created when absent. Each
+  # version uploads under its own prefix, <stage>/<name>/<ALIAS>/, holding
+  # skills/<name>/SKILL.md, so a published version's files never change.
+  # A bundle is the skill folder as authored: reference/x.md publishes as
+  # skills/<name>/reference/x.md, and a nested skill's folder rides along.
+  +bundle_stage: SKILL_BUNDLE_SRC
+  # `true` would tag each new version SNOWFLAKE.CORE.CERTIFICATION_STATUS =
+  # 'CERTIFIED'. SST never un-certifies, so the fixture leaves it off; a skill
+  # can certify itself alone with `config: {certified: true}`.
+  +certified: false
+
+  # A version alias is this prefix plus 12 hex characters of the bundle digest,
+  # so unchanged content keeps its alias and publishes nothing new. Agents that
+  # reference a skill with skill() or plugin() are pinned to its current alias.
+  # Profiles take their VERSION prefix from here too.
+  +version_prefix: "SST_"
+
+
+  # A folder route, as under semantic_views: the skill in
+  # skills/jaffle-operations/ resolves these keys before the root's. It
+  # restates the root's schema; another one would split the skill into its own
+  # schema (SST-VAL806 warns, since agents then need USAGE on both).
+  jaffle-operations:
+    +schema: JAFFLE
+
+plugins:
+  # The same keys as skills:, for the plugins under plugins/; a plugin carries
+  # its member skills whether or not each publishes alone.
+  +database: "{{ target.database }}"
+  +schema: JAFFLE
+  +bundle_stage: SKILL_BUNDLE_SRC
+  +version_prefix: "SST_"
+
+coco_profiles:
+  # Cortex Code agent profiles (a Snowflake private preview). Cortex Code lists
+  # only the AGENTs in CORTEX_CODE.CONFIG, so SST-VAL891 notes on every run that
+  # these are rehearsals. A schema of their own: an agent or CoWork profile
+  # beside them is SST-VAL892. +name_suffix keeps a target's AGENT names apart
+  # from another target's that shares CORTEX_CODE.CONFIG.
+  +database: "{{ target.database }}"
+  +schema: COCO_PROFILES
+  +name_suffix: _REHEARSAL
+
+# Extensions this project consumes but does not publish. `{{ extension('<name>') }}`
+# resolves an entry's `fqn:`, or default_prefix plus the UPPER_SNAKE name.
+# extension() on an extension this project publishes is SST-REF037.
+extensions:
+  default_prefix: "{{ target.database }}.PARTNER"
+  partner-glossary: {}
+
+apply:
+  # `agent_spec_stage` takes a location, and stages CoWork profiles' specs too.
+  # `eval_config_stage` takes only a stage name, because eval configs are staged
+  # in each agent's own schema. Publish order is fixed by artifact type
+  # (semantic views, tools, skills, plugins, profiles, agents, CoWork profiles,
+  # evals), not configured. `deploy:` is a deprecated name for this block: an
+  # error (SST-CFG200), still read as `apply:`.
+  agent_spec_stage:
+    database: "{{ target.database }}"
+    schema: JAFFLE
+    stage: AGENT_SPECS_SSE
+  eval_config_stage:
+    stage: EVAL_CONFIGS
+
+# How the commands that reach Snowflake pace their sessions.
+session:
+  threads: 4

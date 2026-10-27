@@ -1,0 +1,360 @@
+$ sst -o json --project-dir <project> --manifest <manifest> eval --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+--- exit 0
+--- data
+{
+  "cost_read_at": "2026-10-22T14:03:11Z",
+  "evals": [
+    {
+      "dataset": {
+        "name": "EVAL_JAFFLE_ANALYTICS_AGENT_1A2B3C4",
+        "questions": 2,
+        "version": "SST_1A2B3C4D5E6F"
+      },
+      "eval": "jaffle_analytics_agent",
+      "kind": "agent",
+      "metrics": [
+        {
+          "gated": true,
+          "name": "answer_correctness",
+          "threshold": 0.5
+        },
+        {
+          "gated": false,
+          "name": "logical_consistency",
+          "threshold": null
+        }
+      ],
+      "models": [
+        {
+          "alias": null,
+          "cost": {
+            "agent_credits": {
+              "state": "known",
+              "value": 0.4
+            },
+            "credits_per_question": {
+              "state": "known",
+              "value": 0.105
+            },
+            "judge_tokens": {
+              "state": "known",
+              "value": 4100.0
+            },
+            "sql_credits": {
+              "state": "known",
+              "value": 0.02
+            }
+          },
+          "error": null,
+          "latency_ms": {
+            "mean": 150,
+            "p95": 200
+          },
+          "lifecycle": "ga",
+          "metrics": {
+            "answer_correctness": {
+              "max": 0.75,
+              "mean": 0.625,
+              "min": 0.5,
+              "passed": 1,
+              "total": 2
+            },
+            "logical_consistency": {
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "passed": 2,
+              "total": 2
+            }
+          },
+          "model": "claude-sonnet-4-6",
+          "rank": 3,
+          "request_ids": [
+            "P1-r1",
+            "P1-r2",
+            "P2-r1",
+            "P2-r2"
+          ],
+          "role": "pinned",
+          "run_names": [
+            "P1",
+            "P2"
+          ],
+          "status": "completed",
+          "tokens": {
+            "agent_input": 200,
+            "agent_output": 40,
+            "judge": 20,
+            "llm_calls": 6
+          },
+          "version": "VERSION$4"
+        },
+        {
+          "alias": "EVAL_OPENAI_GPT_5",
+          "cost": {
+            "agent_credits": {
+              "state": "known",
+              "value": 0.3
+            },
+            "credits_per_question": {
+              "state": "known",
+              "value": 0.15
+            },
+            "judge_tokens": {
+              "state": "known",
+              "value": 3900.0
+            },
+            "sql_credits": {
+              "state": "known",
+              "value": 0.0
+            }
+          },
+          "error": null,
+          "latency_ms": {
+            "mean": 150,
+            "p95": 200
+          },
+          "lifecycle": "preview",
+          "metrics": {
+            "answer_correctness": {
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "passed": 2,
+              "total": 2
+            },
+            "logical_consistency": {
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "passed": 2,
+              "total": 2
+            }
+          },
+          "model": "openai-gpt-5",
+          "rank": 1,
+          "request_ids": [
+            "G1-r1",
+            "G1-r2"
+          ],
+          "role": "candidate",
+          "run_names": [
+            "G1"
+          ],
+          "status": "partial",
+          "tokens": {
+            "agent_input": 100,
+            "agent_output": 20,
+            "judge": 10,
+            "llm_calls": 3
+          },
+          "version": "VERSION$7"
+        },
+        {
+          "alias": "EVAL_CLAUDE_OPUS_4_8",
+          "cost": {
+            "agent_credits": {
+              "state": "pending",
+              "value": null
+            },
+            "credits_per_question": {
+              "state": "pending",
+              "value": null
+            },
+            "judge_tokens": {
+              "state": "known",
+              "value": 4300.0
+            },
+            "sql_credits": {
+              "state": "pending",
+              "value": null
+            }
+          },
+          "error": null,
+          "latency_ms": {
+            "mean": 150,
+            "p95": 200
+          },
+          "lifecycle": "ga",
+          "metrics": {
+            "answer_correctness": {
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "passed": 2,
+              "total": 2
+            },
+            "logical_consistency": {
+              "max": 1.0,
+              "mean": 1.0,
+              "min": 1.0,
+              "passed": 2,
+              "total": 2
+            }
+          },
+          "model": "claude-opus-4-8",
+          "rank": 2,
+          "request_ids": [
+            "O1-r1",
+            "O1-r2",
+            "O2-r1",
+            "O2-r2"
+          ],
+          "role": "candidate",
+          "run_names": [
+            "O1",
+            "O2"
+          ],
+          "status": "completed",
+          "tokens": {
+            "agent_input": 200,
+            "agent_output": 40,
+            "judge": 20,
+            "llm_calls": 6
+          },
+          "version": "VERSION$6"
+        },
+        {
+          "alias": null,
+          "cost": {
+            "agent_credits": {
+              "state": "unavailable",
+              "value": null
+            },
+            "credits_per_question": {
+              "state": "unavailable",
+              "value": null
+            },
+            "judge_tokens": {
+              "state": "unavailable",
+              "value": null
+            },
+            "sql_credits": {
+              "state": "unavailable",
+              "value": null
+            }
+          },
+          "error": "ADD VERSION failed: Insufficient privileges",
+          "latency_ms": {
+            "mean": null,
+            "p95": null
+          },
+          "lifecycle": "ga",
+          "metrics": {
+            "answer_correctness": {
+              "max": null,
+              "mean": null,
+              "min": null,
+              "passed": 0,
+              "total": 0
+            },
+            "logical_consistency": {
+              "max": null,
+              "mean": null,
+              "min": null,
+              "passed": 0,
+              "total": 0
+            }
+          },
+          "model": "claude-haiku-4-5",
+          "rank": 4,
+          "request_ids": [],
+          "role": "candidate",
+          "run_names": [],
+          "status": "failed",
+          "tokens": {
+            "agent_input": 0,
+            "agent_output": 0,
+            "judge": 0,
+            "llm_calls": 0
+          },
+          "version": null
+        }
+      ],
+      "notes": [
+        "Held fixed: dataset EVAL_JAFFLE_ANALYTICS_AGENT_1A2B3C4 SST_1A2B3C4D5E6F, metric versions, judge claude-sonnet-4-6, everything in the specification but models.orchestration.",
+        "Committed VERSION$5 (hold), VERSION$6 (EVAL_CLAUDE_OPUS_4_8), VERSION$7 (EVAL_OPENAI_GPT_5), VERSION$8 (restore); the default and the release's alias stayed on VERSION$4.",
+        "Usage views lag up to an hour; values marked pending fill in with --refresh-cost."
+      ],
+      "questions": [
+        {
+          "changes": {},
+          "id": "q1",
+          "results": {
+            "claude-opus-4-8": {
+              "passed": true,
+              "reason": "why 1",
+              "route": null,
+              "score": 1.0
+            },
+            "claude-sonnet-4-6": {
+              "passed": true,
+              "reason": "why 1",
+              "route": null,
+              "score": 1.0
+            },
+            "openai-gpt-5": {
+              "passed": true,
+              "reason": "why 1",
+              "route": null,
+              "score": 1.0
+            }
+          },
+          "text": "Which jaffles sold most in week 1?"
+        },
+        {
+          "changes": {
+            "claude-opus-4-8": "fixes",
+            "openai-gpt-5": "fixes"
+          },
+          "id": "q2",
+          "results": {
+            "claude-opus-4-8": {
+              "passed": true,
+              "reason": "why 2",
+              "route": null,
+              "score": 1.0
+            },
+            "claude-sonnet-4-6": {
+              "passed": false,
+              "reason": "why 2",
+              "route": null,
+              "score": 0.0
+            },
+            "openai-gpt-5": {
+              "passed": true,
+              "reason": "why 2",
+              "route": null,
+              "score": 1.0
+            }
+          },
+          "text": "Which jaffles sold most in week 2?"
+        }
+      ],
+      "runs_per_model": 2,
+      "subject": {
+        "name": "jaffle_analytics_agent",
+        "pinned_model": "claude-sonnet-4-6",
+        "qualified_name": "JAFFLE.AGENTS.JAFFLE_ANALYTICS_AGENT",
+        "released_version": "VERSION$4"
+      },
+      "verdict": {
+        "excluded": [
+          {
+            "model": "openai-gpt-5",
+            "reason": "preview"
+          }
+        ],
+        "kind": "winner",
+        "model": "claude-opus-4-8",
+        "pin_suggestion": "# agent.yml of agent 'jaffle_analytics_agent'\nconfig:\n  orchestration_model: claude-opus-4-8",
+        "summary": "claude-opus-4-8 beats the pinned claude-sonnet-4-6 on answer_correctness (1.00 vs 0.62) outside the spread, its credits per question pending."
+      }
+    }
+  ],
+  "generated_at": "2026-10-22T14:03:11Z",
+  "git_sha": "703f69a",
+  "run_id": "c7f2a19e",
+  "schema": "sst.compare/1",
+  "target": "dev"
+}

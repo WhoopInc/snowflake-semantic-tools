@@ -1,0 +1,18 @@
+# ONE CORTEX CODE AGENT PROFILE (a Snowflake private preview): an AGENT whose
+# specification holds only an orchestration model, response instructions, and
+# skills. The instructions are shared/AGENTS.md, shared/rules/*.md, then this
+# folder's AGENTS.md; each skill is pinned to the version alias this project's
+# extension published, as an agent's skills are. It publishes and versions like
+# an agent, and --prune drops it.
+#
+# NO hooks, mcp_servers, or commands: agent profiles cannot carry them
+# (SST-VAL851). Access is a GRANT USAGE on the AGENT, managed outside SST.
+name: jaffle_analyst
+description: |-
+  Jaffle analysts: sales, menu, and month-close questions against the jaffle
+  semantic views.
+# models.orchestration; omit it to let Cortex Code choose.
+model: auto
+skills:
+  - "{{ skill('jaffle-semantics') }}"
+  - "{{ skill('jaffle-operations') }}"

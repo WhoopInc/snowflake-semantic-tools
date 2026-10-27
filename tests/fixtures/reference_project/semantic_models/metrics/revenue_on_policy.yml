@@ -1,0 +1,7 @@
+---
+# Reads the BOOLEAN view variable tax_inclusive.
+metric:
+  name: revenue_on_policy
+  description: |-
+    Revenue measured with or without collected tax, per the view's tax policy.
+  expr: "SUM(CASE WHEN tax_inclusive THEN {{ ref('orders', 'order_total') }} ELSE {{ ref('orders', 'subtotal') }} END)"

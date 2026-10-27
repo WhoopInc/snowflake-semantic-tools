@@ -1,0 +1,88 @@
+"""Pure manifest, state, and saved-plan documents, and what they share.
+
+`manifest` holds the compile manifest, `applied` the state apply records per target, and
+`saved_plan` a plan saved for a later apply; `documents` and `codec` hold what they all
+share: the canonical encoding, the content hash, the error a stored document raises, and the
+field shapes. This module re-exports their public names, so importers never reach into the
+submodules.
+"""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.state.applied import (
+    ADOPTED,
+    APPLIED,
+    DEACTIVATED,
+    FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
+    STATE_SCHEMA_VERSION,
+    AppliedEntry,
+    AppliedResource,
+    AppliedResourceInput,
+    LastRun,
+    ResourceStatus,
+    State,
+    migrate_state,
+    written_by_newer,
+)
+from snowflake_semantic_tools.domain.state.codec import (
+    optional_object,
+    pairs_from_json,
+    pairs_to_json,
+    resources_from_json,
+    resources_to_json,
+)
+from snowflake_semantic_tools.domain.state.documents import (
+    SST_VERSION,
+    StoredDocumentError,
+    canonical_json,
+    content_hash,
+)
+from snowflake_semantic_tools.domain.state.manifest import (
+    MANIFEST_SCHEMA_VERSION,
+    ArtifactEntry,
+    Manifest,
+    migrate_manifest,
+)
+from snowflake_semantic_tools.domain.state.saved_plan import (
+    OBSERVATION_TTL_SECONDS,
+    PLAN_SCHEMA_VERSION,
+    PlanMismatch,
+    SavedChange,
+    SavedPlan,
+)
+
+__all__ = [
+    "ADOPTED",
+    "APPLIED",
+    "AppliedEntry",
+    "AppliedResource",
+    "AppliedResourceInput",
+    "ArtifactEntry",
+    "DEACTIVATED",
+    "FAILED_AFTER_WRITE",
+    "LastRun",
+    "MANIFEST_SCHEMA_VERSION",
+    "OBSERVATION_TTL_SECONDS",
+    "Manifest",
+    "PARTIAL_WRITE",
+    "PLAN_SCHEMA_VERSION",
+    "PlanMismatch",
+    "ResourceStatus",
+    "SST_VERSION",
+    "STATE_SCHEMA_VERSION",
+    "SavedChange",
+    "SavedPlan",
+    "State",
+    "StoredDocumentError",
+    "canonical_json",
+    "content_hash",
+    "migrate_manifest",
+    "migrate_state",
+    "optional_object",
+    "pairs_from_json",
+    "pairs_to_json",
+    "resources_from_json",
+    "resources_to_json",
+    "written_by_newer",
+]

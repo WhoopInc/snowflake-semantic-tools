@@ -1,0 +1,5 @@
+{
+  "model": "orders",
+  "column": "order_state",
+  "meta": {"sample_values": ["placed", "nan"]}
+}

@@ -1,0 +1,146 @@
+"""Check a skill catalog: folder and plugin names, staged file names, uniqueness, plugin members.
+
+Skills and plugins publish into one extension namespace. Skills are checked in directory
+order, then plugins in directory order, and each name is claimed by the first artifact to
+reach it, so a plugin that collides with a skill is always the one reported.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Container, Iterable, Sequence
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.agent import ResolvedAgent
+from snowflake_semantic_tools.domain.model.identifier import Identifier
+from snowflake_semantic_tools.domain.model.skill.model import Plugin, Skill, SkillCatalog
+from snowflake_semantic_tools.domain.validate.shared import SKILL_NAMES, Emitter, duplicates
+from snowflake_semantic_tools.domain.validate.skill_files import check_skill_files
+from snowflake_semantic_tools.domain.validate.stage_path import ALLOWED_DESCRIPTION, unsafe_segment
+
+
+def validate_skill_catalog(catalog: SkillCatalog) -> DiagnosticBag:
+    """Check folder, naming, uniqueness, and plugin-membership rules across the catalog.
+
+    The loader's diagnostics come first, then each skill's, its file checks after its naming
+    rules, then each plugin's. Every skill is checked, whichever channel ships it or none.
+
+    Diagnostics:
+        Every code `check_skill_files` lists, for each skill.
+        SST-VAL801: a skill folder or plugin name is not kebab-case, or the frontmatter disagrees.
+        SST-VAL857: a skill file has a name a stage rejects.
+        SST-VAL832: a skill or plugin takes an extension name an earlier one already took.
+        SST-PRS002: a plugin lists no skills.
+        SST-VAL837: a plugin lists a member more than once; reported once per member, by name.
+        SST-VAL835: a plugin member is not a skill in this project; reported per listing.
+    """
+    skills = sorted(catalog.skills, key=lambda item: item.directory)
+    plugins = sorted(catalog.plugins, key=lambda item: item.directory)
+    taken = _extension_collisions((*skills, *plugins))
+    names = {skill.name for skill in catalog.skills}
+    diagnostics: list[Diagnostic] = list(catalog.diagnostics)
+    for index, skill in enumerate(skills):
+        diagnostics.extend(_skill_rules(skill, taken.get(index)))
+        diagnostics.extend(check_skill_files(skill))
+    for index, plugin in enumerate(plugins, start=len(skills)):
+        diagnostics.extend(_plugin_rules(plugin, taken.get(index), names))
+    return DiagnosticBag(diagnostics)
+
+
+def _extension_collisions(artifacts: Sequence[Skill | Plugin]) -> dict[int, str]:
+    """Map each repeat's position to the directory of the artifact that took its extension name first.
+
+    Positions, not the records, key the result, so two equal records stay distinct.
+    """
+    repeats = duplicates(enumerate(artifacts), lambda pair: pair[1].extension_name)
+    return {index: first.directory for (_, first), (index, _) in repeats}
+
+
+def _skill_rules(skill: Skill, other: str | None) -> tuple[Diagnostic, ...]:
+    """Check one skill folder; `other` is the directory that took its extension name first."""
+    emit = Emitter(subject=skill.key, origin=skill.origin, artifact=skill.name)
+    problem = SKILL_NAMES.problem(skill.name)
+    if problem is not None:
+        emit("SST-VAL801", detail=f"folder name '{skill.name}' is not {problem}")
+    if skill.declared_name is not None and skill.declared_name != skill.name:
+        emit("SST-VAL801", detail=f"frontmatter name '{skill.declared_name}' does not match the folder name")
+    for file in sorted(skill.files, key=lambda item: item.path):
+        unsafe = unsafe_segment(file.path)
+        if unsafe is not None:
+            emit(
+                "SST-VAL857",
+                origin=skill.origin_of(file.path),
+                artifact=skill.key,
+                value=file.path,
+                found=unsafe,
+                expected=ALLOWED_DESCRIPTION,
+            )
+    if other is not None:
+        emit("SST-VAL832", artifact=skill.directory, other=other)
+    return emit.diagnostics
+
+
+def _plugin_rules(plugin: Plugin, other: str | None, skills: Container[str]) -> tuple[Diagnostic, ...]:
+    """Check one plugin manifest; `other` is the directory that took its extension name first."""
+    emit = Emitter(subject=plugin.key, origin=plugin.origin, artifact=plugin.name)
+    problem = SKILL_NAMES.problem(plugin.name)
+    if problem is not None:
+        emit("SST-VAL801", detail=f"plugin name '{plugin.name}' is not {problem}")
+    if other is not None:
+        emit("SST-VAL832", artifact=plugin.directory, other=other)
+    if not plugin.members:
+        emit("SST-PRS002", artifact=plugin.key, field="skills")
+    for member in sorted({repeat for _, repeat in duplicates(plugin.members, lambda name: name)}):
+        emit("SST-VAL837", name=member)
+    for member in plugin.members:
+        if member not in skills:
+            emit("SST-VAL835", name=member)
+    return emit.diagnostics
+
+
+def unrunnable_scripts(
+    agents: Sequence[ResolvedAgent], published: Iterable[tuple[str, tuple[tuple[str, str], ...]]]
+) -> tuple[Diagnostic, ...]:
+    """Report each script an agent-referenced extension ships when no agent that pins it can run it.
+
+    An extension no agent pins is SST-VAL804's, so it is not reported here as well.
+
+    Args:
+        published: Each extension this project publishes, as its artifact key and the scripts
+            it carries, each as the skill that ships it and the path inside that skill.
+
+    Diagnostics:
+        SST-VAL814: a bundled script, when no consuming agent declares a code_execution tool.
+    """
+    consumers: dict[str, bool] = {}
+    for agent in agents:
+        runs_code = any(tool.type == "code_execution" for tool in agent.model.tools)
+        for key in agent.skill_dependencies:
+            consumers[key] = consumers.get(key, False) or runs_code
+    return tuple(
+        D("SST-VAL814", subject=key, artifact=skill, path=path)
+        for key, scripts in published
+        if consumers.get(key) is False
+        for skill, path in scripts
+    )
+
+
+def extension_name_diagnostics(
+    subject: str, label: str, name: str, extension_name: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Report SST-VAL801 when a skill or plugin's extension name cannot be an unquoted object name.
+
+    Only a name that passed the naming rule is checked, and a kebab-case name converts to
+    letters, digits and underscores, so the one way it fails is a leading digit, which the
+    naming rule allows.
+
+    Args:
+        label: What the name is in the report, such as `folder` or `plugin`.
+    """
+    try:
+        Identifier.parse(extension_name)
+    except ValueError:
+        detail = (
+            f"{label} name '{name}' publishes as {extension_name}, which must start with a letter to name an extension"
+        )
+        return (D("SST-VAL801", origin=origin, subject=subject, artifact=name, detail=detail),)
+    return ()

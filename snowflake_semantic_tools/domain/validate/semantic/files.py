@@ -1,0 +1,119 @@
+"""Check each semantic-model file as text: folded scalars, and whether it is canonically formatted.
+
+Both rules read the file's bytes rather than its parsed tree, since neither a scalar's style
+nor a file's whitespace survives the parse.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator, Mapping
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
+from snowflake_semantic_tools.domain.model.text_fields import STRUCTURAL_KEYS
+from snowflake_semantic_tools.domain.validate.semantic.authored_keys import AUTHORED_KEYS
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
+
+# A block scalar header that folds: `key: >`, `key: >-`, `- >+2`, with an optional comment.
+_FOLDED = re.compile(r"^\s*(?:-\s+)*(?:[^\s#][^#]*?:\s+)?>[-+0-9]*\s*(?:#.*)?$")
+
+
+def file_diagnostics(documents: AuthoredDocuments, texts: Mapping[str, str]) -> tuple[Diagnostic, ...]:
+    """Report, file by file in discovery order, each folded scalar and then the file's formatting.
+
+    Args:
+        texts: Each document's file as UTF-8 text, by its path; a document without one is
+            not checked.
+
+    Diagnostics:
+        SST-VAL008: a structural field of a semantic-model node (SQL, an expression, an
+            instruction) uses `>` or `>-`, which would join its lines.
+        SST-VAL009: a tab indents a line, or the file does not end in exactly one newline.
+    """
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        text = texts.get(document.path)
+        if text is None:
+            continue
+        diagnostics.extend(folded_scalars(document, text))
+        if layout_problem(text) is not None:
+            diagnostics.append(D("SST-VAL009", origin=Origin(document.path), path=document.path))
+    return tuple(diagnostics)
+
+
+def layout_problem(text: str) -> str | None:
+    """Name the first formatting problem SST-LOD012 does not already report: a tab or the final newline.
+
+    Carriage returns and trailing whitespace are SST-LOD012's, raised when the file is read.
+    """
+    return formatting_problem("\n".join(line.rstrip() for line in text.replace("\r", "").split("\n")))
+
+
+def formatting_problem(text: str) -> str | None:
+    """Name the first way `text` is not canonically formatted; None when it is.
+
+    Canonical is LF line endings, no tab in a line's indentation, no trailing whitespace, and
+    exactly one newline at the end of a non-empty file.
+    """
+    if "\r" in text:
+        return "a carriage return"
+    for line in text.split("\n"):
+        if line != line.rstrip():
+            return "trailing whitespace"
+        if "\t" in line[: len(line) - len(line.lstrip())]:
+            return "a tab in its indentation"
+    if text and (not text.endswith("\n") or text.endswith("\n\n")):
+        return "no single final newline"
+    return None
+
+
+def folded_scalars(document: AuthoredDocument, text: str) -> Iterator[Diagnostic]:
+    """Report each folded block scalar that is a structural field of a semantic-model node.
+
+    A prose field such as `description` may fold: `sst format` writes a long line that way, and
+    loading it gives back the one line. A structural field (`STRUCTURAL_KEYS`) may not, as its
+    line breaks are code; a field is named by the last key on its path.
+    """
+    roots = {node_root(node_type): node_type for node_type in AUTHORED_KEYS}
+    by_line = _paths_by_line(document.line_index)
+    for number, line in enumerate(text.split("\n"), start=1):
+        if not _FOLDED.match(line):
+            continue
+        path = by_line.get(number)
+        if path is None or len(path) < 3 or path[0] not in roots or not isinstance(path[1], int):
+            continue
+        keys = [part for part in path[2:] if isinstance(part, str)]
+        if not keys or keys[-1] not in STRUCTURAL_KEYS:
+            continue
+        node_type = roots[str(path[0])]
+        nodes = document.tree.get(str(path[0]))
+        node = nodes[path[1]] if isinstance(nodes, list) and path[1] < len(nodes) else None
+        name = str(node.get("name") or path[1]) if isinstance(node, dict) else str(path[1])
+        yield D(
+            "SST-VAL008",
+            origin=Origin(document.path, number),
+            subject=artifact_key(node_type, name),
+            type=node_type,
+            name=name,
+            field=_field(path[2:]),
+        )
+
+
+def _paths_by_line(line_index: Mapping[NodePath, object]) -> dict[int, NodePath]:
+    """The deepest node path that starts on each line: the value a block scalar header opens."""
+    found: dict[int, NodePath] = {}
+    for path, position in line_index.items():
+        line = getattr(position, "line", None)
+        if isinstance(line, int) and len(path) >= len(found.get(line, ())):
+            found[line] = path
+    return found
+
+
+def _field(parts: tuple[object, ...]) -> str:
+    """A node path below its node, as a diagnostic names a field: `window.order_by[0].ref`."""
+    label = ""
+    for part in parts:
+        label += f"[{part}]" if isinstance(part, int) else (f".{part}" if label else str(part))
+    return label

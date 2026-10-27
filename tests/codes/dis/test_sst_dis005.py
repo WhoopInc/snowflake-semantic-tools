@@ -1,0 +1,41 @@
+"""SST-DIS005: a directory link loops back into the tree, or the tree is too deep."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from snowflake_semantic_tools.adapters.yaml.discover import MAX_DEPTH, discover_yaml
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.dis_codes import models
+
+
+def test_sst_dis005_fires(tmp_path: Path) -> None:
+    root = models(tmp_path, "sub/metrics.yml")
+    (root / "sub" / "loop").symlink_to("..")
+    [diagnostic] = discover_yaml(tmp_path, "semantic_models").diagnostics
+    assert (diagnostic.code, diagnostic.severity) == ("SST-DIS005", Severity.ERROR)
+    assert (
+        diagnostic.message
+        == "semantic_models/sub/loop is not walked: it links back into the tree, or lies more than 32 directories deep"
+    )
+
+
+def test_sst_dis005_fires_past_the_depth_limit(tmp_path: Path) -> None:
+    models(tmp_path, "/".join(["d"] * (MAX_DEPTH + 1)) + "/metrics.yml")
+    [diagnostic] = discover_yaml(tmp_path, "semantic_models").diagnostics[:1]
+    assert diagnostic.code == "SST-DIS005"
+
+
+def test_sst_dis005_fires_for_a_link_to_itself(tmp_path: Path) -> None:
+    root = models(tmp_path, "metrics.yml")
+    (root / "loop.yml").symlink_to("loop.yml")
+    [diagnostic] = discover_yaml(tmp_path, "semantic_models").diagnostics
+    assert (diagnostic.code, diagnostic.context["path"]) == ("SST-DIS005", "semantic_models/loop.yml")
+
+
+def test_sst_dis005_silent(tmp_path: Path) -> None:
+    # A link to a directory outside the tree is not a loop: it is refused (SST-PRT009), not walked.
+    root = models(tmp_path, "metrics.yml")
+    (tmp_path / "elsewhere").mkdir()
+    (root / "shared").symlink_to(tmp_path / "elsewhere")
+    assert [item.code for item in discover_yaml(tmp_path, "semantic_models").diagnostics] == ["SST-PRT009"]

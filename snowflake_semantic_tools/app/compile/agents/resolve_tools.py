@@ -1,0 +1,517 @@
+"""Resolve one authored agent tool into the entry its specification carries.
+
+Each modeled tool type has a resolver in `_RESOLVERS`: a Cortex Analyst tool names a
+semantic view, a Cortex Search or generic tool names a tool member, and an agent toolset
+names another agent. Every other known type is a built-in, such as data_to_chart. An `mcp`
+tool is refused: Snowflake attaches MCP servers through the spec's `mcp_servers:` key. A
+resolver appends what it finds to the diagnostics it is given, in order, and returns None for
+a tool that cannot be rendered; `_finish` then checks what every resolved tool shares and
+builds its entry.
+
+Its diagnostics are reported as each entry resolves against the `AgentCompileContext`, so
+they stay with resolution here rather than in `domain.validate`.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
+from types import MappingProxyType
+
+from snowflake_semantic_tools.app.compile.agents.context import AgentCompileContext
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.agent import KNOWN_AGENT_TOOL_TYPES, AgentModel, AgentTool, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.tool import ToolKind, ToolMember, ToolOwnership
+from snowflake_semantic_tools.domain.resolve.stage_path import resolve_stage_path
+from snowflake_semantic_tools.domain.validate.agent_tool import (
+    generic_callable,
+    misplaced_keys,
+    overrides,
+    search_tool_columns,
+    search_tool_problems,
+    signature_mismatch,
+)
+
+_SEARCH_SERVICES = (ToolKind.CORTEX_SEARCH_SERVICE.value,)
+_ROUTINES = (ToolKind.PROCEDURE.value, ToolKind.FUNCTION.value)
+_AGENTS = (ToolKind.AGENT.value,)
+# The tool type that inherits another agent's tools; Snowflake never shows its entry to the
+# orchestrator, so it needs no description.
+_TOOLSET = "agent_toolset"
+# A tool type Snowflake accepts in CREATE AGENT and refuses on every run (SST-VAL559).
+_MCP = "mcp"
+# An array argument is refused by the tool runtime, as an ARRAY parameter is (SST-VAL625).
+_INPUT_TYPES = frozenset(("string", "number", "integer", "boolean"))
+
+# What an agent tool's name may hold: letters, digits, `_` and `-`.
+_TOOL_IDENTIFIER = re.compile(r"[A-Za-z0-9_-]+")
+
+
+@dataclass(frozen=True, slots=True)
+class _Resolution:
+    """What a resolver found for one tool, from which `_finish` builds the tool's entry."""
+
+    name: str
+    description: str
+    resources: dict[str, object] = field(default_factory=dict)
+    depends_on: tuple[str, ...] = ()
+    member: str | None = None
+    external: bool = False
+
+
+_Resolver = Callable[[AgentModel, AgentTool, AgentCompileContext, list[Diagnostic]], _Resolution | None]
+
+
+def resolve_tool(
+    agent: AgentModel,
+    authored: AgentTool,
+    context: AgentCompileContext,
+) -> tuple[ResolvedAgentTool | None, tuple[Diagnostic, ...]]:
+    """Resolve one authored tool of `agent`, returning None for a tool that cannot be rendered.
+
+    A type the renderer does not know resolves to nothing. Otherwise the type's resolver
+    runs, and a tool it resolves is checked for its name, description, and query timeout.
+    Every diagnostic reported here names the agent as its subject.
+
+    Returns:
+        The resolved tool, or None, and every diagnostic in the order it was found.
+
+    Diagnostics:
+        SST-VAL559: the tool's type is `mcp`, which no run of the agent accepts.
+        SST-RND012: the tool type is unknown to the renderer, and `snowflake.tool_types` adds no such type.
+        SST-VAL516: the tool declares a key another tool type takes and its own does not.
+        SST-VAL520: an Analyst tool names no semantic view.
+        SST-VAL016: an Analyst tool's semantic view is one the project declares and does not
+            publish, because it is disabled.
+        SST-REF011: an Analyst tool's semantic view is not one that compiled.
+        SST-VAL521: a Cortex Search or generic tool has no name, or names no tool member; or an
+            agent toolset names neither an agent nor a tool member.
+        SST-REF010: the tool member a tool names does not resolve (from the tool catalog).
+        SST-REF020: the tool member is of a type the tool cannot use.
+        SST-REF018: a referenced tool member has no relation for the target (from the catalog).
+        SST-REF019: a referenced tool member's relation does not parse (from the catalog).
+        SST-VAL522: a Cortex Search tool declares half of its document-preview pair.
+        Every code `resolve_stage_path` lists, for a Cortex Search tool's `stage_path`.
+        SST-VAL524: a Cortex Search tool's column descriptor is malformed.
+        SST-REF050, SST-REF015, SST-REF008, SST-VAL622: a Cortex Search tool's own column is not
+            what its member's columns are (see `search_tool_columns`).
+        SST-VAL523: a Cortex Search tool filters on a column not marked filterable.
+        SST-VAL615: a Cortex Search or generic tool overrides a value its member declares.
+        SST-VAL526: a generic tool's input schema is not an object.
+        SST-PRS032: an input schema property has a type a tool input cannot carry.
+        SST-PRS033: an input schema requires a property it does not declare.
+        SST-VAL607: a generic tool's input schema disagrees with its member's signature.
+        SST-VAL623, SST-VAL624, SST-VAL625: a generic tool's member returns a table, or has a
+            parameter whose name must be quoted or whose type is ARRAY, OBJECT or VARIANT.
+        SST-VAL527: a generic tool resolves no warehouse.
+        SST-REF012: an agent toolset's `agent()` names no enabled agent.
+        SST-VAL528: an agent toolset resolved, so this spec no longer fixes the tool surface.
+        SST-VAL529: a built-in tool declares `passthrough` resources, which it may not emit.
+        SST-VAL513: the resolved name is empty or longer than 64 characters.
+        SST-PRS009: the resolved name holds a character a tool identifier may not.
+        SST-VAL517: a web_search tool is not named web_search.
+        SST-VAL518: the resolved tool, other than an agent toolset, has no description.
+        SST-PRS016: the tool's `query_timeout` is not positive.
+    """
+    diagnostics: list[Diagnostic] = []
+    if authored.type == _MCP:
+        name = authored.name or authored.type
+        diagnostics.append(D("SST-VAL559", artifact=agent.name, name=name, subject=agent.key, origin=authored.origin))
+        return None, tuple(diagnostics)
+    if authored.type not in KNOWN_AGENT_TOOL_TYPES | context.extra_tool_types:
+        diagnostics.append(
+            D("SST-RND012", artifact=agent.name, found=authored.type, subject=agent.key, origin=authored.origin)
+        )
+        return None, tuple(diagnostics)
+    # A known type without a resolver of its own is a built-in.
+    # An unnamed Analyst tool is named after its view; any other unnamed tool, after its type.
+    label = authored.name or (authored.semantic_view.upper() if authored.semantic_view else authored.type)
+    diagnostics.extend(misplaced_keys(agent, authored, label))
+    resolution = _RESOLVERS.get(authored.type, _builtin)(agent, authored, context, diagnostics)
+    if resolution is None:
+        return None, tuple(diagnostics)
+    tool = _finish(agent, authored, resolution, diagnostics)
+    return tool, tuple(diagnostics)
+
+
+def _analyst(
+    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> _Resolution | None:
+    """A Cortex Analyst tool: its own `name`, else the name of the compiled view it queries."""
+    if not authored.semantic_view:
+        diagnostics.append(
+            D("SST-VAL520", artifact=agent.name, name=authored.name or "", subject=agent.key, origin=authored.origin)
+        )
+        return None
+    target = context.semantic_views.get(authored.semantic_view.casefold())
+    declared = view_key(authored.semantic_view)
+    if target is None and declared in context.unpublished:
+        diagnostics.append(
+            D("SST-VAL016", type="agent", name=agent.name, value=declared, subject=agent.key, origin=authored.origin)
+        )
+        return None
+    if target is None:
+        diagnostics.append(D("SST-REF011", name=authored.semantic_view, subject=agent.key, origin=authored.origin))
+        return None
+    environment = _execution_environment(
+        authored.warehouse or context.warehouse,
+        authored.query_timeout or context.query_timeout,
+    )
+    return _Resolution(
+        authored.name or target.name.folded,
+        authored.description or "",
+        {"semantic_view": target.sql, **environment},
+        (view_key(authored.semantic_view),),
+    )
+
+
+def _search(
+    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> _Resolution | None:
+    """A Cortex Search tool over a search service member, defined here or referenced."""
+    backing = _backing(agent, authored, context, diagnostics, authored_key="search_service", expected=_SEARCH_SERVICES)
+    if backing is None:
+        return None
+    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse
+    relation = _member_target(backing, context, diagnostics)
+    if relation is None:
+        return None
+    name = authored.name or ""
+    if authored.stage_path is not None:
+        stage_path = resolve_stage_path(
+            authored.stage_path,
+            context.tools,
+            lambda member: context.tool_target(member.name),
+            authored.origin,
+            field=f"{name}.stage_path",
+            artifact=agent.name,
+            subject=agent.key,
+        )
+        if isinstance(stage_path, Diagnostic):
+            diagnostics.append(stage_path)
+            return None
+        authored = replace(authored, stage_path=stage_path)
+    authored, own_columns, column_problems = search_tool_columns(agent, authored, name, backing)
+    diagnostics.extend(column_problems)
+    resources = _search_resources(authored, backing, relation, warehouse, context.query_timeout, own_columns)
+    columns = resources.get("columns_and_descriptions")
+    diagnostics.extend(search_tool_problems(agent, authored, name, columns if isinstance(columns, dict) else {}))
+    diagnostics.extend(overrides(agent, authored, name, backing))
+    return _Resolution(
+        name,
+        authored.description or backing.description or "",
+        resources,
+        _dependency(backing),
+        backing.name,
+        backing.artifact_key is None,
+    )
+
+
+def _generic(
+    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> _Resolution | None:
+    """A generic tool over a procedure or function member, called with an object input schema."""
+    backing = _backing(agent, authored, context, diagnostics, authored_key="identifier", expected=_ROUTINES)
+    if backing is None:
+        return None
+    name = authored.name or ""
+    warehouse = authored.warehouse or backing.configured_warehouse or context.warehouse or context.target_warehouse
+    # A referenced member with no relation is reported; the tool's other checks still run.
+    relation = _member_target(backing, context, diagnostics) or context.tool_target(backing.name)
+    resources: dict[str, object] = {
+        "identifier": relation.sql,
+        "type": backing.type,
+        **_execution_environment(warehouse, authored.query_timeout or context.query_timeout),
+        **dict(authored.passthrough),
+    }
+    if not authored.input_schema or authored.input_schema.get("type") != "object":
+        diagnostics.append(
+            D(
+                "SST-VAL526",
+                artifact=agent.name,
+                name=name,
+                found=authored.input_schema.get("type"),
+                subject=agent.key,
+            )
+        )
+    diagnostics.extend(_input_schema_diagnostics(agent, name, authored.input_schema))
+    mismatch = signature_mismatch(agent, name, backing, authored.input_schema)
+    if mismatch is not None:
+        diagnostics.append(mismatch)
+    diagnostics.extend(generic_callable(agent, name, backing))
+    if not warehouse:
+        diagnostics.append(D("SST-VAL527", artifact=agent.name, name=name, subject=agent.key))
+    diagnostics.extend(overrides(agent, authored, name, backing))
+    return _Resolution(
+        name,
+        authored.description or backing.description or "",
+        resources,
+        _dependency(backing),
+        backing.name,
+        backing.artifact_key is None,
+    )
+
+
+def _backing(
+    agent: AgentModel,
+    authored: AgentTool,
+    context: AgentCompileContext,
+    diagnostics: list[Diagnostic],
+    *,
+    authored_key: str,
+    expected: tuple[str, ...],
+) -> ToolMember | None:
+    """Resolve the tool member a Cortex Search or generic tool names, if its type is `expected`.
+
+    A tool missing `name`, `authored_key`, or both reports every key it misses; an unnamed tool
+    is called after its type.
+    """
+    name = authored.name or ""
+    missing = tuple(key for key, absent in (("name", not name), (authored_key, authored.backing is None)) if absent)
+    if missing:
+        diagnostics.append(
+            D(
+                "SST-VAL521",
+                artifact=agent.name,
+                name=name or authored.type,
+                field=", ".join(missing),
+                subject=agent.key,
+            )
+        )
+        return None
+    backing, problems = context.tools.resolve(str(authored.backing))
+    diagnostics.extend(problems)
+    if backing is None:
+        return None
+    if backing.type not in expected:
+        diagnostics.append(
+            D(
+                "SST-REF020",
+                ref_function="tool",
+                name=backing.name,
+                found=backing.type,
+                expected=" or ".join(expected),
+                subject=agent.key,
+            )
+        )
+        return None
+    return backing
+
+
+def _delegate(
+    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> _Resolution | None:
+    """An agent toolset: another agent of this project by `agent()`, or an `agent` tool member by `tool()`.
+
+    Snowflake unions the named agent's tools into this agent's at run time, so the resources
+    are that agent's name alone. An agent reached by `agent()` must publish first, so it is a
+    dependency. A member, written `identifier: "{{ tool('<name>') }}"`, of another type drops
+    the tool, and so does a member that resolves to no relation; for a defined member, which
+    has none, nothing reports it. A toolset that names neither is reported.
+    """
+    name = authored.name or ""
+    resolution: _Resolution | None = None
+    if authored.agent_ref:
+        target = context.agents.get(authored.agent_ref.casefold())
+        if target is None:
+            diagnostics.append(D("SST-REF012", name=authored.agent_ref, subject=agent.key))
+        else:
+            resolution = _Resolution(
+                name or target.artifact_name,
+                authored.description or "",
+                {"agent_name": target.sql},
+                (artifact_key("agent", authored.agent_ref.casefold()),),
+            )
+    elif authored.backing:
+        backing, problems = context.tools.resolve(authored.backing)
+        diagnostics.extend(problems)
+        if backing is not None and backing.type not in _AGENTS:
+            diagnostics.append(
+                D(
+                    "SST-REF020",
+                    ref_function="tool",
+                    name=backing.name,
+                    found=backing.type,
+                    expected=" or ".join(_AGENTS),
+                    subject=agent.key,
+                )
+            )
+        elif backing is not None:
+            relation, relation_problems = context.tools.relation(backing)
+            diagnostics.extend(relation_problems)
+            if relation is not None:
+                description = authored.description or backing.description or ""
+                resolution = _Resolution(
+                    name, description, {"agent_name": relation.sql}, member=backing.name, external=True
+                )
+    else:
+        label = name or authored.type
+        diagnostics.append(
+            D("SST-VAL521", artifact=agent.name, name=label, field="agent or identifier", subject=agent.key)
+        )
+    if resolution is not None:
+        diagnostics.append(D("SST-VAL528", artifact=agent.name, name=resolution.name, subject=agent.key))
+    return resolution
+
+
+def _builtin(
+    agent: AgentModel, authored: AgentTool, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> _Resolution:
+    """A built-in tool, such as data_to_chart: no resources, and named after its type unless named.
+
+    Resources it declares in `passthrough` are reported rather than rendered.
+    """
+    name = authored.name or authored.type
+    if authored.passthrough:
+        diagnostics.append(D("SST-VAL529", artifact=agent.name, name=name, subject=agent.key))
+    if authored.type == "data_to_chart":
+        diagnostics.append(D("SST-VAL562", artifact=agent.name, name=name, subject=agent.key))
+    return _Resolution(name, authored.description or "")
+
+
+_RESOLVERS: Mapping[str, _Resolver] = MappingProxyType(
+    {
+        "cortex_analyst_text_to_sql": _analyst,
+        "cortex_search": _search,
+        "generic": _generic,
+        "agent_toolset": _delegate,
+    }
+)
+
+
+def _finish(
+    agent: AgentModel, authored: AgentTool, resolution: _Resolution, diagnostics: list[Diagnostic]
+) -> ResolvedAgentTool:
+    """Check what every resolved tool shares -- name, description, timeout -- then build its entry."""
+    name = resolution.name
+    if not name or not 1 <= len(name) <= 64:
+        diagnostics.append(D("SST-VAL513", artifact=agent.name, name=name, size=len(name), subject=agent.key))
+    elif not _TOOL_IDENTIFIER.fullmatch(name):
+        diagnostics.append(D("SST-PRS009", name=name, subject=agent.key))
+    if authored.type == "web_search" and name != "web_search":
+        diagnostics.append(D("SST-VAL517", artifact=agent.name, name=name, subject=agent.key))
+    if not resolution.description and authored.type != _TOOLSET:
+        diagnostics.append(D("SST-VAL518", artifact=agent.name, name=name, subject=agent.key))
+    if authored.query_timeout is not None and authored.query_timeout <= 0:
+        diagnostics.append(
+            D(
+                "SST-PRS016",
+                artifact=agent.name,
+                field="query_timeout",
+                found=authored.query_timeout,
+                expected="> 0",
+                subject=agent.key,
+            )
+        )
+    return ResolvedAgentTool(
+        authored.type,
+        name,
+        resolution.description,
+        MappingProxyType(resolution.resources),
+        authored.input_schema,
+        resolution.depends_on,
+        authored.tool_spec_passthrough,
+        resolution.member,
+        resolution.external,
+    )
+
+
+def _member_target(
+    backing: ToolMember, context: AgentCompileContext, diagnostics: list[Diagnostic]
+) -> QualifiedName | None:
+    """Locate the object a search or generic tool calls, as its member's ownership places it.
+
+    A defined member is where its resolved settings publish it; a referenced member is its
+    relation for the target.
+    """
+    if backing.ownership is ToolOwnership.DEFINE:
+        return context.tool_target(backing.name)
+    relation, problems = context.tools.relation(backing)
+    diagnostics.extend(problems)
+    return relation
+
+
+def _dependency(backing: ToolMember) -> tuple[str, ...]:
+    # A referenced member has no artifact key: SST never publishes it.
+    return (backing.artifact_key,) if backing.artifact_key else ()
+
+
+def _execution_environment(warehouse: str | None, query_timeout: int | None) -> dict[str, object]:
+    if not warehouse and query_timeout is None:
+        return {}
+    environment: dict[str, object] = {"type": "warehouse"}
+    if warehouse:
+        environment["warehouse"] = warehouse
+    if query_timeout is not None:
+        environment["query_timeout"] = query_timeout
+    return {"execution_environment": environment}
+
+
+def _search_resources(
+    authored: AgentTool,
+    backing: ToolMember,
+    relation: QualifiedName,
+    warehouse: str | None,
+    query_timeout: int | None,
+    own_columns: Mapping[str, object],
+) -> dict[str, object]:
+    """Build a search tool's resources: the service, its columns, and its execution environment.
+
+    The tool's own columns, resolved, replace the member's searchable and filterable ones, and
+    an id or title column falls back to the member's, then to its first column ending `_id` or
+    `_name`. The document-preview pair and the filter are the tool's own. The authored
+    `passthrough` keys come last, so they override any of these.
+    """
+    columns = own_columns or MappingProxyType(
+        {
+            column.name.upper(): {
+                "description": column.description,
+                "type": column.type,
+                "searchable": column.searchable,
+                "filterable": column.filterable,
+            }
+            for column in backing.columns
+            if column.searchable or column.filterable
+        }
+    )
+    resources: dict[str, object] = {"search_service": relation.sql}
+    if authored.max_results is not None:
+        resources["max_results"] = authored.max_results
+    for key, value in (
+        ("id_column", authored.id_column or backing.id_column or _default_column(backing, "id")),
+        ("title_column", authored.title_column or backing.title_column or _default_column(backing, "name")),
+    ):
+        if value:
+            resources[key] = value.upper()
+    if columns:
+        resources["columns_and_descriptions"] = dict(columns)
+    for key, value in (("stage_path", authored.stage_path), ("relative_path_column", authored.relative_path_column)):
+        if value:
+            resources[key] = value
+    if authored.filter:
+        resources["filter"] = dict(authored.filter)
+    resources.update(_execution_environment(warehouse, authored.query_timeout or query_timeout))
+    resources.update(authored.passthrough)
+    return resources
+
+
+def _default_column(backing: ToolMember, suffix: str) -> str | None:
+    return next((column.name for column in backing.columns if column.name.casefold().endswith(f"_{suffix}")), None)
+
+
+def _input_schema_diagnostics(agent: AgentModel, name: str, schema: Mapping[str, object]) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    properties = schema.get("properties")
+    properties = properties if isinstance(properties, dict) else {}
+    for key, value in properties.items():
+        type_name = value.get("type") if isinstance(value, dict) else None
+        if type_name not in _INPUT_TYPES:
+            diagnostics.append(D("SST-PRS032", artifact=agent.name, field=key, found=type_name, subject=agent.key))
+    required = schema.get("required")
+    for key in required if isinstance(required, list) else []:
+        if key not in properties:
+            diagnostics.append(D("SST-PRS033", artifact=agent.name, field=key, subject=agent.key))
+    return tuple(diagnostics)

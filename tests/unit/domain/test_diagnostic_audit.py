@@ -1,0 +1,62 @@
+"""The emission audits and the derived properties diagnostics carry."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from types import MappingProxyType
+
+from snowflake_semantic_tools.domain.diagnostics import (
+    D,
+    Diagnostic,
+    DiagnosticBag,
+    Origin,
+    Severity,
+    audit,
+    cascade,
+    resolve_severities,
+)
+from tests.helpers.diagnostic_filters import codes
+
+WARNING = D("SST-LOD003", file="a.yml")
+ERROR = D("SST-REF001", model="orders", subject="metric:m")
+
+
+def test_d_points_a_located_code_at_the_file_line_and_column_its_context_names() -> None:
+    assert D("SST-LOD001", file="a.yml", line=2, col=3, detail="x").origin == Origin("a.yml", 2, 3)
+    assert D("SST-LOD001", file="a.yml", line=True, col=3, detail="x").origin == Origin("a.yml")
+    assert D("SST-LOD004", file="", line=1, col=1, reason="x").origin is None
+    assert D("SST-LOD003", file="a.yml", origin=Origin("b.yml")).origin == Origin("b.yml")
+    assert D("SST-INT902", detail="x").origin is None
+
+
+def test_blocking_cascade_and_promotion_are_read_off_the_resolved_severity() -> None:
+    cascaded = replace(ERROR, severity=Severity.INFO, caused_by="SST-LOD001")
+    promoted, _ = resolve_severities(DiagnosticBag((WARNING,)), strict=True)
+    assert (ERROR.blocks, WARNING.blocks, cascaded.cascaded, ERROR.cascaded) == (True, False, True, False)
+    assert (promoted[0].promoted_from, ERROR.promoted_from) == (Severity.WARNING, None)
+    assert DiagnosticBag((ERROR, WARNING, D("SST-INT902", detail="x"))).blocking_subjects() == frozenset({"metric:m"})
+
+
+def test_a_cascade_is_downgraded_to_info_and_names_its_cause_unless_its_code_is_non_demotable() -> None:
+    follow_on = cascade(ERROR, "SST-LOD003")
+    assert (follow_on.severity, follow_on.caused_by, follow_on.cascaded) == (Severity.INFO, "SST-LOD003", True)
+    assert audit(DiagnosticBag((WARNING, follow_on))) == (WARNING, follow_on)
+    # Nothing may lower a non-demotable code, so it only names its cause.
+    pinned = cascade(D("SST-PLN030", artifact="semantic_view:a", value="agent:b"), "SST-LOD003")
+    assert (pinned.severity, pinned.caused_by, pinned.cascaded) == (Severity.ERROR, "SST-LOD003", False)
+
+
+def test_audit_reports_each_broken_invariant_once_and_leaves_a_clean_run_alone() -> None:
+    clean = DiagnosticBag((WARNING, ERROR, replace(ERROR, severity=Severity.INFO, caused_by="SST-LOD003")))
+    assert audit(clean) is clean
+    direct = Diagnostic("SST-INT902", Severity.ERROR, MappingProxyType({"detail": "x"}))
+    unlocated = replace(WARNING, origin=None)
+    raised = replace(WARNING, severity=Severity.INFO)
+    dangling = replace(ERROR, caused_by="SST-CFG003")
+    found = audit(DiagnosticBag((direct, unlocated, raised, dangling, dangling)))
+    assert codes(found)[5:] == ["SST-INT004", "SST-INT005", "SST-INT007", "SST-INT008"]
+
+
+def test_audit_accepts_a_warning_strict_mode_promoted() -> None:
+    promoted, _ = resolve_severities(DiagnosticBag((WARNING,)), strict=True)
+    assert audit(promoted) is promoted

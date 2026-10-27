@@ -1,0 +1,40 @@
+---
+# Run configuration for the jaffle_concierge CoWork profile's eval (a Snowflake
+# private preview). Golden:
+#   tests/golden/expected/eval/jaffle_concierge_repeat.yaml
+#
+# `metrics.routing` is scored by SST from the run's router spans, and never
+# rendered into the YAML Snowflake runs. `metrics.system` is written out, so
+# the profile chooses its own Snowflake metrics; without it, the root's
+# `+metrics` would stand in less tool_selection_accuracy, which is blind to a
+# router (SST-VAL887).
+
+name: jaffle_concierge_ci
+
+config:
+  agent_version: committed
+  eval_tier: blocking
+  baseline_runs: 5
+
+dataset:
+  mint: auto
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}"
+  source_table_template: "EVAL_SRC_{{ agent | upper }}_{{ sha7 }}"
+
+metrics:
+  routing:
+    # Deterministic, so it gates. Only routing_accuracy is a routing metric.
+    - name: routing_accuracy
+      gate: true
+      threshold: {min: 0.9}
+  system:
+    - name: answer_correctness
+      version: v3
+      gate: false
+
+run:
+  name_template: "EVAL_{{ agent | upper }}_{{ sha7 }}_{{ variant }}_{{ ts }}"
+  label: concierge-routing-ci
+  variant: ci
+  accept_statuses:
+    - COMPLETED

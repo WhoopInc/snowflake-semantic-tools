@@ -1,0 +1,24 @@
+$ sst --project-dir <project> --manifest <manifest> eval --compare-models claude-opus-4-8,openai-gpt-5,claude-haiku-4-5 --compare-report <project>/sst_target/compare/run --target dev
+--- exit 0
+--- stdout
+[1meval:jaffle_analytics_agent[0m  2 questions × 2 runs  [32m[1mwinner claude-opus-4-8[0m
+  [2m#  model              role       answer_correctness             logical_consistency  credits/q    p95   version[0m
+  1  openai-gpt-5       [2mcandidate[0m  1.00  [         ●]  1.00-1.00  1.00                 0.1500       <n>s  VERSION$7 EVAL_OPENAI_GPT_5
+  2  claude-opus-4-8    [2mcandidate[0m  1.00  [         ●]  1.00-1.00  1.00                 [2mpending[0m      <n>s  VERSION$6 EVAL_CLAUDE_OPUS_4_8
+  3  claude-sonnet-4-6  [1mpinned[0m     0.62  [    ├─●┤  ]  0.50-0.75  1.00                 0.1050       <n>s  VERSION$4
+  4  claude-haiku-4-5   [2mcandidate[0m  [31m[1mfailed[0m                         -                    [2munavailable[0m  -     not committed
+     [1mclaude-haiku-4-5[0m: [31m[1mADD VERSION failed: Insufficient privileges[0m
+  [1mquestions that differ[0m
+    q2  claude-opus-4-8 fixes, openai-gpt-5 fixes  Which jaffles sold most in week 2?
+  [2mverdict[0m  claude-opus-4-8 beats the pinned claude-sonnet-4-6 on answer_correctness (1.00 vs 0.62) outside the spread, its credits per question pending.
+  [2mpin[0m      [2m# agent.yml of agent 'jaffle_analytics_agent'[0m
+           [1mconfig:[0m
+           [1m  orchestration_model: claude-opus-4-8[0m
+  [2mnote[0m     Held fixed: dataset EVAL_JAFFLE_ANALYTICS_AGENT_1A2B3C4 SST_1A2B3C4D5E6F, metric versions, judge claude-sonnet-4-6, everything in the specification but models.orchestration.
+  [2mnote[0m     Committed VERSION$5 (hold), VERSION$6 (EVAL_CLAUDE_OPUS_4_8), VERSION$7 (EVAL_OPENAI_GPT_5), VERSION$8 (restore); the default and the release's alias stayed on VERSION$4.
+  [2mnote[0m     Usage views lag up to an hour; values marked pending fill in with --refresh-cost.
+[2mreport[0m  sst_target/compare/run/compare.json
+--- stderr
+[32m[1m✓[0m [1mcompared models on 1 eval: claude-opus-4-8 won[0m · 0 errors, 0 warnings · <n>s
+[2m  hidden: 3 info (--show-info)[0m
+  [36mnext:[0m run `sst eval --refresh-cost sst_target/compare/run/compare.json` in about an hour for the cost still pending

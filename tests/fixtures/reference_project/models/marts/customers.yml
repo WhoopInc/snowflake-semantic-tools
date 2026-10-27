@@ -1,0 +1,113 @@
+---
+# customers: the target of orders_to_customers, and the model that declares a
+# unique key beside its primary key.
+
+version: 2
+
+models:
+  - name: customers
+    description: |-
+      One row per customer. A customer is a person who has placed at least one order.
+    config:
+      # An enforced contract fails the dbt build when columns or their types
+      # drift, and it requires a data_type on every column.
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          # The target of an equality relationship must declare a key
+          # (SST-VAL311).
+          primary_key:
+            - customer_id
+          # A natural key that is unique but is not the join key. It renders as
+          # UNIQUE (CUSTOMER_NAME); a column in both lists is SST-VAL223.
+          unique_keys:
+            -   - customer_name
+          synonyms:
+            - buyer
+            - guest
+    columns:
+      # Identifiers are dimensions, never facts.
+      - name: customer_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the customer. An identifier, therefore a dimension and never a fact.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - customer key
+                - customer identifier
+        data_tests:
+          - unique
+          - not_null
+
+      # The apostrophe renders doubled: 'The customer''s display name.'
+      - name: customer_name
+        data_type: VARCHAR
+        description: |-
+          The customer's display name.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - customer full name
+                - who the customer is
+
+      # A closed set, so the sample values are the whole domain and IS_ENUM
+      # follows SAMPLE_VALUES. An enum without sample_values is SST-VAL314.
+      - name: customer_type
+        data_type: VARCHAR
+        description: |-
+          Whether the customer has ordered before. A closed set.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - customer segment
+                - new or returning
+                - customer cohort
+              sample_values:
+                - new
+                - returning
+
+      # A timestamp declared as a plain dimension (time_dimension renders the
+      # same). The window of cumulative_customer_count orders by it.
+      - name: first_ordered_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the customer placed their first order.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - first order date
+                - date of first purchase
+                - cohort date
+              sample_values:
+                - "2024-01-15 09:30:00"
+                - "2024-06-02 14:05:00"
+
+      - name: lifetime_spend
+        data_type: NUMBER(38,2)
+        description: |-
+          Total amount the customer has spent across all orders, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - total spend
+                - customer value
+                - spend to date
+              sample_values:
+                - 1836
+                - 4590

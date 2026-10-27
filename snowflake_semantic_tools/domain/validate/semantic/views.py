@@ -1,0 +1,410 @@
+"""Check each view against what it attaches, before it is built: one rule per concern, view by view.
+
+What a view attaches is what member resolution decides (`domain.resolve.membership`), narrowed
+by the view's scope, so a rule judges a view by the members the build would give it. The rules
+read that, the dbt models, and the view's own keys, so each can poison the view before a build
+would fail on it.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Iterator, Mapping
+from dataclasses import dataclass, field
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.authored import FilterDef, InstructionDef, MetricDef
+from snowflake_semantic_tools.domain.model.dbt import DbtModel
+from snowflake_semantic_tools.domain.model.project import ParsedView
+from snowflake_semantic_tools.domain.model.semantic_view import ColumnKind, Relationship, ViewScope
+from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
+from snowflake_semantic_tools.domain.sql import UnsafeSqlError, guard_expression, is_datatype
+from snowflake_semantic_tools.domain.sql.lexer import LexError, TokenKind, tokenize
+from snowflake_semantic_tools.domain.validate.semantic.scope import view_scope
+from snowflake_semantic_tools.domain.validate.shared import lacks_invocation
+
+DIMENSION_TYPES = frozenset(("dimension", "time_dimension"))
+# Every `column_type` a column may declare; any other is SST-DBT003's to report.
+KNOWN_COLUMN_TYPES = frozenset(kind.value for kind in ColumnKind)
+# Words an expression may hold bare that are SQL rather than names, including the functions
+# SQL calls without parentheses. SST does not parse SQL, so the list is incomplete by
+# construction: a word it misses in an expression the view is created with is SST-VAL326.
+SQL_WORDS = frozenset(
+    [
+        "all",
+        "and",
+        "any",
+        "as",
+        "asc",
+        "between",
+        "both",
+        "by",
+        "case",
+        "cast",
+        "current",
+        "current_date",
+        "current_time",
+        "current_timestamp",
+        "day",
+        "days",
+        "desc",
+        "distinct",
+        "else",
+        "end",
+        "epoch",
+        "escape",
+        "exists",
+        "excluding",
+        "false",
+        "filter",
+        "first",
+        "following",
+        "from",
+        "group",
+        "hour",
+        "hours",
+        "ignore",
+        "ilike",
+        "in",
+        "interval",
+        "is",
+        "last",
+        "like",
+        "localtime",
+        "localtimestamp",
+        "microsecond",
+        "millisecond",
+        "minute",
+        "minutes",
+        "month",
+        "months",
+        "nanosecond",
+        "not",
+        "null",
+        "nulls",
+        "of",
+        "on",
+        "or",
+        "order",
+        "over",
+        "partition",
+        "preceding",
+        "quarter",
+        "range",
+        "respect",
+        "rlike",
+        "row",
+        "rows",
+        "second",
+        "seconds",
+        "some",
+        "then",
+        "true",
+        "try_cast",
+        "unbounded",
+        "week",
+        "weeks",
+        "when",
+        "within",
+        "year",
+        "years",
+    ]
+)
+_TEMPLATE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+# The lexer's tokens that hold no name: strings (with `''` and backslash escapes), quoted
+# identifiers, `$$` bodies and comments.
+_OPAQUE = frozenset((TokenKind.STRING, TokenKind.QUOTED_IDENTIFIER, TokenKind.DOLLAR_STRING, TokenKind.COMMENT))
+# For text that does not lex, a best effort with the same escapes.
+_MASKS = (
+    re.compile(r"'(?:''|\\.|[^'\\])*'"),
+    re.compile(r"\"(?:\"\"|[^\"])*\""),
+    re.compile(r"--[^\n]*|/\*.*?\*/", re.DOTALL),
+)
+# A word that is neither qualified, a qualifier, nor a function name.
+_BARE = re.compile(r"(?<![\w$.])([A-Za-z_][A-Za-z0-9_$]*)(?![\w$])(?!\s*[.(])")
+
+
+def bare_identifiers(expression: str) -> tuple[str, ...]:
+    """The bare words of an expression that could be names, each once in order.
+
+    Template calls, string literals, quoted identifiers and comments are masked first, and SQL
+    keywords and type names are left out.
+    """
+    text = _TEMPLATE.sub(" ", expression)
+    try:
+        text = "".join(" " if token.kind in _OPAQUE else token.text for token in tokenize(text))
+    except LexError:
+        for mask in _MASKS:
+            text = mask.sub(" ", text)
+    return tuple(
+        dict.fromkeys(
+            word for word in _BARE.findall(text) if word.casefold() not in SQL_WORDS and not is_datatype(word.upper())
+        )
+    )
+
+
+def _splices(expression: str) -> bool:
+    """Report whether the SQL guard admits an expression, each template call standing for one value."""
+    try:
+        guard_expression(_TEMPLATE.sub("NULL", expression))
+    except UnsafeSqlError:
+        return False
+    return True
+
+
+@dataclass(frozen=True, slots=True)
+class ViewInputs:
+    """What every view is checked against: the project's members, models and settings.
+
+    Attributes:
+        models: The dbt models, by casefolded name.
+        instructions: Every custom instruction, by casefolded name.
+        members: What member resolution attaches to each view, and what its scope keeps.
+        unavailable: The dbt models that produce no relation, casefolded, with why.
+        description_floor: `validation.description_floor`; None checks no floor.
+        instruction_budget: `validation.instruction_budget`; None checks no budget.
+    """
+
+    models: Mapping[str, DbtModel]
+    metrics: tuple[MetricDef, ...]
+    filters: tuple[FilterDef, ...]
+    relationships: tuple[Relationship, ...]
+    instructions: Mapping[str, InstructionDef]
+    members: ViewMembers
+    unavailable: Mapping[str, str] = field(default_factory=dict)
+    description_floor: int | None = None
+    instruction_budget: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _Attached:
+    """One view and what its tables attach that its scope keeps."""
+
+    view: ParsedView
+    tables: frozenset[str]
+    scope: ViewScope
+    metrics: tuple[MetricDef, ...]
+    filters: tuple[FilterDef, ...]
+    relationships: tuple[Relationship, ...]
+    instructions: tuple[InstructionDef, ...]
+
+    @property
+    def key(self) -> str:
+        return view_key(self.view.name)
+
+
+def _attached(view: ParsedView, inputs: ViewInputs) -> _Attached:
+    """What member resolution attaches to a view and its scope keeps, each kind in project order."""
+    key = view_key(view.name)
+
+    def kept(type_name: str, name: str) -> bool:
+        return inputs.members.keeps(key, artifact_key(type_name, name.casefold()))
+
+    return _Attached(
+        view,
+        frozenset(view.declared_tables),
+        view_scope(view.source),
+        tuple(metric for metric in inputs.metrics if kept("metric", metric.name)),
+        tuple(item for item in inputs.filters if kept("filter", item.name)),
+        tuple(item for item in inputs.relationships if kept("relationship", item.name)),
+        tuple(item for name, item in sorted(inputs.instructions.items()) if kept("custom_instruction", name)),
+    )
+
+
+def view_rule_diagnostics(views: tuple[ParsedView, ...], inputs: ViewInputs) -> tuple[Diagnostic, ...]:
+    """Run every view rule on every readable view, view by view, then the rules across views.
+
+    Diagnostics:
+        SST-VAL005: a view's description never says when to use the view.
+        SST-VAL004: a view's description is shorter than `validation.description_floor`.
+        SST-VAL018: a view's description and instructions exceed `validation.instruction_budget`.
+        SST-VAL206: a range relationship attaches and its target declares no `distinct_range`.
+        SST-VAL219: a `distinct_range` column does not exist on its model.
+        SST-VAL220: a declared variable is used by no expression the view attaches.
+        SST-VAL221: an attached prose filter's expression holds a bare word the view cannot resolve.
+        SST-VAL326: an expression the view is created with holds a bare word the view cannot resolve.
+        SST-VAL301: the view resolves no dimension and no metric.
+        SST-VAL303: a table names a dbt model that is disabled or ephemeral.
+        SST-VAL323: a table's dbt model declares no columns.
+        SST-VAL324: a table's dbt model has neither a contract nor a test.
+    """
+    readable = tuple(_attached(view, inputs) for view in views if not view.poisoned)
+    diagnostics: list[Diagnostic] = []
+    for item in readable:
+        diagnostics.extend(_prose_rules(item, inputs))
+        diagnostics.extend(_table_rules(item, inputs))
+        diagnostics.extend(_expression_rules(item, inputs))
+        diagnostics.extend(_member_rules(item, inputs))
+    return tuple(diagnostics)
+
+
+def _list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
+
+
+def _prose_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
+    """Report a description that never says when to use its view or is short, then an over-budget surface.
+
+    A view is routed: the agent's Analyst tool chooses between views by their descriptions.
+    """
+    description = str(item.view.source.get("description") or "").strip()
+    if lacks_invocation(description):
+        yield D("SST-VAL005", origin=item.view.origin, subject=item.key, type="semantic_view", name=item.view.name)
+    if inputs.description_floor is not None and description and len(description) < inputs.description_floor:
+        yield D(
+            "SST-VAL004",
+            origin=item.view.origin,
+            subject=item.key,
+            type="semantic_view",
+            name=item.view.name,
+            size=len(description),
+            expected=inputs.description_floor,
+        )
+    if inputs.instruction_budget is None:
+        return
+    parts = [description] + [
+        text
+        for instruction in item.instructions
+        for text in (instruction.ai_sql_generation, instruction.ai_question_categorization)
+        if text
+    ]
+    size = len("\n\n".join(part for part in parts if part))
+    if size > inputs.instruction_budget:
+        yield D(
+            "SST-VAL018",
+            origin=item.view.origin,
+            subject=item.key,
+            artifact=item.key,
+            size=size,
+            expected=inputs.instruction_budget,
+        )
+
+
+def _table_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
+    """Report what each table's model lacks, then each range join whose target declares no range.
+
+    Table by table: a model that produces no relation, one with no columns, then one with no
+    contract and no tests. A range join's target needs a `distinct_range` on its model; a model
+    that writes a malformed one is SST-PRS028's to report.
+    """
+    ranged: set[str] = set()
+    for table in item.view.declared_tables:
+        model = inputs.models.get(table)
+        if model is None:
+            if table in inputs.unavailable:
+                yield D(
+                    "SST-VAL303",
+                    origin=item.view.origin,
+                    subject=item.key,
+                    artifact=item.key,
+                    name=table,
+                    found=inputs.unavailable[table],
+                )
+            continue
+        if not model.columns:
+            yield D("SST-VAL323", origin=item.view.origin, subject=item.key, artifact=item.key, name=model.name)
+        if not model.has_contract and not model.test_count:
+            yield D(
+                "SST-VAL324",
+                origin=item.view.origin,
+                subject=item.key,
+                artifact=item.key,
+                name=model.name,
+                detail="no contract and no tests",
+            )
+        if model.distinct_range is not None or model.malformed_distinct_range:
+            ranged.add(table.casefold())
+    for relationship in item.relationships:
+        if relationship.range_bounds is not None and relationship.to_table.casefold() not in ranged:
+            yield D(
+                "SST-VAL206",
+                origin=item.view.origin,
+                subject=item.key,
+                relationship=relationship.name.casefold(),
+                name=relationship.to_table.casefold(),
+            )
+
+
+def _expression_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
+    """Report each bare name an attached expression cannot resolve, then each unused variable.
+
+    A bare word the view resolves is a column on one of its tables or a variable it declares; a
+    metric's bare column of its own table is left to SST-VAL110. Any other word in a metric or a
+    labeled filter, which the view is created with, would fail the create: SST-VAL326. In a
+    filter that renders as prose it fails nothing, and SST, which does not parse SQL, cannot be
+    sure it is a name: SST-VAL221. An expression the SQL guard refuses is SST-VAL418's to report,
+    so it is read only for the variables it uses.
+    """
+    declared = {
+        str(entry.get("name")).casefold(): str(entry.get("name"))
+        for entry in _list(item.view.source.get("variables"))
+        if isinstance(entry, dict) and entry.get("name")
+    }
+    view_columns = {
+        column.name.casefold()
+        for table in item.tables
+        if (model := inputs.models.get(table))
+        for column in model.columns
+    }
+    members: list[tuple[str, str, bool]] = [(metric.name, metric.expr, True) for metric in item.metrics]
+    members.extend((item_filter.name, item_filter.expr, item_filter.entity_level) for item_filter in item.filters)
+    used: set[str] = set()
+    for member, expression, created in members:
+        judged = _splices(expression)
+        for word in bare_identifiers(expression):
+            folded = word.casefold()
+            if folded in declared:
+                used.add(folded)
+            elif not judged or folded in view_columns:
+                continue
+            elif created:
+                yield D(
+                    "SST-VAL326",
+                    origin=item.view.origin,
+                    subject=item.key,
+                    view=item.view.name,
+                    member=member,
+                    identifier=word,
+                )
+            else:
+                yield D(
+                    "SST-VAL221",
+                    origin=item.view.origin,
+                    subject=item.key,
+                    artifact=item.key,
+                    name=word,
+                    field=f"the expr of '{member}'",
+                )
+    for folded, name in declared.items():
+        if folded not in used:
+            yield D("SST-VAL220", origin=item.view.origin, subject=item.key, artifact=item.key, name=name)
+
+
+def _member_rules(item: _Attached, inputs: ViewInputs) -> Iterator[Diagnostic]:
+    """Report a view with nothing to query.
+
+    A view naming a table that is not a dbt model is not checked for members: SST-REF001
+    reports the table, and its members cannot be known. Nor is one whose model has a column of
+    a role SST does not know: SST-DBT003 reports the column when the view builds.
+    """
+    dimensions = any(
+        column.column_type in DIMENSION_TYPES
+        and not column.excluded
+        and item.scope.admits_column_name(f"{model.name}.{column.name}")
+        for table in item.tables
+        if (model := inputs.models.get(table)) is not None
+        for column in model.columns
+    )
+    known = (
+        bool(item.tables)
+        and all(table in inputs.models for table in item.tables)
+        and all(
+            column.column_type in KNOWN_COLUMN_TYPES
+            for table in item.tables
+            for column in inputs.models[table].columns
+            if column.column_type is not None
+        )
+    )
+    if known and not dimensions and not item.metrics and not any(f.entity_level for f in item.filters):
+        yield D("SST-VAL301", origin=item.view.origin, subject=item.key, artifact=item.key)

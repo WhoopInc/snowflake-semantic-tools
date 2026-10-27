@@ -1,0 +1,211 @@
+"""Whether one role holds schema privileges, walked up from the schema's grants to the role.
+
+The walk starts at the roles and database roles SHOW GRANTS ON SCHEMA names as holding a
+privilege or owning the schema, and climbs SHOW GRANTS OF ROLE / OF DATABASE ROLE until it
+reaches the role asked about. It reads only the roles a holder is granted to, never the
+role's own grants: the role's hierarchy may be far larger than the schema's holders.
+
+A session check climbs only as far as the account roles: whether one is in the session is
+Snowflake's to answer, through IS_ROLE_IN_SESSION, and it follows the account-role hierarchy.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+
+from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
+from snowflake_semantic_tools.domain.sql import Sql, ident, join, sql
+
+# The privilege that grants every other on a schema.
+OWNERSHIP = "OWNERSHIP"
+_ROLE = "ROLE"
+_DATABASE_ROLE = "DATABASE_ROLE"
+
+
+@dataclass(frozen=True, slots=True)
+class Grantee:
+    """An account role, or a database role with its database, each name in its shown form."""
+
+    kind: str
+    names: tuple[Identifier, ...]
+
+    @classmethod
+    def role(cls, name: Identifier) -> Grantee:
+        """An account role, spelled as SHOW prints it, so two spellings of one role are equal."""
+        return cls(_ROLE, (Identifier.shown(name.folded),))
+
+    @classmethod
+    def database_role(cls, database: Identifier, name: Identifier) -> Grantee:
+        """A database role in `database`, each part spelled as SHOW prints it."""
+        return cls(_DATABASE_ROLE, (Identifier.shown(database.folded), Identifier.shown(name.folded)))
+
+    @property
+    def is_account_role(self) -> bool:
+        """Whether this is an account role, which IS_ROLE_IN_SESSION can answer for."""
+        return self.kind == _ROLE
+
+    @property
+    def grants_of(self) -> Sql:
+        """The statement listing the roles this grantee is granted to."""
+        if self.kind == _DATABASE_ROLE:
+            return sql("SHOW GRANTS OF DATABASE ROLE {name}", name=join(".", (ident(part) for part in self.names)))
+        return sql("SHOW GRANTS OF ROLE {name}", name=ident(self.names[0]))
+
+
+def schema_holders(
+    rows: Iterable[Mapping[str, object]], scope: SchemaScope, privileges: tuple[str, ...]
+) -> dict[Grantee, frozenset[str]]:
+    """Map each role or database role SHOW GRANTS ON names to the requested privileges it holds.
+
+    The rows are the grants on the schema `scope` names, or on an object in it such as a
+    stage. Ownership holds every requested privilege. A database role's name is printed as
+    `DB.NAME` or, unqualified, in the schema's database -- the only database whose roles hold
+    its privileges; a grant to anything else (a share, an application) confers nothing on a
+    role.
+    """
+    wanted = {privilege.upper() for privilege in privileges}
+    holders: dict[Grantee, set[str]] = {}
+    for row in rows:
+        privilege = str(row.get("privilege") or "").upper()
+        held = wanted if privilege == OWNERSHIP else wanted & {privilege}
+        name = str(row.get("grantee_name") or "")
+        kind = str(row.get("granted_to") or "").upper()
+        if not held or not name or kind not in (_ROLE, _DATABASE_ROLE):
+            continue
+        grantee = Grantee.role(Identifier.shown(name)) if kind == _ROLE else _schema_database_role(scope.database, name)
+        holders.setdefault(grantee, set()).update(held)
+    return {grantee: frozenset(held) for grantee, held in holders.items()}
+
+
+def account_object_holders(
+    rows: Iterable[Mapping[str, object]], privileges: tuple[str, ...]
+) -> dict[Grantee, frozenset[str]]:
+    """Map each account role SHOW GRANTS ON an account-level object names to the privileges it holds.
+
+    As `schema_holders` reads a schema's rows, ownership holds every requested privilege. A grant
+    to anything but an account role is left out: from the docs, not measured, a database role is
+    granted privileges only on objects in its own database, so none holds one on an account-level
+    object such as the CoWork object.
+    """
+    wanted = {privilege.upper() for privilege in privileges}
+    holders: dict[Grantee, set[str]] = {}
+    for row in rows:
+        privilege = str(row.get("privilege") or "").upper()
+        held = wanted if privilege == OWNERSHIP else wanted & {privilege}
+        name = str(row.get("grantee_name") or "")
+        if held and name and str(row.get("granted_to") or "").upper() == _ROLE:
+            holders.setdefault(Grantee.role(Identifier.shown(name)), set()).update(held)
+    return {grantee: frozenset(held) for grantee, held in holders.items()}
+
+
+def grantees_of(grantee: Grantee, rows: Iterable[Mapping[str, object]]) -> tuple[Grantee, ...]:
+    """The roles SHOW GRANTS OF lists `grantee` as granted to, users left out.
+
+    A database role may also be granted to another database role, which SHOW prints as
+    `DB.NAME` or, unqualified, in the granted role's own database.
+    """
+    found: list[Grantee] = []
+    for row in rows:
+        kind = str(row.get("granted_to") or "").upper()
+        name = str(row.get("grantee_name") or "")
+        if not name:
+            continue
+        if kind == _ROLE:
+            found.append(Grantee.role(Identifier.shown(name)))
+        elif kind == _DATABASE_ROLE and grantee.kind == _DATABASE_ROLE:
+            found.append(_database_role(grantee.names[0], name))
+    return tuple(found)
+
+
+def held_by(
+    role: Grantee,
+    holders: Mapping[Grantee, frozenset[str]],
+    read: Callable[[Grantee], tuple[Grantee, ...]],
+    depth: int,
+) -> tuple[frozenset[str], frozenset[str]]:
+    """Return the privileges `role` holds, and those still traveling when the walk stopped.
+
+    A holder reaches `role` in fewer than `depth` grants; a privilege not held that a frontier
+    node still carries after `depth` grants is cut short, as a deeper path might pass it on.
+    One breadth-first walk over every holder at once, each frontier node carrying the
+    privileges it passes on. Each grantee is read at most once, so a cycle ends; a pair of
+    grantee and privilege travels on only the first, shortest time it is reached, and
+    privileges already held travel no further.
+    """
+    held = set(holders.get(role, frozenset()))
+    reached: dict[Grantee, set[str]] = {grantee: set(found) for grantee, found in holders.items()}
+    edges: dict[Grantee, tuple[Grantee, ...]] = {}
+    frontier = {grantee: set(found) for grantee, found in holders.items() if grantee != role}
+    for _ in range(depth - 1):
+        frontier = {grantee: carried - held for grantee, carried in frontier.items() if carried - held}
+        if not frontier:
+            break
+        following: dict[Grantee, set[str]] = {}
+        for grantee, carried in frontier.items():
+            if grantee not in edges:
+                edges[grantee] = read(grantee)
+            for parent in edges[grantee]:
+                arriving = carried - reached.setdefault(parent, set())
+                reached[parent] |= arriving
+                if parent == role:
+                    held |= arriving
+                elif arriving:
+                    following.setdefault(parent, set()).update(arriving)
+        frontier = following
+    cut_short = {privilege for carried in frontier.values() for privilege in carried - held}
+    return frozenset(held), frozenset(cut_short)
+
+
+def account_holders(
+    holders: Mapping[Grantee, frozenset[str]],
+    read: Callable[[Grantee], tuple[Grantee, ...]],
+    depth: int,
+) -> dict[Grantee, frozenset[str]]:
+    """Map each account role to the privileges it holds, directly or through database roles.
+
+    An account role among `holders` keeps what it holds. A database role passes what it holds
+    to each role it is granted to, climbing through database roles until an account role is
+    reached, in fewer than `depth` grants. Each database role is read at most once, so a
+    cycle ends; one reached again carries on only the privileges it had not carried yet.
+    """
+    found: dict[Grantee, set[str]] = {}
+    reached: dict[Grantee, set[str]] = {}
+    edges: dict[Grantee, tuple[Grantee, ...]] = {}
+    frontier: dict[Grantee, set[str]] = {}
+    for grantee, held in holders.items():
+        side = found if grantee.kind == _ROLE else frontier
+        side.setdefault(grantee, set()).update(held)
+        reached.setdefault(grantee, set()).update(held)
+    for _ in range(depth - 1):
+        if not frontier:
+            break
+        following: dict[Grantee, set[str]] = {}
+        for grantee, carried in frontier.items():
+            if grantee not in edges:
+                edges[grantee] = read(grantee)
+            for parent in edges[grantee]:
+                if parent.kind == _ROLE:
+                    found.setdefault(parent, set()).update(carried)
+                    continue
+                arriving = carried - reached.setdefault(parent, set())
+                reached[parent] |= arriving
+                if arriving:
+                    following.setdefault(parent, set()).update(arriving)
+        frontier = following
+    return {grantee: frozenset(held) for grantee, held in found.items()}
+
+
+def _database_role(database: Identifier, name: str) -> Grantee:
+    """A database role SHOW printed as `DB.NAME`, or as `NAME` in `database`."""
+    qualifier, dot, rest = name.partition(".")
+    if dot and qualifier and rest:
+        return Grantee.database_role(Identifier.shown(qualifier), Identifier.shown(rest))
+    return Grantee.database_role(database, Identifier.shown(name))
+
+
+def _schema_database_role(database: Identifier, name: str) -> Grantee:
+    """A schema holder SHOW printed as `DB.NAME` in `database`, or else as `NAME`, dots and all."""
+    unqualified = Grantee.database_role(database, Identifier.shown(name))
+    qualified = _database_role(database, name)
+    return qualified if qualified.names[0] == unqualified.names[0] else unqualified

@@ -1,0 +1,25 @@
+# A PLUGIN IS ONE CORTEX EXTENSION OF TYPE 'PLUGIN' THAT CARRIES SEVERAL SKILLS.
+# SST publishes it as `.cortex-plugin/plugin.json` plus each member's folder, as
+# authored, under `skills/<member>/`, and the version alias -- `plugins.+version_prefix`
+# plus 12 hex characters of the bundle digest -- changes when any member does.
+# Every member is also published as its own SKILL-type extension; the plugin is
+# the one-install bundle of them.
+#
+# NO AGENT REFERENCES THIS PLUGIN, AND IT STILL HAS A CONSUMER. The
+# `jaffle-operator` Desktop profile lists it, so the profile carries this bundle
+# byte for byte, and SST does not warn that the version is unreferenced
+# (`SST-VAL804`). An agent would reference it as `{{ plugin('jaffle-toolkit') }}`,
+# with no `version:`.
+name: jaffle-toolkit
+description: |-
+  The jaffle analytics toolkit: which semantic view answers which question, and
+  the month-close procedure for supply cost.
+owner_team: Jaffle Analytics
+skills:
+  - "{{ skill('jaffle-semantics') }}"
+  - "{{ skill('jaffle-operations') }}"
+# The plugin's own settings: the `plugins:` keys without their `+`, which win
+# over its folder routes and the block root (SST-CFG053 for any other key).
+# `certified: true` would certify this plugin's versions alone.
+config:
+  certified: false

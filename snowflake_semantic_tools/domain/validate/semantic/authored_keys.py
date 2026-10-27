@@ -1,0 +1,484 @@
+"""Report every authored key the loader does not read, and nodes with a missing or repeated name."""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator, Mapping
+from types import MappingProxyType
+from typing import Any
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
+from snowflake_semantic_tools.domain.parse.fields import unknown_field
+from snowflake_semantic_tools.domain.parse.names import name_warnings
+from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.semantic.deprecated import DEPRECATED_KEYS, INERT_KEYS
+from snowflake_semantic_tools.domain.validate.semantic.nodes import node_label, node_origin, node_root, written_root
+from snowflake_semantic_tools.domain.validate.semantic.scope import SCOPE_KEYS
+from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
+
+# The keys the loader reads, per semantic-model node. Anything else is reported,
+# because a key the loader skips changes nothing in the DDL and would otherwise
+# pass review looking as though it does.
+AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "semantic_view": frozenset(
+            (
+                "name",
+                "description",
+                "tables",
+                "custom_instructions",
+                "variables",
+                "config",
+                *SCOPE_KEYS,
+            )
+        ),
+        "metric": frozenset(
+            (
+                "name",
+                "expr",
+                "description",
+                "synonyms",
+                "using_relationships",
+                "non_additive_dimensions",
+                "access_modifier",
+                "window",
+                # The 0.3 spelling of access_modifier, an error: SST-VAL122.
+                "visibility",
+            )
+        ),
+        # `synonyms` is not read: a filter cannot carry them (SST-VAL406).
+        "filter": frozenset(("name", "expr", "description", "labels")),
+        # Snowflake has no clause for a description on the next three: it documents
+        # the YAML for its readers and is never published.
+        "custom_instruction": frozenset(
+            (
+                "name",
+                "description",
+                "ai_sql_generation",
+                "ai_question_categorization",
+                # The 0.3 spellings, an error: SST-VAL012, or SST-PRS020 when the 1.0 key is also set.
+                *DEPRECATED_KEYS["custom_instruction"],
+            )
+        ),
+        "verified_query": frozenset(
+            (
+                "name",
+                "description",
+                "question",
+                "sql",
+                "verified_at",
+                "verified_by",
+                "use_as_onboarding_question",
+            )
+        ),
+        # `relationship_type` and `join_type` are read only to report them (SST-VAL211).
+        "relationship": frozenset(
+            (
+                "name",
+                "description",
+                "left_table",
+                "right_table",
+                "relationship_conditions",
+                *INERT_KEYS["relationship"],
+            )
+        ),
+    }
+)
+# Mappings below a node, by the scope that holds them: a block, or each item of a list
+# field.
+NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
+    {
+        ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
+        # A view's own keys under `config:` are its block's settings, which
+        # `view_config_diagnostics` checks; only the tag entries are checked here.
+        ("semantic_view", "config"): frozenset(),
+        ("semantic_view.config", "tags"): frozenset(("name", "value")),
+        ("metric", "non_additive_dimensions"): frozenset(("ref", "sort_direction", "null_order")),
+        ("metric", "window"): frozenset(("partition_by", "partition_by_excluding", "order_by", "frame")),
+        ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
+    }
+)
+# Fields whose value is one mapping; every other nested field is a list.
+BLOCKS = frozenset((("metric", "window"), ("semantic_view", "config")))
+# Blocks whose own keys another check reports, so only what nests in them is checked here.
+_CHECKED_ELSEWHERE = frozenset((("semantic_view", "config"),))
+# 0.3 spellings, by the node or entry that carries them. Each is an error naming
+# the 1.0 key: reading the old spelling would keep two dialects alive.
+RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("metric", "non_additive_by"): "non_additive_dimensions",
+        ("metric.non_additive_dimensions", "order"): "sort_direction",
+        ("metric.non_additive_dimensions", "nulls"): "null_order",
+        ("metric.window.order_by", "column"): "ref",
+        ("metric.window.order_by", "direction"): "sort_direction",
+    }
+)
+# Keys an earlier dialect wrote that SST now works out for itself, by the node that carried
+# them, each with what replaced it. Each is an error, so a project still writing one learns
+# the key does nothing rather than reading it as a typo.
+REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
+    {
+        ("metric", "tables"): "a metric's tables are the models its expression names with ref()",
+        ("metric", "derived"): (
+            "a metric is derived when its expression combines other metrics with metric() and names no column"
+        ),
+        ("filter", "tables"): "a filter's tables are the models its expression names with ref()",
+        ("verified_query", "tables"): "a verified query's tables are the models its SQL names with ref()",
+        ("semantic_view", "table_config"): (
+            "a table's synonyms, COMMENT and distinct_range come from its dbt model's "
+            "config.meta.sst.synonyms, description and config.meta.sst.distinct_range"
+        ),
+        ("verified_query", "sql_file"): "a verified query loads its SQL from a file with sql: \"{{ file('<path>') }}\"",
+        ("semantic_view", "enabled"): "a view sets it under config:, as config.enabled",
+        ("semantic_view", "tags"): "a view sets it under config:, as config.tags",
+        ("semantic_view", "max_staleness"): "a view sets it under config:, as config.max_staleness",
+        ("metric.non_additive_dimensions", "dimension"): (
+            "a non-additive entry names its column as ref: \"{{ ref('<model>', '<column>') }}\""
+        ),
+        ("metric.non_additive_dimensions", "table"): (
+            "a non-additive entry names its model in its ref: \"{{ ref('<model>', '<column>') }}\""
+        ),
+    }
+)
+# The folder under the semantic models directory that owns each member type's files.
+TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
+    {
+        "metrics": "metric",
+        "filters": "filter",
+        "relationships": "relationship",
+        "verified_queries": "verified_query",
+        "custom_instructions": "custom_instruction",
+    }
+)
+# The 0.3 relationship shape, which 1.0 replaced with `relationship_conditions` rather than renamed.
+LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "right_column"))
+
+
+def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """Report each key of a view's `config:` block that is not a `semantic_views:` setting with a value.
+
+    Every document is read, as the authored keys are, so a view in any folder is
+    checked too. Each key is placed where it is written, else at the view.
+
+    Diagnostics:
+        SST-CFG004, SST-CFG053, SST-CFG054, SST-CFG008, SST-CFG023: as
+            `item_config_diagnostics` reports them.
+    """
+    root_key = node_root("semantic_view")
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+        for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+            if not isinstance(node, dict) or "config" not in node:
+                continue
+            subject = view_key(str(node.get("name") or index))
+            origin_of = _config_origins(document, (root_key, index))
+            diagnostics.extend(
+                item_config_diagnostics("semantic_views", node["config"], subject=subject, origin_of=origin_of)
+            )
+    return tuple(diagnostics)
+
+
+def _config_origins(document: AuthoredDocument, node: NodePath) -> Callable[[str], Origin]:
+    """Place a key of the node's `config:` block where it is written, else at the node itself."""
+    start = document.position(node)
+    fallback = Origin(document.path, start.line if start else None, start.col if start else None)
+
+    def origin_of(key: str) -> Origin:
+        position = document.position((*node, "config", key) if key else (*node, "config"))
+        return Origin(document.path, position.line, position.col) if position is not None else fallback
+
+    return origin_of
+
+
+def authored_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """Every key the loader does not read, as `_unread_key` names it."""
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        for node_type, allowed in AUTHORED_KEYS.items():
+            root_key = node_root(node_type)
+            nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+            for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+                if isinstance(node, dict):
+                    subject = artifact_key(node_type, str(node.get("name") or index))
+                    diagnostics.extend(_unread_keys(document, subject, node_type, (root_key, index), "", node, allowed))
+    return tuple(diagnostics)
+
+
+# Types whose duplicates SST-VAL001 already reports.
+_NAMED_ELSEWHERE = frozenset(("semantic_view", "metric"))
+
+
+def member_name_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """A node with no name (SST-PRS107), a risky name, or a name its type already uses.
+
+    Either would otherwise be skipped or overwritten without a word. A repeat in the file that
+    first declares the name is SST-PRS106; a repeat in another file is SST-PRS007, naming it.
+    A risky name is reported as `name_warnings` reports it (SST-PRS012, SST-PRS031, SST-PRS100).
+    """
+    diagnostics: list[Diagnostic] = []
+    seen: dict[tuple[str, str], AuthoredDocument] = {}
+    for document in documents.documents:
+        diagnostics.extend(_foreign_members(document))
+        for node_type in AUTHORED_KEYS:
+            root_key = node_root(node_type)
+            nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+            for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+                origin = node_origin(document, root_key, index)
+                if not isinstance(node, dict) or not node.get("name"):
+                    diagnostics.append(
+                        D(
+                            "SST-PRS107",
+                            artifact=document.path,
+                            member=node_label(document, node_type, index),
+                            member_type=node_type,
+                            index=index,
+                            subject=artifact_key(node_type, str(index)),
+                            origin=origin,
+                        )
+                    )
+                    continue
+                name = str(node["name"])
+                diagnostics.extend(name_warnings(name, subject=artifact_key(node_type, name), origin=origin))
+                if node_type in _NAMED_ELSEWHERE:
+                    continue
+                diagnostics.extend(_repeated_name(seen, document, node_type, name, origin))
+    return tuple(diagnostics)
+
+
+def _foreign_members(document: AuthoredDocument) -> tuple[Diagnostic, ...]:
+    """Report each member a type folder's file declares that belongs to another member type.
+
+    Diagnostics:
+        SST-PRS105: a member type's folder holds a member of another type, as one item or a list.
+    """
+    owner = TYPE_FOLDERS.get(document.hint_root or "")
+    if owner is None:
+        return ()
+    return tuple(
+        D(
+            "SST-PRS105",
+            origin=Origin(document.path),
+            path=document.path,
+            root=document.hint_root,
+            type=owner,
+            member_type=node_type,
+            key=written_root(document, node_type),
+        )
+        for node_type in AUTHORED_KEYS
+        if node_type not in (owner, "semantic_view") and node_root(node_type) in document.root_keys
+    )
+
+
+def _owner(document: AuthoredDocument) -> str | None:
+    """The type that owns a document's folder: a member type's folder, or `semantic_views/`."""
+    return "semantic_view" if document.hint_root == "semantic_views" else TYPE_FOLDERS.get(document.hint_root or "")
+
+
+def _repeated_name(
+    seen: dict[tuple[str, str], AuthoredDocument], document: AuthoredDocument, node_type: str, name: str, origin: Origin
+) -> tuple[Diagnostic, ...]:
+    """Record where a name is first declared; report a later declaration of it.
+
+    Diagnostics:
+        SST-PRS106: the name repeats in the file that first declares it.
+        SST-PRS104: the name repeats in the folder of another owning type, so two owners declare it.
+        SST-PRS007: the name repeats in another file, which the message names.
+    """
+    key = (node_type, name.casefold())
+    subject = artifact_key(node_type, name)
+    if key not in seen:
+        seen[key] = document
+        return ()
+    first = seen[key]
+    if first.path == document.path:
+        return (
+            D("SST-PRS106", artifact=document.path, member_type=node_type, name=name, subject=subject, origin=origin),
+        )
+    owners = (_owner(first), _owner(document))
+    if None not in owners and owners[0] != owners[1]:
+        folders = (f"{first.hint_root}/", f"{document.hint_root}/")
+        return (D("SST-PRS104", member=subject, a=folders[0], b=folders[1], subject=subject, origin=origin),)
+    other = f"the one in {first.path}"
+    return (D("SST-PRS007", type=node_type, name=name, other=other, subject=subject, origin=origin),)
+
+
+def _unread_keys(
+    document: AuthoredDocument,
+    subject: str,
+    scope: str,
+    path: NodePath,
+    prefix: str,
+    mapping: Mapping[Any, Any],
+    allowed: frozenset[str],
+) -> list[Diagnostic]:
+    """Report each key of `mapping`, and of the mappings nested in it, that the loader does not read.
+
+    `scope` is the node type, or `<type>.<field>` for a nested mapping, and picks both the nested
+    fields to descend into and the 0.3 spellings to name. A key is labeled `prefix` plus its
+    name, such as `window.order_by[0].column`, and located by its node path. The mapping's own
+    keys come first, in authored order, then each nested field's, in `NESTED_KEYS` order; a
+    nested field of the wrong shape is left to its own check.
+
+    Diagnostics:
+        SST-PRS021, SST-PRS020, SST-VAL402, SST-VAL403, SST-VAL406, SST-PRS126, SST-PRS022,
+            SST-PRS004: as `_unread_key` reports them.
+    """
+    diagnostics = [
+        diagnostic
+        for key in mapping
+        if str(key) not in allowed
+        for diagnostic in _unread_key(
+            document, (*path, str(key)), scope, f"{prefix}{key}", subject, mapping[key], allowed
+        )
+    ]
+    for (owner, field), keys in NESTED_KEYS.items():
+        value = mapping.get(field) if owner == scope else None
+        if isinstance(value, list):
+            entries: tuple[tuple[str | int | None, object, str], ...] = tuple(
+                (key, entry, f"{prefix}{field}[{key}].") for key, entry in enumerate(value)
+            )
+        elif isinstance(value, dict) and (owner, field) in BLOCKS:
+            entries = ((None, value, f"{prefix}{field}."),)
+        else:
+            # Absent, or the wrong shape, which the field's own check reports.
+            entries = ()
+        for key, entry, label in entries:
+            if isinstance(entry, dict):
+                where: NodePath = (*path, field) if key is None else (*path, field, key)
+                known = frozenset(map(str, entry)) if (owner, field) in _CHECKED_ELSEWHERE else keys
+                diagnostics.extend(_unread_keys(document, subject, f"{owner}.{field}", where, label, entry, known))
+    return diagnostics
+
+
+def _unread_key(
+    document: AuthoredDocument,
+    path: NodePath,
+    scope: str,
+    field: str,
+    subject: str,
+    value: object,
+    allowed: frozenset[str],
+) -> tuple[Diagnostic, ...]:
+    """Report one key the loader does not read in `scope`, whose keys are `allowed`.
+
+    Diagnostics:
+        SST-PRS021: the key is part of the 0.3 relationship column shape.
+        SST-VAL402, SST-VAL403, SST-VAL406: the key is a known misuse, as `_known_misuse` says.
+        SST-PRS020: the key is the 0.3 spelling of a 1.0 key in its scope.
+        SST-PRS126: the key is one SST now works out for itself, as `REMOVED_KEYS` says.
+        SST-PRS022: the key is within edit distance of one `allowed` lists.
+        SST-PRS004: any other key.
+    """
+    position = document.position(path)
+    origin = Origin(
+        document.path,
+        position.line if position is not None else None,
+        position.col if position is not None else None,
+    )
+    key = str(path[-1])
+    if scope == "relationship" and key in LEGACY_RELATIONSHIP_KEYS:
+        return (D("SST-PRS021", origin=origin, subject=subject, artifact=subject),)
+    special = _known_misuse(scope, key, subject, value, origin)
+    if special:
+        return special
+    renamed = RENAMED_KEYS.get((scope, key))
+    if renamed is not None:
+        return (D("SST-PRS020", origin=origin, subject=subject, artifact=subject, field=field, expected=renamed),)
+    removed = REMOVED_KEYS.get((scope, key))
+    if removed is not None:
+        return (D("SST-PRS126", origin=origin, subject=subject, artifact=subject, field=field, reason=removed),)
+    return (unknown_field(key, allowed, label=field, origin=origin, subject=subject, artifact=subject),)
+
+
+def _known_misuse(scope: str, key: str, subject: str, value: object, origin: Origin) -> tuple[Diagnostic, ...]:
+    """Name an unread key that is a known misuse with its own code, rather than an unknown key.
+
+    Returns:
+        The diagnostics, one per inline filter for a view's `filters:`; empty for any other key.
+    """
+    name = subject.split(":", 1)[-1]
+    if scope == "metric" and key == "labels" and _holds_filter(value):
+        return (D("SST-VAL402", member=name, origin=origin, subject=subject),)
+    if scope == "filter" and key == "synonyms":
+        return (D("SST-VAL406", member=name, origin=origin, subject=subject),)
+    if scope == "semantic_view" and key == "filters":
+        entries = value if isinstance(value, list) and value else [None]
+        return tuple(
+            D(
+                "SST-VAL403",
+                member=str(entry["name"])
+                if isinstance(entry, dict) and entry.get("name")
+                else f"{name}.filters[{index}]",
+                origin=origin,
+                subject=subject,
+            )
+            for index, entry in enumerate(entries)
+        )
+    return ()
+
+
+def _holds_filter(value: object) -> bool:
+    labels = value if isinstance(value, list) else [value]
+    return any(isinstance(label, str) and label.casefold() == "filter" for label in labels)
+
+
+def legacy_reference_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """Report every legacy `table()` and `column()` global in every string of every document.
+
+    Documents are read in order and each tree depth-first, so the calls come out in the order
+    they are written.
+
+    Diagnostics:
+        SST-REF034: when a string calls `table()` with one argument.
+        SST-REF035: when a string calls `column()` with two arguments.
+    """
+    return tuple(
+        diagnostic for document in documents.documents for diagnostic in _legacy_calls(document.tree, document.path)
+    )
+
+
+def _legacy_calls(value: Any, file: str) -> Iterator[Diagnostic]:
+    """Walk one YAML value depth-first: a string's own calls, then list items and mapping values."""
+    if isinstance(value, str):
+        yield from _legacy_string_calls(value, file)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _legacy_calls(item, file)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            yield from _legacy_calls(item, file)
+
+
+def _legacy_string_calls(text: str, file: str) -> Iterator[Diagnostic]:
+    """Report the legacy globals one string calls.
+
+    A malformed template reports nothing here: the check that reads its field reports it.
+
+    Diagnostics:
+        SST-REF034: when the string calls `table()` with one argument.
+        SST-REF035: when the string calls `column()` with two arguments.
+    """
+    try:
+        calls = scan_template_calls(text)
+    except TemplateSyntaxError:
+        return
+    for call in calls:
+        if call.function == "table" and len(call.args) == 1:
+            yield D(
+                "SST-REF034",
+                file=file,
+                line=call.line,
+                col=call.col,
+                model=call.args[0],
+            )
+        elif call.function == "column" and len(call.args) == 2:
+            yield D(
+                "SST-REF035",
+                file=file,
+                line=call.line,
+                col=call.col,
+                model=call.args[0],
+                column=call.args[1],
+            )

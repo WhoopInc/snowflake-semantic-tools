@@ -1,0 +1,30 @@
+---
+# Three boolean filters carry labels: [filter] and render as LABELS = (FILTER)
+# dimensions on ORDERS. The fourth is not boolean and has no labels, so it
+# renders as a sentence in AI_SQL_GENERATION. A boolean filter without labels
+# is SST-VAL405; a labelled filter that is not boolean is SST-VAL401.
+#
+# A filter's tables are the models its expr names with ref(), and it attaches
+# to every view that holds them. The order_state literals come from the
+# completed_state and returned_state vars in sst_config.yml.
+#
+# This file keeps the list form; is_large_order and
+# shortfall_to_large_order_cents are single-item `filter:` files beside it.
+
+snowflake_filters:
+
+  - name: is_completed_order
+    description: |-
+      Restricts to orders that completed, excluding returns and orders still in
+      flight. The default lens for any revenue question.
+    expr: "{{ ref('orders', 'order_state') }} = '{{ var('completed_state') }}'"
+    labels:
+      - filter
+
+  - name: is_returned_order
+    description: |-
+      Restricts to orders that were returned. The complement lens, for questions
+      about return rate rather than revenue.
+    expr: "{{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}'"
+    labels:
+      - filter

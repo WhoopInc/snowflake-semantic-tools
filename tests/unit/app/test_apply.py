@@ -1,0 +1,1323 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import replace
+from types import MappingProxyType
+from typing import Any
+
+import pytest
+
+from snowflake_semantic_tools.app.apply import ApplyArtifacts, classify_error, one, preserves_grants
+from snowflake_semantic_tools.app.apply.errors import _outcome_diagnostic
+from snowflake_semantic_tools.app.plan_artifacts import PlanArtifacts
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyOutcome,
+    Change,
+    ClassifiedError,
+    CompositePlan,
+    ErrorKind,
+    ExecResult,
+    ExecutionError,
+    FailurePolicy,
+    GrantCheck,
+    GrantRow,
+    OutcomeStatus,
+    OwnershipMarker,
+    RecoveryProof,
+    RenderedArtifact,
+    RetryPolicy,
+    ShowRow,
+)
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, sql
+from snowflake_semantic_tools.domain.state import (
+    FAILED_AFTER_WRITE,
+    PARTIAL_WRITE,
+    AppliedEntry,
+    AppliedResourceInput,
+    Manifest,
+)
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.artifact_builders import (
+    agent_and_cowork_profile,
+    agent_and_eval,
+    change,
+    changeset,
+    manifest,
+    marker,
+    observed,
+    rendered,
+    state,
+    target,
+)
+from tests.helpers.clocks import FixedClock
+from tests.helpers.progress_recorder import RecordedProgress
+from tests.helpers.snowflake_fake import FakeSnowflake, failed
+from tests.helpers.sql_values import statement, texts
+
+
+def runner(
+    port: FakeSnowflake | None = None, store: InMemoryStateStore | None = None, clock: FixedClock | None = None
+) -> tuple[ApplyArtifacts, FakeSnowflake, InMemoryStateStore, FixedClock]:
+    port = port or FakeSnowflake()
+    store = store or InMemoryStateStore()
+    clock = clock or FixedClock()
+    return (
+        ApplyArtifacts(port, store, clock, state_table=rendered("STATE").target, actor="TEST_ROLE"),
+        port,
+        store,
+        clock,
+    )
+
+
+@pytest.mark.parametrize(
+    ("message", "sqlstate", "kind", "retryable"),
+    [
+        ("not authorized", None, ErrorKind.PRIVILEGE, False),
+        ("missing does not exist", None, ErrorKind.NOT_FOUND, False),
+        ("syntax error", None, ErrorKind.SYNTAX, False),
+        ("timeout", None, ErrorKind.TRANSIENT, True),
+        ("other", None, ErrorKind.UNKNOWN, False),
+        ("x", "28000", ErrorKind.PRIVILEGE, False),
+        ("x", "02000", ErrorKind.NOT_FOUND, False),
+        ("x", "42000", ErrorKind.SYNTAX, False),
+        ("x", "08001", ErrorKind.TRANSIENT, True),
+    ],
+)
+def test_error_classification(message: str, sqlstate: str | None, kind: ErrorKind, retryable: bool) -> None:
+    value = classify_error(message, sqlstate=sqlstate)
+    assert value.kind is kind and value.retryable is retryable
+
+
+def test_a_name_conflict_is_not_classified_as_a_syntax_error() -> None:
+    assert classify_error("Object 'X' already exists.").code == "SST-SNO002"
+    assert classify_error("x", sqlstate="42710").code == "SST-SNO002"
+    assert classify_error("x", sqlstate="42000").code == "SST-SNO009"
+
+
+def test_apply_create_writes_remote_then_local_state() -> None:
+    artifact = rendered()
+    use_case, port, store, _ = runner()
+    result = use_case.run(changeset(change(artifact)), state())
+    assert result.success and result.state_written
+    assert result.outcomes[0].status is OutcomeStatus.APPLIED
+    assert port.scripts == [texts(artifact.statements)]
+    assert store.writes and artifact.key in store.writes[0].applied
+    assert artifact.key in (port.remote_state or {})
+
+
+def test_remote_state_failure_does_not_publish_uncommitted_local_state() -> None:
+    artifact = rendered()
+    port = FakeSnowflake()
+    store = InMemoryStateStore()
+
+    def fail_state(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise SnowflakePortError("state table unavailable")
+
+    port.write_state = fail_state  # type: ignore[method-assign, assignment]
+    use_case, _, _, _ = runner(port, store)
+
+    with pytest.raises(SnowflakePortError, match="state table unavailable"):
+        use_case.run(changeset(change(artifact)), state())
+
+    assert port.scripts == [texts(artifact.statements)]
+    assert store.state is None
+
+
+def test_apply_create_refuses_object_that_appears_after_plan() -> None:
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.existing = {
+        artifact.target.sql,
+        *(relation.sql for relation in artifact.required_relations),
+    }
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact)), state())
+
+    assert not result.success
+    assert result.outcomes[0].error.code == "SST-APL012"  # type: ignore[union-attr]
+    assert port.scripts == []
+    assert store.state is not None
+    assert artifact.key not in store.state.applied
+
+
+def test_apply_refuses_blocked_and_live_lock() -> None:
+    artifact = rendered()
+    blocked = replace(
+        change(artifact),
+        action=Action.BLOCKED,
+        diagnostics=DiagnosticBag((D("SST-REF001", model="x"),)),
+    )
+    use_case, _, _, _ = runner()
+    refused = use_case.run(changeset(blocked), state())
+    assert not refused.state_written and refused.diagnostics[-1].code == "SST-APL003"
+
+    store = InMemoryStateStore()
+    store.locked = True
+    store.holder = "other"
+    use_case, _, _, _ = runner(store=store)
+    locked = use_case.run(changeset(change(artifact)), state())
+    assert locked.diagnostics[-1].code == "SST-APL011"
+
+
+def test_apply_refuses_changeset_with_observation_errors_before_lock_or_write() -> None:
+    artifact = rendered()
+    changes = replace(
+        changeset(change(artifact)), diagnostics=DiagnosticBag((D("SST-PLN001", value="x", detail="down"),))
+    )
+    use_case, port, store, _ = runner()
+    result = use_case.run(changes, state())
+    assert not result.state_written
+    assert port.scripts == []
+    assert not store.locked
+
+
+def test_apply_breaks_stale_lock_and_retries_transient_failure() -> None:
+    artifact = rendered()
+    store = InMemoryStateStore()
+    store.locked = True
+    store.stale = True
+    store.holder = "dead"
+    port = FakeSnowflake()
+    port.execute_results = [failed("timeout", "08001")]
+    clock = FixedClock()
+    use_case, _, _, _ = runner(port, store, clock)
+    result = use_case.run(
+        changeset(change(artifact)),
+        state(),
+        ApplyOptions(break_stale_lock=True, retry=RetryPolicy(2, (7,))),
+    )
+    assert result.success
+    assert result.diagnostics[0].code == "SST-APL010"
+    assert result.outcomes[0].attempts == 2 and clock.sleeps == [7]
+
+
+def test_apply_never_reruns_a_script_that_failed_after_a_statement_ran() -> None:
+    # An agent's ADD VERSION that ran before a transient failure on its alias: running the
+    # script again from the top would add the version a second time.
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.execute_results = [replace(failed("timeout", "08001"), query_ids=("01-add-version",))]
+    clock = FixedClock()
+    use_case, _, _, _ = runner(port, clock=clock)
+    result = use_case.run(changeset(change(artifact)), state(), ApplyOptions(retry=RetryPolicy(3, (7, 7))))
+    [outcome] = result.outcomes
+    assert not result.success
+    assert outcome.attempts == 1 and clock.sleeps == []
+    assert outcome.partial_write and outcome.write_succeeded
+    assert len(port.scripts) == 1
+
+
+def test_apply_update_rechecks_marker_preserves_or_detects_grants() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    grant = GrantRow("SELECT", "ROLE", "R")
+    port.grants[artifact.target.sql] = (grant,)
+    use_case, _, _, _ = runner(port)
+    good = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert good.success and good.outcomes[0].grants is GrantCheck.PRESERVED
+
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    calls = 0
+
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
+        nonlocal calls
+        del object_type, qualified_name, routine_signature
+        calls += 1
+        return (grant,) if calls == 1 else ()
+
+    port.show_grants = grants  # type: ignore[method-assign]
+    use_case, _, _, _ = runner(port)
+    lost = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert not lost.success and lost.outcomes[0].error.code == "SST-APL009"  # type: ignore[union-attr]
+    assert lost.outcomes[0].write_succeeded
+    assert port.remote_state is not None
+    assert port.remote_state[artifact.key].fingerprint == artifact.fingerprint
+
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.fail("show_grants", SnowflakePortError("cannot read baseline"))
+    use_case, _, _, _ = runner(port)
+    unreadable = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert not unreadable.success
+    assert unreadable.outcomes[0].error.code == "SST-APL008"  # type: ignore[union-attr]
+    assert unreadable.outcomes[0].grants is GrantCheck.UNREADABLE
+    assert port.scripts == []
+
+
+def test_grants_unreadable_before_the_replace_report_apl008_once() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.fail("show_grants", SnowflakePortError("cannot read baseline"))
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert result.outcomes[0].grants is GrantCheck.UNREADABLE
+    assert [diagnostic.code for diagnostic in result.diagnostics].count("SST-APL008") == 1
+
+
+def test_apply_update_refuses_marker_drift_and_unsafe_replace() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = OwnershipMarker("b" * 64, artifact.fingerprint)
+    use_case, _, _, _ = runner(port)
+    drift = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert drift.diagnostics[-1].code == "SST-APL012"
+
+    unsafe_artifact = replace(artifact, statements=(statement(artifact.ddl.replace(" COPY GRANTS", "")),))
+    port.markers[artifact.target.sql] = ownership
+    use_case, _, _, _ = runner(port)
+    unsafe = use_case.run(changeset(change(unsafe_artifact, Action.UPDATE, live=live)), state())
+    assert unsafe.diagnostics[-1].code == "SST-APL004"
+    assert not preserves_grants(change(unsafe_artifact, Action.UPDATE, live=live))
+
+
+def test_apply_prune_requires_permission_and_marker_and_updates_state() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    prune = change(artifact, Action.PRUNE, live=live)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    prior_entry = AppliedEntry(
+        artifact.fingerprint,
+        artifact.target.sql,
+        "now",
+        "prior",
+        "applied",
+        artifact.fingerprint,
+        ownership.manifest_id,
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: prior_entry}))
+    port.remote_state = MappingProxyType({artifact.key: prior_entry})
+    use_case, _, _, _ = runner(port)
+    skipped = use_case.run(changeset(prune), prior)
+    assert skipped.outcomes[0].status is OutcomeStatus.SKIPPED
+    port.markers[artifact.target.sql] = ownership
+    applied = use_case.run(changeset(prune), prior, ApplyOptions(allow_prune=True))
+    assert applied.success and port.scripts[-1][0].startswith("DROP SEMANTIC VIEW")
+
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    use_case, _, _, _ = runner(port)
+    # The plan saw an entry the state table no longer holds: re-read under the lock, it refuses.
+    missing_remote_row = use_case.run(
+        changeset(prune),
+        prior,
+        ApplyOptions(allow_prune=True),
+    )
+    assert [item.code for item in missing_remote_row.diagnostics] == ["SST-APL012"]
+    assert missing_remote_row.diagnostics[0].message == (
+        "target verify: its state in DB.SCHEMA.STATE changed since the plan"
+    )
+    assert not missing_remote_row.state_written and port.scripts == []
+    assert port.run_locks.rows == {}
+
+
+def test_apply_preflight_and_failure_policies_account_for_every_change() -> None:
+    upstream = rendered("UP")
+    downstream = rendered("DOWN", depends_on=(upstream.key,))
+    port = FakeSnowflake()
+    port.existing = {"OTHER"}
+    use_case, _, _, _ = runner(port)
+    missing = use_case.run(changeset(change(upstream), change(downstream)), state())
+    assert len(missing.outcomes) == 2 and not missing.success
+
+    port = FakeSnowflake()
+    port.execute_results = [failed("syntax error", "42000")]
+    use_case, _, _, _ = runner(port)
+    stopped = use_case.run(
+        changeset(change(upstream), change(downstream)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_DEPENDENTS),
+    )
+    assert [item.status for item in stopped.outcomes] == [OutcomeStatus.FAILED, OutcomeStatus.SKIPPED]
+    assert {item.code for item in stopped.diagnostics} >= {"SST-APL001", "SST-APL002"}
+
+    port = FakeSnowflake()
+    port.execute_results = [failed("syntax error", "42000")]
+    use_case, _, _, _ = runner(port)
+    stop_all = use_case.run(
+        changeset(change(upstream), change(downstream)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_ALL),
+    )
+    assert len(stop_all.outcomes) == 2
+    assert len(port.scripts) == 1
+
+
+def test_partial_apply_state_retains_observed_managed_entries() -> None:
+    upstream = rendered("UP")
+    downstream = rendered("DOWN", depends_on=(upstream.key,))
+    ownership = marker(downstream)
+    live_downstream = observed(downstream, ownership=ownership)
+    port = FakeSnowflake()
+    port.execute_results = [failed("syntax error", "42000")]
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(
+        changeset(change(upstream), change(downstream, Action.UPDATE, live=live_downstream)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_DEPENDENTS),
+    )
+    assert not result.success
+    assert store.state is not None
+    assert store.state.applied[downstream.key].fingerprint == ownership.fingerprint
+
+
+def test_stop_dependents_propagates_skips_transitively() -> None:
+    upstream = rendered("UP")
+    middle = rendered("MID", depends_on=(upstream.key,))
+    downstream = rendered("DOWN", depends_on=(middle.key,))
+    port = FakeSnowflake()
+    port.execute_results = [failed("syntax error", "42000")]
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(
+        changeset(change(upstream), change(middle), change(downstream)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_DEPENDENTS),
+    )
+    assert [item.status for item in result.outcomes] == [
+        OutcomeStatus.FAILED,
+        OutcomeStatus.SKIPPED,
+        OutcomeStatus.SKIPPED,
+    ]
+
+
+def test_apply_covers_noop_blocked_prune_drift_and_missing_render() -> None:
+    artifact = rendered()
+    use_case, _, _, _ = runner()
+    noop = replace(change(artifact), action=Action.NOOP)
+    noop_result = use_case.run(changeset(noop), state())
+    assert noop_result.outcomes[0].status is OutcomeStatus.SKIPPED
+    assert not noop_result.state_written
+
+    blocked = replace(change(artifact), action=Action.BLOCKED)
+    continued = use_case.run(
+        changeset(blocked),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.CONTINUE),
+    )
+    assert continued.outcomes[0].status is OutcomeStatus.SKIPPED
+
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    prune = change(artifact, Action.PRUNE, live=live)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = OwnershipMarker("b" * 64, artifact.fingerprint)
+    use_case, _, _, _ = runner(port)
+    drift = use_case.run(changeset(prune), state(), ApplyOptions(allow_prune=True))
+    assert drift.outcomes[0].error.code == "SST-APL012"  # type: ignore[union-attr]
+
+    malformed = replace(change(artifact), rendered=None)
+    use_case, _, _, _ = runner()
+    failed_render = use_case.run(changeset(malformed), state())
+    assert failed_render.outcomes[0].error.code == "SST-APL001"  # type: ignore[union-attr]
+
+
+def test_apply_handles_unreadable_grants_and_unknown_execution_errors() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    calls = 0
+
+    def unreadable(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
+        nonlocal calls
+        del object_type, qualified_name, routine_signature
+        calls += 1
+        if calls == 1:
+            return (GrantRow("SELECT", "ROLE", "R"),)
+        raise SnowflakePortError("cannot reread")
+
+    port.show_grants = unreadable  # type: ignore[method-assign]
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert result.outcomes[0].grants is GrantCheck.UNREADABLE
+    assert result.diagnostics[0].code == "SST-APL008"
+
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(False)]
+    use_case, _, _, _ = runner(port)
+    unknown = use_case.run(changeset(change(artifact)), state())
+    assert unknown.outcomes[0].error.kind is ErrorKind.UNKNOWN  # type: ignore[union-attr]
+
+
+def test_preserves_grants_non_update_and_non_replacing_statement() -> None:
+    artifact = rendered()
+    assert preserves_grants(change(artifact))
+    live = observed(artifact, ownership=marker(artifact))
+    safe = replace(artifact, statements=(statement("ALTER SEMANTIC VIEW DB.SCHEMA.V SET COMMENT='x'"),))
+    assert preserves_grants(change(safe, Action.UPDATE, live=live))
+
+
+def test_generic_apply_refuses_composite_artifact_program() -> None:
+    artifact = replace(rendered(), key="eval:a", artifact_type="eval", generic_apply_safe=False)
+    use_case, port, _, _ = runner()
+    result = use_case.run(changeset(change(artifact)), state())
+    assert result.outcomes[0].status is OutcomeStatus.FAILED
+    assert "dedicated publication handler" in result.outcomes[0].error.message  # type: ignore[union-attr]
+    assert port.scripts == []
+
+
+def test_apply_honors_parallelism_within_a_dependency_wave() -> None:
+    from threading import Barrier
+
+    first = rendered("FIRST")
+    second = rendered("SECOND")
+    port = FakeSnowflake()
+    barrier = Barrier(2)
+    original = port.execute_script
+
+    def synchronized(statements: Sequence[Sql]) -> ExecResult:
+        barrier.wait(timeout=10)
+        return original(statements)
+
+    port.execute_script = synchronized  # type: ignore[method-assign]
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(
+        changeset(change(first), change(second)),
+        state(),
+        ApplyOptions(parallelism=2),
+    )
+    assert result.success
+
+
+def test_post_write_actor_metadata_never_queries_snowflake() -> None:
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.current_role = lambda: (_ for _ in ()).throw(SnowflakePortError("metadata down"))  # type: ignore[method-assign]
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(change(artifact)), state())
+    assert result.success
+    assert store.state is not None
+    assert store.state.last_run is not None and store.state.last_run.actor == "TEST_ROLE"
+
+
+def test_worker_exception_becomes_outcome_and_persists_sibling_success() -> None:
+    first = rendered("FIRST")
+    second = rendered("SECOND")
+    ownership = marker(second)
+    live_second = observed(second, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[second.target.sql] = ownership
+
+    def marker_with_failure(
+        qualified_name: QualifiedName, object_type: str = "SEMANTIC VIEW"
+    ) -> OwnershipMarker | None:
+        del object_type
+        if qualified_name == second.target:
+            raise RuntimeError("metadata failure")
+        return port.markers.get(qualified_name.sql)
+
+    port.describe_marker = marker_with_failure  # type: ignore[method-assign]
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(
+        changeset(
+            change(first),
+            change(second, Action.UPDATE, live=live_second),
+        ),
+        state(),
+        ApplyOptions(parallelism=2),
+    )
+
+    assert not result.success
+    assert result.state_written
+    assert [outcome.status for outcome in result.outcomes] == [
+        OutcomeStatus.APPLIED,
+        OutcomeStatus.FAILED,
+    ]
+    assert store.state is not None
+    assert first.key in store.state.applied
+    assert second.key not in store.state.applied
+
+
+def test_grant_preservation_ignores_grantor_drift() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    calls = 0
+
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
+        nonlocal calls
+        del object_type, qualified_name, routine_signature
+        calls += 1
+        return (
+            GrantRow(
+                "SELECT",
+                "ROLE",
+                "READER",
+                "OLD_GRANTOR" if calls == 1 else "NEW_GRANTOR",
+            ),
+        )
+
+    port.show_grants = grants  # type: ignore[method-assign]
+    use_case, _, _, _ = runner(port)
+
+    result = use_case.run(
+        changeset(change(artifact, Action.UPDATE, live=live)),
+        state(),
+    )
+
+    assert result.success
+    assert result.outcomes[0].grants is GrantCheck.PRESERVED
+
+
+def test_search_service_update_replays_and_verifies_explicit_grants() -> None:
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    grant = GrantRow("USAGE", "ROLE", "READER", grant_option=True)
+    port.grants[artifact.target.sql] = (grant,)
+    use_case, _, _, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert result.success
+    assert port.scripts[0] == texts(artifact.statements)
+    # The target's schema is named SCHEMA, a reserved word, so the replayed grant quotes it.
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE READER WITH GRANT OPTION',)
+    assert result.outcomes[0].grants is GrantCheck.PRESERVED
+
+
+@pytest.mark.parametrize(
+    ("grant", "code"),
+    [
+        (sql("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO READER"), "SST-VAL826"),
+        ("GRANT USAGE ON CORTEX SEARCH SERVICE DB.SCHEMA.V TO ROLE READER", "SST-VAL827"),
+    ],
+    ids=["untyped", "raw text"],
+)
+def test_search_service_replay_refuses_a_grant_the_publication_guards_refuse(
+    monkeypatch: pytest.MonkeyPatch, grant: object, code: str
+) -> None:
+    monkeypatch.setattr(one, "grant_statement", lambda object_type, target, row: grant)
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "READER"),)
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert not result.success
+    assert [item.code for item in result.diagnostics if item.code.startswith("SST-VAL82")] == [code]
+    # The replace ran, so state keeps the object; the refused GRANT was never sent.
+    assert port.scripts == [texts(artifact.statements)]
+    assert result.outcomes[0].write_succeeded
+    assert store.state is not None and store.state.applied[artifact.key].outcome == "failed_after_write"
+
+
+def test_search_service_replay_failure_retains_truthful_write_state() -> None:
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "READER"),)
+    port.execute_results = [ExecResult(True), failed("grant denied", "28000")]
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert not result.success
+    assert result.outcomes[0].write_succeeded
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == "failed_after_write"
+
+
+def test_agent_apply_uploads_spec_before_executing_version_program() -> None:
+    artifact = replace(
+        rendered(),
+        object_type="AGENT",
+        grant_preservation=GrantPreservation.NONE,
+        upload_path="@DB.S.AGENT_SPECS/v/sha/agent_spec.yaml",
+        upload_content=b"{}",
+        statements=(statement("CREATE AGENT IF NOT EXISTS DB.SCHEMA.V FROM @DB.S.AGENT_SPECS/v/sha/"),),
+    )
+    use_case, port, _, _ = runner()
+    result = use_case.run(changeset(change(artifact)), state())
+    assert result.success
+    assert port.uploads == [(artifact.upload_path, b"{}")]
+    assert port.scripts == [texts(artifact.statements)]
+
+
+def test_partial_statement_failure_records_truthful_recovery_state() -> None:
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(False, ("query-1",), error=ExecutionError("later failed"))]
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(change(artifact)), state())
+    assert not result.success
+    assert result.outcomes[0].write_succeeded and result.outcomes[0].partial_write
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == "partial_write"
+
+
+def test_expected_marker_must_be_visible_after_multi_statement_publish() -> None:
+    base = rendered()
+    artifact = replace(
+        base,
+        expected_marker=OwnershipMarker("b" * 64, base.fingerprint),
+    )
+    use_case, _, store, _ = runner()
+    result = use_case.run(changeset(change(artifact)), state())
+    assert not result.success
+    assert result.outcomes[0].write_succeeded
+    assert result.outcomes[0].error.code == "SST-APL012"  # type: ignore[union-attr]
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == "failed_after_write"
+
+
+def test_an_error_reading_the_marker_back_after_create_keeps_ownership() -> None:
+    base = rendered()
+    published = manifest({base.key: base})
+    ownership = OwnershipMarker(published.manifest_id, base.fingerprint)
+    artifact = replace(base, expected_marker=ownership)
+    port = FakeSnowflake()
+    # The CREATE succeeds; the SHOW that reads its marker back then fails.
+    port.fail("describe_marker", SnowflakePortError("connection reset", sqlstate="08001"))
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(replace(changeset(change(artifact)), manifest_id=published.manifest_id), state())
+
+    assert port.scripts == [texts(artifact.statements)]
+    assert store.state is not None
+    port.heal("describe_marker")
+    port.show(ShowRow("V", "DB", "SCHEMA", "OWNER", "now", f"published {ownership.text}"))
+    port.definitions[artifact.target.sql] = "create or replace semantic view V"
+    replanned = PlanArtifacts(port).run({artifact.key: artifact}, published, store.state, target(), fetched_at="later")
+    # The view is SST's: the next plan must not call it unmanaged.
+    assert [item.code for item in replanned.diagnostics] == []
+    assert replanned.changes[0].action is Action.NOOP
+    assert not result.success
+    assert result.outcomes[0].status is OutcomeStatus.FAILED and result.outcomes[0].write_succeeded
+    assert store.state.applied[artifact.key].outcome == FAILED_AFTER_WRITE
+
+
+def test_an_error_rechecking_grants_after_update_records_the_write() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    reads = 0
+
+    def grants(
+        object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...] = ()
+    ) -> tuple[GrantRow, ...]:
+        nonlocal reads
+        del object_type, qualified_name, routine_signature
+        reads += 1
+        if reads == 1:
+            return (GrantRow("SELECT", "ROLE", "R"),)
+        raise RuntimeError("unexpected SHOW GRANTS row")
+
+    port.show_grants = grants  # type: ignore[method-assign]
+    use_case, _, store, _ = runner(port)
+
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+
+    assert port.scripts == [texts(artifact.statements)]
+    assert result.outcomes[0].status is OutcomeStatus.FAILED
+    assert result.outcomes[0].write_succeeded
+    assert result.outcomes[0].error.message == "unexpected SHOW GRANTS row"  # type: ignore[union-attr]
+    assert store.state is not None
+    assert store.state.applied[artifact.key].outcome == FAILED_AFTER_WRITE
+    assert store.state.applied[artifact.key].fingerprint == artifact.fingerprint
+
+
+def test_database_role_grant_replay_uses_snowflake_spelling() -> None:
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.grants[artifact.target.sql] = (GrantRow("USAGE", "DATABASE_ROLE", "DB.READER"),)
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert result.success
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO DATABASE ROLE DB.READER',)
+
+
+def test_grant_replay_quotes_special_role_names() -> None:
+    artifact = replace(
+        rendered(),
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+        statements=(
+            statement("CREATE OR REPLACE CORTEX SEARCH SERVICE DB.SCHEMA.V ON BODY AS SELECT BODY FROM DB.SCHEMA.T"),
+        ),
+    )
+    ownership = marker(artifact)
+    live = replace(observed(artifact, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[artifact.target.sql] = ownership
+    port.grants[artifact.target.sql] = (GrantRow("USAGE", "ROLE", "Mixed Role"),)
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert result.success
+    assert port.scripts[1] == ('GRANT USAGE ON CORTEX SEARCH SERVICE DB."SCHEMA".V TO ROLE "Mixed Role"',)
+
+
+def test_apply_stop_all_processes_successes_before_first_failure() -> None:
+    first = rendered("FIRST")
+    second = rendered("SECOND")
+    third = rendered("THIRD")
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(True), failed("syntax error", "42000")]
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(
+        changeset(change(first), change(second), change(third)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_ALL),
+    )
+    assert [outcome.status for outcome in result.outcomes] == [
+        OutcomeStatus.APPLIED,
+        OutcomeStatus.FAILED,
+        OutcomeStatus.SKIPPED,
+    ]
+
+    port = FakeSnowflake()
+    use_case, _, _, _ = runner(port)
+    successful = use_case.run(
+        changeset(change(first), change(second)),
+        state(),
+        ApplyOptions(on_failure=FailurePolicy.STOP_ALL),
+    )
+    assert successful.success
+    assert [outcome.status for outcome in successful.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+
+
+def test_apply_lifecycle_handler_merges_resources_and_dispatches_diagnostic() -> None:
+    artifact = replace(
+        rendered(),
+        artifact_type="virtual",
+        physical_resources=(("TABLE", rendered("PHYSICAL").target),),
+    )
+    handler = _LifecycleHandler()
+    use_case, _, store, _ = runner()
+    use_case._lifecycle_handlers["virtual"] = handler
+    value = change(artifact)
+    value = replace(value, artifact_type="virtual")
+    result = use_case.run(changeset(value), state())
+    assert result.success
+    assert handler.applied
+    assert handler.merged
+    assert store.state is not None
+    assert [
+        (item.object_type, item.qualified_name) for item in store.state.applied[artifact.key].applied_resources
+    ] == [("TABLE", "DB.SCHEMA.MERGED")]
+
+    for code in ("SST-APL016", "SST-APL022"):
+        outcome = replace(
+            handler.apply(value, ApplyOptions()),
+            status=OutcomeStatus.FAILED,
+            error=ClassifiedError(code, "detail", ErrorKind.UNKNOWN),
+        )
+        diagnostic = _outcome_diagnostic(value, outcome)
+        assert diagnostic.code == code
+
+    authored = replace(
+        value,
+        diagnostics=DiagnosticBag((D("SST-APL028", value=value.key, found="old", expected="new"),)),
+    )
+    outcome = replace(
+        handler.apply(authored, ApplyOptions()),
+        status=OutcomeStatus.FAILED,
+        error=ClassifiedError("SST-APL028", "detail", ErrorKind.UNKNOWN),
+    )
+    assert _outcome_diagnostic(authored, outcome) is authored.diagnostics[0]
+    assert _outcome_diagnostic(value, outcome).code == "SST-INT902"
+
+
+def test_apply_upload_failure_and_empty_grant_replay() -> None:
+    artifact = replace(rendered(), upload_path="@DB.S.FILE", upload_content=b"payload")
+    port = FakeSnowflake()
+
+    def fail_upload(stage_path: str, content: bytes) -> None:
+        del stage_path, content
+        raise SnowflakePortError("timeout", sqlstate="08001")
+
+    port.upload = fail_upload  # type: ignore[method-assign]
+    use_case, _, _, _ = runner(port)
+    result = use_case.run(changeset(change(artifact)), state())
+    assert result.outcomes[0].error.kind is ErrorKind.TRANSIENT  # type: ignore[union-attr]
+
+    replay = replace(
+        artifact,
+        object_type="CORTEX SEARCH SERVICE",
+        grant_preservation=GrantPreservation.REPLAY,
+    )
+    ownership = marker(replay)
+    live = replace(observed(replay, ownership=ownership), object_type="CORTEX SEARCH SERVICE")
+    port = FakeSnowflake()
+    port.markers[replay.target.sql] = ownership
+    use_case, _, _, _ = runner(port)
+    empty = use_case.run(changeset(change(replay, Action.UPDATE, live=live)), state())
+    assert empty.success
+    assert len(port.scripts) == 1
+
+
+def test_apply_exhausts_retry_and_classifies_marker_lookup_exception() -> None:
+    artifact = rendered()
+    port = FakeSnowflake()
+    port.execute_results = [failed("timeout", "08001"), failed("timeout", "08001")]
+    use_case, _, _, _ = runner(port)
+    exhausted = use_case.run(
+        changeset(change(artifact)),
+        state(),
+        ApplyOptions(retry=RetryPolicy(2, (1,))),
+    )
+    assert not exhausted.success
+    assert exhausted.outcomes[0].attempts == 2
+
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    port = FakeSnowflake()
+    port.fail("describe_marker", SnowflakePortError("denied", sqlstate="28000"))
+    use_case, _, _, _ = runner(port)
+    failed_lookup = use_case.run(changeset(change(artifact, Action.UPDATE, live=live)), state())
+    assert failed_lookup.outcomes[0].error.kind is ErrorKind.PRIVILEGE  # type: ignore[union-attr]
+
+
+def test_apply_prune_non_executable_and_observed_marker_state_paths() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    live = observed(artifact, ownership=ownership)
+    non_executable = replace(change(artifact, Action.PRUNE, live=live), prune_executable=False)
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    recorded = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: recorded}))
+    use_case, port, store, _ = runner()
+    port.remote_state = prior.applied
+    skipped = use_case.run(changeset(non_executable), prior, ApplyOptions(allow_prune=True))
+    assert skipped.outcomes[0].status is OutcomeStatus.SKIPPED
+    # Nothing executes, and the retained entry keeps the manifest that published the object.
+    assert skipped.state_written and store.state is not None
+    assert store.state.applied[artifact.key] == recorded
+
+    noop = replace(change(artifact), action=Action.NOOP, observed=live)
+    use_case, _, store, _ = runner()
+    observed_result = use_case.run(changeset(noop), state())
+    assert not observed_result.state_written
+    assert store.state is None
+
+    blocked = replace(change(artifact), action=Action.BLOCKED, observed=live)
+    use_case, _, store, _ = runner()
+    retained = use_case.run(changeset(blocked), state(), ApplyOptions(on_failure=FailurePolicy.CONTINUE))
+    assert store.state is None
+    assert not retained.state_written
+
+
+def test_finish_state_skips_markerless_observation_and_unrendered_outcome() -> None:
+    artifact = rendered()
+    live_without_marker = observed(artifact)
+    malformed = replace(change(artifact), rendered=None, observed=live_without_marker)
+    use_case, _, _, _ = runner()
+    state_value = use_case._finish_state(
+        changeset(malformed),
+        state(),
+        (
+            ApplyOutcome(
+                malformed.key,
+                malformed.action,
+                OutcomeStatus.APPLIED,
+                1,
+                0,
+                "",
+                write_succeeded=True,
+            ),
+        ),
+        "run",
+        "start",
+    )
+    assert state_value.applied == {}
+
+
+def test_finish_state_prunes_applied_entry_and_preserves_prior_failed_entry() -> None:
+    artifact = rendered()
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    entry = AppliedEntry(
+        artifact.fingerprint,
+        artifact.target.sql,
+        "before",
+        "prior",
+        "applied",
+        artifact.fingerprint,
+        "a" * 64,
+    )
+    previous = replace(state(), applied=MappingProxyType({artifact.key: entry}))
+    prune = change(artifact, Action.PRUNE)
+    use_case, _, _, _ = runner()
+    pruned = use_case._finish_state(
+        changeset(prune),
+        previous,
+        (ApplyOutcome(prune.key, Action.PRUNE, OutcomeStatus.APPLIED, 1, 0, "", write_succeeded=True),),
+        "run",
+        "start",
+    )
+    assert artifact.key not in pruned.applied
+
+    failed_without_write = change(artifact, Action.UPDATE, live=observed(artifact, ownership=marker(artifact)))
+    retained = use_case._finish_state(
+        changeset(failed_without_write),
+        previous,
+        (
+            ApplyOutcome(
+                failed_without_write.key,
+                Action.UPDATE,
+                OutcomeStatus.FAILED,
+                1,
+                0,
+                artifact.ddl,
+                ClassifiedError("SST-SNO001", "failed", ErrorKind.UNKNOWN),
+            ),
+        ),
+        "run",
+        "start",
+    )
+    assert retained.applied[artifact.key] == entry
+
+
+def test_a_report_only_prune_without_an_entry_records_the_object_it_observed() -> None:
+    artifact = rendered()
+    ownership = marker(artifact)
+    report_only = replace(
+        change(artifact, Action.PRUNE, live=observed(artifact, ownership=ownership)), prune_executable=False
+    )
+    use_case, port, store, _ = runner()
+
+    result = use_case.run(changeset(report_only), state(), ApplyOptions(allow_prune=True))
+
+    assert result.state_written and port.scripts == []
+    assert store.state is not None
+    recorded = store.state.applied[artifact.key]
+    assert (recorded.outcome, recorded.manifest_id) == ("observed", ownership.manifest_id)
+
+
+def test_a_report_only_prune_of_an_object_gone_from_snowflake_keeps_its_entry() -> None:
+    # A deleted tool is reported from its state entry even once dropped by hand: apply runs
+    # nothing for it, and the entry stays.
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    artifact = rendered()
+    recorded = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "now", "prior", "applied", artifact.fingerprint, "o" * 64
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: recorded}))
+    report_only = replace(change(artifact, Action.PRUNE), artifact_type="tool", prune_executable=False)
+    use_case, port, store, _ = runner()
+    port.remote_state = prior.applied
+
+    result = use_case.run(changeset(report_only), prior, ApplyOptions(allow_prune=True))
+
+    assert result.outcomes[0].status is OutcomeStatus.SKIPPED and port.scripts == []
+    assert result.state_written and store.state is not None
+    assert store.state.applied[artifact.key] == recorded
+
+
+def test_an_applied_prune_forgets_its_entry_though_it_observed_the_marked_object() -> None:
+    # The prune observed SST's marker on the object it then dropped, so recording observed
+    # objects must not write the entry back.
+    from snowflake_semantic_tools.domain.state import AppliedEntry
+
+    artifact = rendered()
+    ownership = marker(artifact)
+    entry = AppliedEntry(
+        artifact.fingerprint,
+        artifact.target.sql,
+        "now",
+        "prior",
+        "applied",
+        artifact.fingerprint,
+        ownership.manifest_id,
+    )
+    prior = replace(state(), applied=MappingProxyType({artifact.key: entry}))
+    use_case, port, store, _ = runner()
+    port.markers[artifact.target.sql] = ownership
+    port.remote_state = prior.applied
+
+    result = use_case.run(
+        changeset(change(artifact, Action.PRUNE, live=observed(artifact, ownership=ownership))),
+        prior,
+        ApplyOptions(allow_prune=True),
+    )
+
+    assert result.success and port.scripts[-1][0].startswith("DROP SEMANTIC VIEW")
+    assert store.state is not None and artifact.key not in store.state.applied
+
+
+def test_a_composite_prune_that_ran_leaves_a_deactivated_tombstone() -> None:
+    # A composite type whose prune leaves its object in place keeps the entry, to reactivate it.
+    from typing import cast
+
+    from snowflake_semantic_tools.app.apply.state import EntryStamp, _applied_after
+    from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+    from snowflake_semantic_tools.domain.state import DEACTIVATED, AppliedEntry
+
+    artifact = rendered()
+    entry = AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "before", "prior", "applied", artifact.fingerprint, "a" * 64
+    )
+    previous = replace(state(), applied=MappingProxyType({artifact.key: entry}))
+    prune = change(artifact, Action.PRUNE)
+    handlers = {prune.artifact_type: cast(CompositeLifecycleHandler, object())}
+
+    applied = _applied_after(
+        changeset(prune),
+        previous,
+        (ApplyOutcome(prune.key, Action.PRUNE, OutcomeStatus.APPLIED, 1, 0, "", write_succeeded=True),),
+        EntryStamp("run", "now", "abc1234"),
+        handlers,
+    )
+
+    assert (applied[artifact.key].outcome, applied[artifact.key].run_id) == (DEACTIVATED, "run")
+
+
+def test_outcomes_that_do_not_account_for_every_change_report_apl900() -> None:
+    artifact = rendered()
+    use_case, port, _, _ = runner()
+
+    # The waves key changes by artifact key, so a repeated key runs once.
+    result = use_case.run(changeset(change(artifact), change(artifact)), state())
+
+    assert len(result.outcomes) == 1 and port.scripts == [texts(artifact.statements)]
+    assert [item.code for item in result.diagnostics] == ["SST-APL900"]
+    assert not result.success
+
+
+def test_a_retry_policy_without_attempts_fails_the_change_without_running_it() -> None:
+    artifact = rendered()
+    use_case, port, store, clock = runner()
+
+    result = use_case.run(changeset(change(artifact)), state(), ApplyOptions(retry=RetryPolicy(0, ())))
+
+    outcome = result.outcomes[0]
+    assert (outcome.status, outcome.attempts, outcome.write_succeeded) == (OutcomeStatus.FAILED, 0, False)
+    assert outcome.error is not None and outcome.error.code == "SST-SNO001"
+    assert port.scripts == [] and clock.sleeps == []
+    assert store.state is not None and artifact.key not in store.state.applied
+
+
+class _LifecycleHandler:
+    artifact_type = "virtual"
+
+    def for_session(self, session: object) -> _LifecycleHandler:
+        del session
+        return self
+
+    def __init__(self) -> None:
+        self.applied = False
+        self.merged = False
+
+    # Apply never plans or prunes through a handler, so this double leaves both unanswered.
+    def plan(self, artifact: RenderedArtifact, state_entry: AppliedEntry | None, manifest: Manifest) -> CompositePlan:
+        raise NotImplementedError
+
+    def report_prune(self, artifact_key: str, state_entry: AppliedEntry) -> Change:
+        raise NotImplementedError
+
+    def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        del options
+        assert change.rendered is not None
+        self.applied = True
+        return ApplyOutcome(
+            change.key,
+            change.action,
+            OutcomeStatus.APPLIED,
+            1,
+            1,
+            change.rendered.ddl,
+            write_succeeded=True,
+        )
+
+    def merge_physical_resources(
+        self, current: tuple[tuple[str, str], ...], previous: AppliedEntry | None
+    ) -> tuple[AppliedResourceInput, ...]:
+        del current, previous
+        self.merged = True
+        return (("TABLE", "DB.SCHEMA.MERGED"),)
+
+    def recover(self, change: Change) -> RecoveryProof:
+        raise NotImplementedError
+
+
+def test_a_temporary_run_publishes_and_records_no_eval_of_a_temporary_agent() -> None:
+    # The temporary agent ends with the run's session, so an eval of it could never run.
+    port = FakeSnowflake()
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(*agent_and_eval(temporary=True)), state(), ApplyOptions(temporary=True))
+    assert result.success
+    assert {outcome.key: outcome.status for outcome in result.outcomes} == {
+        "agent:sales": OutcomeStatus.APPLIED,
+        "eval:sales": OutcomeStatus.SKIPPED,
+    }
+    assert port.scripts == [("CREATE AGENT DB.SCHEMA.SALES",)]
+    assert [item.code for item in result.diagnostics if item.code == "SST-APL105"] == ["SST-APL105"]
+    written = store.state
+    assert written is not None and not any(key.startswith("eval:") for key in written.applied)
+
+    # The same eval of a permanent agent is published.
+    port = FakeSnowflake()
+    use_case, _, _, _ = runner(port)
+    permanent = use_case.run(changeset(*agent_and_eval(temporary=False)), state())
+    assert [outcome.status for outcome in permanent.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+
+
+def test_a_temporary_run_publishes_and_records_no_cowork_profile() -> None:
+    # A temporary profile is unmeasured, and a permanent one would route to session-scoped agents.
+    port = FakeSnowflake()
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(*agent_and_cowork_profile(temporary=True)), state(), ApplyOptions(temporary=True))
+    assert result.success
+    assert {outcome.key: outcome.status for outcome in result.outcomes} == {
+        "agent:sales": OutcomeStatus.APPLIED,
+        "cowork_profile:everyone": OutcomeStatus.SKIPPED,
+    }
+    assert port.scripts == [("CREATE AGENT DB.SCHEMA.SALES",)]
+    assert [item.code for item in result.diagnostics if item.code == "SST-APL106"] == ["SST-APL106"]
+    written = store.state
+    assert written is None or "cowork_profile:everyone" not in written.applied
+
+    # A permanent run publishes the profile after its agent, and reports no skip.
+    port = FakeSnowflake()
+    use_case, _, _, _ = runner(port)
+    permanent = use_case.run(changeset(*agent_and_cowork_profile(temporary=False)), state())
+    assert [outcome.status for outcome in permanent.outcomes] == [OutcomeStatus.APPLIED, OutcomeStatus.APPLIED]
+    assert "SST-APL106" not in [item.code for item in permanent.diagnostics]
+
+
+def test_a_set_profile_refused_after_the_create_reports_snowflakes_error_and_a_partial_write() -> None:
+    # The marker is written with CREATE AGENT, so the next plan finishes the write; the
+    # refusal that stopped it is what the run reports, not a marker read back.
+    agent, _ = agent_and_eval(temporary=False)
+    assert agent.rendered is not None
+    artifact = replace(agent.rendered, expected_marker=OwnershipMarker("c" * 64, agent.rendered.fingerprint))
+    refusal = "Cortex agent profile JSON exceeds maximum size limit of 1000 bytes. Actual size: 10019 bytes."
+    port = FakeSnowflake()
+    port.execute_results = [replace(failed(refusal), query_ids=("01-create", "02-version-comment"))]
+    use_case, _, store, _ = runner(port)
+    result = use_case.run(changeset(replace(agent, rendered=artifact)), state())
+    [outcome] = result.outcomes
+    assert outcome.partial_write and outcome.error is not None and outcome.error.message == refusal
+    [reported] = [item for item in result.diagnostics if item.code.startswith("SST-APL")]
+    assert reported.code == "SST-APL001" and refusal in reported.message
+    assert store.state is not None and store.state.applied["agent:sales"].outcome == PARTIAL_WRITE
+
+
+def test_a_write_that_ran_whole_without_leaving_its_marker_says_so() -> None:
+    agent, _ = agent_and_eval(temporary=False)
+    assert agent.rendered is not None
+    artifact = replace(agent.rendered, expected_marker=OwnershipMarker("c" * 64, agent.rendered.fingerprint))
+    use_case, _, _, _ = runner(FakeSnowflake())
+    result = use_case.run(changeset(replace(agent, rendered=artifact)), state())
+    [reported] = [item for item in result.diagnostics if item.code == "SST-APL012"]
+    assert reported.message == (
+        "agent:sales: DB.SCHEMA.SALES, whose ownership marker the write did not leave, changed since the plan"
+    )
+
+
+def test_each_change_is_a_unit_of_publish_that_says_how_it_ended() -> None:
+    applied, refused = rendered("ALPHA"), rendered("BRAVO")
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(True, ("q1",)), failed("not authorized")]
+    progress = RecordedProgress()
+    use_case = ApplyArtifacts(
+        port, InMemoryStateStore(), FixedClock(), state_table=rendered("STATE").target, progress=progress
+    )
+    use_case.run(changeset(change(applied), change(refused)), state(), ApplyOptions(parallelism=1))
+    assert progress.units() == [
+        ("started", "publish", applied.key, "create"),
+        ("finished", "publish", applied.key, True, "create applied"),
+        ("started", "publish", refused.key, "create"),
+        ("finished", "publish", refused.key, False, "create failed"),
+    ]
+
+
+def test_a_no_op_is_reported_but_never_counted_shown_or_lock_checked() -> None:
+    written, *unchanged = (rendered(name) for name in ("ALPHA", "BRAVO", "CHARLIE", "DELTA"))
+    port = FakeSnowflake()
+    port.execute_results = [ExecResult(True, ("q1",))]
+    reads: list[str] = []
+    verify = port.verify_run_lock
+
+    def counted(*args: Any, **kwargs: Any) -> bool:
+        reads.append("verify")
+        return verify(*args, **kwargs)
+
+    port.verify_run_lock = counted  # type: ignore[method-assign]
+    progress = RecordedProgress()
+    use_case = ApplyArtifacts(
+        port, InMemoryStateStore(), FixedClock(), state_table=rendered("STATE").target, progress=progress
+    )
+    changes = (change(written), *(change(item, Action.NOOP) for item in unchanged))
+    result = use_case.run(changeset(*changes), state(), ApplyOptions(parallelism=2))
+    assert ("expect", "publish", 1) in progress.events
+    assert [event[2] for event in progress.units()] == [written.key, written.key]
+    assert len(reads) == 1
+    assert sorted((item.key, item.status.value) for item in result.outcomes) == sorted(
+        [(written.key, "applied"), *((item.key, "skipped") for item in unchanged)]
+    )

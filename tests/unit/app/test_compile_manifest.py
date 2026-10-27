@@ -1,0 +1,268 @@
+from __future__ import annotations
+
+from types import MappingProxyType
+
+import pytest
+
+from snowflake_semantic_tools.app.compile import CompileArtifacts, CompiledView, CompileResult
+from snowflake_semantic_tools.app.manifest import build_manifest
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel, DbtNode
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import CompositeFacts, PublishShape, RenderedArtifact
+from snowflake_semantic_tools.domain.model.semantic_view import (
+    Column,
+    ColumnKind,
+    Metric,
+    SemanticView,
+    Table,
+    Tag,
+    VerifiedQuery,
+)
+from snowflake_semantic_tools.domain.model.setting import Setting
+from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION
+from tests.helpers.sql_values import authored, authored_query, statement
+
+
+def test_compiled_view_emits_all_smoke_probe_kinds_and_required_relations() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(
+            Metric("PUBLIC", authored("COUNT(1)"), "T"),
+            Metric("PRIVATE", authored("COUNT(1)"), "T", access_modifier="private_access"),
+        ),
+        verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT 1;")),),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    rendered = compiled.rendered_artifact
+    assert [probe.kind.value for probe in rendered.smoke] == ["view", "metric", "verified_query"]
+    assert str(rendered.smoke[0].sql) == "SELECT SV.PUBLIC FROM SEMANTIC_VIEW(DB.S.V METRICS T.PUBLIC) AS SV LIMIT 0"
+    assert "SELECT SV.PUBLIC" in str(rendered.smoke[1].sql)
+    assert rendered.required_relations[0].sql == "DB.S.T"
+    assert "LIMIT 0" in str(rendered.smoke[-1].sql)
+    assert CompileResult((compiled,)).rendered == (rendered,)
+    publish = compiled.rendered_for_publish("a" * 64)
+    assert f"[sst:{'a' * 64}:{compiled.fingerprint}]" in publish.ddl
+    assert publish.fingerprint == compiled.fingerprint
+    assert CompileResult((compiled,)).rendered_for_publish("a" * 64) == (publish,)
+
+
+def test_a_verified_query_probe_reads_the_relations_its_logical_tables_name() -> None:
+    view = SemanticView(
+        "SEMANTIC.SALES.SALES",
+        (Table("ORDERS", "ANALYTICS.SALES.ORDERS"), Table("CUSTOMERS", "ANALYTICS.CORE.CUSTOMERS")),
+        metrics=(Metric("M", authored("COUNT(1)"), "ORDERS"),),
+        verified_queries=(VerifiedQuery("Q", "q?", authored_query("SELECT COUNT(*) FROM orders;")),),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW SEMANTIC.SALES.SALES"))
+    assert str(compiled.rendered_artifact.smoke[-1].sql) == (
+        "SELECT * FROM (WITH ORDERS AS (SELECT * FROM ANALYTICS.SALES.ORDERS), "
+        "CUSTOMERS AS (SELECT * FROM ANALYTICS.CORE.CUSTOMERS) "
+        "SELECT * FROM (SELECT COUNT(*) FROM orders) AS SST_VQ) LIMIT 0"
+    )
+
+
+def test_compiled_view_uses_dimension_probe_and_rejects_view_without_public_members() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        columns=(Column("T", "CATEGORY", ColumnKind.DIMENSION, authored("T.CATEGORY")),),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    assert compiled.byte_length == len(compiled.canonical_ddl.encode("utf-8"))
+    assert str(compiled.rendered_artifact.smoke[0].sql) == (
+        "SELECT SV.CATEGORY FROM SEMANTIC_VIEW(DB.S.V DIMENSIONS T.CATEGORY) AS SV LIMIT 0"
+    )
+
+    private_only = SemanticView(
+        "DB.S.PRIVATE_V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("PRIVATE", authored("COUNT(1)"), "T", access_modifier="private_access"),),
+    )
+    with pytest.raises(ValueError, match="no public dimension or metric"):
+        _ = CompiledView(private_only, statement("CREATE SEMANTIC VIEW DB.S.PRIVATE_V")).rendered_artifact
+
+
+def test_a_compiled_view_declares_the_tags_its_replace_sets_as_the_renderer_spells_them() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"),),
+        tags=(Tag("gov.t.pii", "yes"), Tag('GOV."t".OWNER', "me")),
+    )
+    rendered = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS")).rendered_artifact
+    assert rendered.desired_tags == ("GOV.T.PII", 'GOV."t".OWNER')
+
+
+def test_manifest_builder_records_sources_members_and_diagnostics() -> None:
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(Metric("M", authored("COUNT(1)"), "T"),),
+        source_path="semantic_models/views.yml",
+        source_files=("semantic_models/views.yml", "semantic_models/metrics.yml"),
+        referenced_models=("t",),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    result = CompileResult(
+        (compiled,),
+        DiagnosticBag((D("SST-LOD003", file="empty.yml", subject="semantic_view:v"),)),
+    )
+    manifest = build_manifest(
+        result,
+        dbt_project_name="jaffle",
+        file_checksums={"semantic_models/views.yml": "abc"},
+    )
+    entry = manifest.artifacts["semantic_view:v"]
+    assert entry.source_files == ("semantic_models/views.yml", "semantic_models/metrics.yml")
+    assert "metric:m" in entry.member_keys
+    assert entry.diagnostic_codes == ("SST-LOD003",)
+    assert manifest.members["metric:m"] == {"attached_to": ["semantic_view:v"], "expr": "COUNT(1)"}
+    assert manifest.dbt_models["t"]["referenced_by"] == ["semantic_view:v"]  # type: ignore[index]
+    assert manifest.schema_version == MANIFEST_SCHEMA_VERSION
+    assert "impact" not in manifest.as_dict()
+    assert manifest.dbt_models["t"]["relation"] == "DB.S.T"  # type: ignore[index]
+    assert manifest.sources["semantic_file_count"] == 1
+    assert build_manifest(result).as_dict()["manifest_id"] == build_manifest(result).manifest_id
+
+
+def test_the_manifest_records_what_each_member_reads_and_dbt_s_graph() -> None:
+    model = DbtModel("model.p.t", "t", "DB.S.T", (), (), (DbtColumn("id", None, None, None),))
+    view = SemanticView(
+        "DB.S.V",
+        (Table("T", "DB.S.T"),),
+        metrics=(
+            Metric("M", authored("COUNT(T.ID)"), "T"),
+            Metric("N", authored("M * 2")),
+            Metric("O", authored("COUNT(DISTINCT ID) + MAX(cte.x)"), "T"),
+        ),
+        custom_instruction_names=("tone",),
+        referenced_models=("t",),
+        table_models=MappingProxyType({"T": model}),
+    )
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    graph = (DbtNode("model.p.t", "model", "t", "p", "DB.S.T", ("source.p.raw.a",)),)
+    manifest = build_manifest(CompileResult((compiled,)), dbt_graph=graph)
+    assert manifest.members["metric:m"] == {
+        "attached_to": ["semantic_view:v"],
+        "tables": ["t"],
+        "columns": ["t.id"],
+        "expr": "COUNT(T.ID)",
+    }
+    assert manifest.members["metric:n"] == {"attached_to": ["semantic_view:v"], "uses": ["metric:m"], "expr": "M * 2"}
+    # A bare column of the metric's one table is recorded; a qualifier no table has is not a metric's to resolve.
+    assert manifest.members["metric:o"]["columns"] == ["t.id"]  # type: ignore[index]
+    assert manifest.members["custom_instruction:tone"] == {"attached_to": ["semantic_view:v"]}
+    assert manifest.dbt_nodes == {
+        "model.p.t": {
+            "kind": "model",
+            "name": "t",
+            "package": "p",
+            "relation": "DB.S.T",
+            "depends_on": ["source.p.raw.a"],
+        }
+    }
+
+
+class _CompiledTool:
+    def __init__(self, name: str = "SEARCH", artifact_key: str = "tool:search") -> None:
+        self.name = name
+        self.artifact_key = artifact_key
+
+    artifact_type = "tool"
+    source_files = ("tools/platform.yml",)
+    member_keys: tuple[str, ...] = ()
+    referenced_models = ("docs",)
+    dbt_relations = (("docs", "DB.S.DOCS"),)
+    settings: tuple[Setting, ...] = ()
+
+    @property
+    def rendered_artifact(self) -> RenderedArtifact:
+        return RenderedArtifact.create(
+            key=self.artifact_key,
+            artifact_type=self.artifact_type,
+            target=QualifiedName.parse("DB.S.SEARCH"),
+            ddl=statement("CREATE CORTEX SEARCH SERVICE DB.S.SEARCH ON BODY AS SELECT BODY FROM DB.S.DOCS"),
+            shape=PublishShape("CORTEX SEARCH SERVICE"),
+            depends_on=("semantic_view:v",),
+        )
+
+    def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
+        del manifest_id
+        return self.rendered_artifact
+
+
+class _Compiler:
+    def __init__(self, result: CompileResult) -> None:
+        self._result = result
+
+    def run_result(self) -> CompileResult:
+        return self._result
+
+
+def test_generic_compiler_and_manifest_preserve_artifact_metadata() -> None:
+    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", authored("COUNT(1)"), "T"),))
+    compiled_view = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    tool = _CompiledTool()
+    result = CompileArtifacts(
+        (_Compiler(CompileResult((tool,))), _Compiler(CompileResult((compiled_view,)))),
+        {"semantic_view": 100, "tool": 200},
+    ).run_result()
+    assert [item.artifact_key for item in result.compiled] == ["semantic_view:v", "tool:search"]
+    manifest = build_manifest(result)
+    entry = manifest.artifacts["tool:search"]
+    assert entry.object_type == "CORTEX SEARCH SERVICE"
+    assert entry.depends_on == ("semantic_view:v",)
+    assert entry.source_files == ("tools/platform.yml",)
+    assert manifest.dbt_models["docs"]["referenced_by"] == ["tool:search"]  # type: ignore[index]
+
+
+def test_manifest_round_trip_preserves_composite_component_metadata() -> None:
+    rendered = RenderedArtifact.create(
+        key="eval:a",
+        artifact_type="eval",
+        target=QualifiedName.parse("DB.S.EVAL_A"),
+        ddl=statement("evaluation:\n  agent_params: {}\nmetrics: []"),
+        shape=PublishShape("", render_dialect="eval_yaml"),
+        composite=CompositeFacts(
+            component_fingerprints=(("dataset", "a" * 64), ("config", "b" * 64)),
+            physical_resources=(
+                ("TABLE", QualifiedName.parse("DB.S.EVAL_SRC_A")),
+                ("DATASET", QualifiedName.parse("DB.S.EVAL_A")),
+            ),
+        ),
+    )
+    manifest = build_manifest(CompileResult((_CompiledComposite(rendered),)))
+    entry = manifest.artifacts["eval:a"]
+    assert entry.component_fingerprints == (("dataset", "a" * 64), ("config", "b" * 64))
+    assert entry.physical_resources == (("TABLE", "DB.S.EVAL_SRC_A"), ("DATASET", "DB.S.EVAL_A"))
+
+
+class _CompiledComposite:
+    name = "A"
+    artifact_key = "eval:a"
+    artifact_type = "eval"
+    source_files = ("dataset.yml", "config.yml")
+    member_keys: tuple[str, ...] = ()
+    referenced_models: tuple[str, ...] = ()
+    dbt_relations: tuple[tuple[str, str], ...] = ()
+    settings: tuple[Setting, ...] = ()
+
+    def __init__(self, rendered: RenderedArtifact) -> None:
+        self._rendered = rendered
+
+    @property
+    def rendered_artifact(self) -> RenderedArtifact:
+        return self._rendered
+
+    def rendered_for_publish(self, manifest_id: str) -> RenderedArtifact:
+        del manifest_id
+        return self._rendered
+
+
+def test_manifest_merges_references_to_the_same_dbt_model() -> None:
+    first = _CompiledTool()
+    second = _CompiledTool("SEARCH_TWO", "tool:search_two")
+    manifest = build_manifest(CompileResult((first, second)))
+    assert manifest.dbt_models["docs"]["referenced_by"] == ["tool:search", "tool:search_two"]  # type: ignore[index]

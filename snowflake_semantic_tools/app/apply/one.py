@@ -1,0 +1,440 @@
+"""One change of a plan: re-check what plan saw, run the statements with retries, verify the write.
+
+`ChangeApplier.apply` turns any failure, an unexpected exception included, into the change's
+outcome. A change is routed to its composite lifecycle handler, skipped, pruned, or written. A
+write is refused before anything runs when the plan no longer holds; once its statements ran,
+the outcome reports the write even if checking it then failed, so state keeps the object as SST's.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import replace
+
+from snowflake_semantic_tools.app.apply.errors import (
+    MARKER_NOT_INSTALLED,
+    _exception_error,
+    _failed,
+    _rendered_ddl,
+    _script_error,
+    _skipped,
+)
+from snowflake_semantic_tools.app.apply.stages import UploadStages
+from snowflake_semantic_tools.app.drift import written_digest
+from snowflake_semantic_tools.app.grant_sql import grant_statement
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
+from snowflake_semantic_tools.app.prior import served_version
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    ApplyOptions,
+    ApplyOutcome,
+    Change,
+    ClassifiedError,
+    ErrorKind,
+    ExecResult,
+    GrantCheck,
+    GrantRow,
+    ObservedArtifact,
+    OutcomeStatus,
+    RenderedArtifact,
+    RetryPolicy,
+    pinned_default,
+)
+from snowflake_semantic_tools.domain.model.registry import GrantPreservation
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql, keyword, qname, sql
+from snowflake_semantic_tools.domain.validate.publication import refused_value, statement_diagnostic
+
+
+def preserves_grants(change: Change) -> bool:
+    """Report whether an update keeps the object's grants: a clause-preserving replace needs COPY GRANTS.
+
+    Only an update is checked, by the rule plan warns with (`RenderedArtifact.keeps_grants`).
+    """
+    if change.action is not Action.UPDATE or change.rendered is None:
+        return True
+    return change.rendered.keeps_grants
+
+
+class ChangeApplier:
+    """Apply the changes of a plan one by one; a run's parallel workers share one applier.
+
+    It keeps no state between changes, but for `stages`, which the run shares across its
+    workers so each upload stage is created once. The lifecycle handlers are the run's own
+    mapping, not a copy, so a handler registered on the run after construction is used here
+    too. With `leased`, `port` is a session leased for this change, and each composite handler
+    runs its statements there too, through `for_session`, rather than on the session it was
+    built on.
+    """
+
+    def __init__(
+        self,
+        port: CatalogPublicationPort,
+        clock: ClockPort,
+        lifecycle_handlers: Mapping[str, CompositeLifecycleHandler],
+        *,
+        leased: bool = False,
+        stages: UploadStages | None = None,
+    ) -> None:
+        self._port = port
+        self._clock = clock
+        self._lifecycle_handlers = lifecycle_handlers
+        self._leased = leased
+        self._stages = stages if stages is not None else UploadStages()
+
+    def apply(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        """Apply one change and report how it ended; an exception that escapes fails the change."""
+        try:
+            return self._apply_guarded(change, options)
+        except Exception as exc:
+            return _failed(change, _exception_error(exc), _rendered_ddl(change))
+
+    def _apply_guarded(self, change: Change, options: ApplyOptions) -> ApplyOutcome:
+        """Route a change: to its composite handler, a skip, a prune, a refusal, or a write, in that order.
+
+        The clock starts before routing, so a duration counts from the moment apply took up the change.
+        """
+        started = self._clock.monotonic_ms()
+        lifecycle_handler = self._lifecycle_handlers.get(change.artifact_type)
+        if lifecycle_handler is not None:
+            if self._leased:
+                lifecycle_handler = lifecycle_handler.for_session(self._port)
+            return lifecycle_handler.apply(change, options)
+        if change.action in (Action.NOOP, Action.BLOCKED):
+            return _skipped(change, _rendered_ddl(change))
+        if change.action is Action.PRUNE:
+            return self._prune(change, options, started)
+        rendered = change.rendered
+        if rendered is None:
+            return _failed(change, ClassifiedError("SST-APL001", "missing rendered artifact", ErrorKind.UNKNOWN), "")
+        refusal = self._refusal(change, rendered)
+        if refusal is not None:
+            return refusal
+        return self._write(change, rendered, options, started)
+
+    def _prune(self, change: Change, options: ApplyOptions, started: int) -> ApplyOutcome:
+        """Drop the object a prune retires, once its ownership marker still reads as plan saw it.
+
+        A report-only prune, a prune the options do not allow, and a prune with nothing observed
+        are skipped.
+        """
+        if not change.prune_executable or not options.allow_prune or change.observed is None:
+            return _skipped(change, "")
+        if self._marker_changed(change.observed):
+            error = ClassifiedError("SST-APL012", "ownership marker changed", ErrorKind.UNKNOWN)
+            return _failed(change, error, "", duration_ms=self._elapsed(started))
+        result = self._port.execute_script(
+            (
+                sql(
+                    "DROP {kind} {name}",
+                    kind=keyword(change.observed.object_type),
+                    name=qname(change.observed.qualified_name),
+                ),
+            )
+        )
+        return self._execution_outcome(change, result, 1, started, "")
+
+    def _refusal(self, change: Change, rendered: RenderedArtifact) -> ApplyOutcome | None:
+        """Refuse a write the plan no longer supports, before anything runs; None lets it proceed.
+
+        Checked in order: an artifact only a composite handler may publish, a created object
+        that appeared since the plan (unless temporary), an updated object whose marker changed,
+        and a replace that would drop the grants.
+        """
+        if not rendered.generic_apply_safe:
+            error = ClassifiedError(
+                "SST-APL001", "artifact requires a dedicated publication handler", ErrorKind.UNKNOWN
+            )
+            return _failed(change, error, rendered.ddl)
+        if (
+            change.action is Action.CREATE
+            and self._port.object_exists(rendered.object_type, rendered.target)
+            and not rendered.temporary
+        ):
+            error = ClassifiedError("SST-APL012", "object appeared after plan", ErrorKind.UNKNOWN)
+            return _failed(change, error, rendered.ddl)
+        if change.action is Action.UPDATE and change.observed is not None and self._marker_changed(change.observed):
+            error = ClassifiedError("SST-APL012", "object changed since plan", ErrorKind.UNKNOWN)
+            return _failed(change, error, rendered.ddl)
+        if not preserves_grants(change):
+            error = ClassifiedError("SST-APL004", "replace omits COPY GRANTS", ErrorKind.UNKNOWN)
+            return _failed(change, error, rendered.ddl)
+        return None
+
+    def _write(
+        self,
+        change: Change,
+        rendered: RenderedArtifact,
+        options: ApplyOptions,
+        started: int,
+    ) -> ApplyOutcome:
+        """Run a checked change's statements, verify what they wrote, then read back its digest.
+
+        The explicit grants an update keeps are read before anything runs, and the file the
+        artifact publishes is staged before its statements, on a stage made to exist first
+        when the artifact names it. Any of them failing fails the change with nothing of the
+        artifact written. A verified update that committed an agent version then pins the
+        agent's default to it, before the digest and the served version are read.
+        """
+        try:
+            before = self._grants_to_keep(change, rendered)
+        except SnowflakePortError as exc:
+            error = ClassifiedError("SST-APL008", str(exc), ErrorKind.PRIVILEGE)
+            return _failed(
+                change, error, rendered.ddl, duration_ms=self._elapsed(started), grants=GrantCheck.UNREADABLE
+            )
+        try:
+            stage = rendered.upload_stage
+            unusable = self._stages.ensure(self._port, stage) if stage is not None else None
+            if unusable is not None:
+                return _failed(change, unusable, rendered.ddl, duration_ms=self._elapsed(started))
+            self._stage_upload(rendered)
+        except SnowflakePortError as exc:
+            return _failed(change, _exception_error(exc), rendered.ddl, duration_ms=self._elapsed(started))
+        result, attempts = self._execute_with_retry(rendered.statements, options.retry)
+        outcome = self._execution_outcome(change, result, attempts, started, rendered.ddl)
+        if not outcome.write_succeeded:
+            return outcome
+        try:
+            verified = self._verify_write(change, outcome, before)
+        except Exception as exc:
+            # The statements ran, so the object is written whatever failed while it was
+            # checked. Reporting no write would drop it from state, and the next plan
+            # would call an object SST created unmanaged.
+            return replace(outcome, status=OutcomeStatus.FAILED, error=_exception_error(exc), write_succeeded=True)
+        return self._with_digest(self._pin_default(verified, rendered), rendered)
+
+    def _pin_default(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
+        """Pin a permanent agent's default by name to the version its applied update just committed.
+
+        The program left the default following `'LAST'`, which serves the new version; pinned by
+        name, it stays there when a version is committed later, as an eval-model comparison
+        commits them. The version committed is the newest release SHOW VERSIONS lists, since an
+        eval-model version is the only other kind committed. A read or a statement that fails
+        loses nothing: the write is applied, the default keeps following `LAST`, and the reason
+        is in `default_unpinned`, which the run reports.
+        """
+        if outcome.status is not OutcomeStatus.APPLIED or rendered.adds_version is not True:
+            return outcome
+        try:
+            newest = self._port.observe_agent_versions(rendered.target).newest
+        except SnowflakePortError as exc:
+            return replace(outcome, default_unpinned=f"reading its versions failed: {exc}")
+        name = newest.name if newest is not None else None
+        pin = pinned_default(rendered.target, name) if name else None
+        if pin is None:
+            return replace(outcome, default_unpinned="SHOW VERSIONS IN AGENT listed no version it committed")
+        try:
+            result = self._port.execute_script((pin,))
+        except SnowflakePortError as exc:
+            return replace(outcome, default_unpinned=f"pinning {name} failed: {exc}")
+        if not result.ok:
+            reason = result.error.message if result.error is not None else "unknown Snowflake failure"
+            return replace(outcome, default_unpinned=f"pinning {name} failed: {reason}")
+        return outcome
+
+    def _with_digest(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> ApplyOutcome:
+        """Read back the digest of what a verified write left, which state records for plan.
+
+        A permanent agent also records, as its `version` component, the committed version it
+        now serves, which `sst list --long` shows.
+        """
+        if outcome.status is not OutcomeStatus.APPLIED:
+            return outcome
+        try:
+            digest = written_digest(self._port, rendered)
+        except Exception:
+            # The write is verified; a digest that cannot be read is unknown, never drift, and
+            # the next apply reads it again.
+            digest = None
+        return replace(outcome, live_digest=digest, component_fingerprints=self._served(outcome, rendered))
+
+    def _served(self, outcome: ApplyOutcome, rendered: RenderedArtifact) -> tuple[tuple[str, str], ...]:
+        """The outcome's components, with the version a permanent agent serves; unchanged when unread."""
+        if " ".join(rendered.object_type.upper().split()) != "AGENT" or rendered.temporary:
+            return outcome.component_fingerprints
+        try:
+            served = served_version(self._port.observe_agent_versions(rendered.target).versions, rendered.desired_alias)
+        except SnowflakePortError:
+            return outcome.component_fingerprints
+        if served is None or served.name is None:
+            return outcome.component_fingerprints
+        return (*outcome.component_fingerprints, ("version", served.name))
+
+    def _grants_to_keep(self, change: Change, rendered: RenderedArtifact) -> tuple[GrantRow, ...] | None:
+        """Return the explicit grants an update must keep; None when it has none to check.
+
+        Raises:
+            SnowflakePortError: the grants could not be read.
+        """
+        if (
+            change.action is not Action.UPDATE
+            or change.observed is None
+            or rendered.grant_preservation is GrantPreservation.NONE
+        ):
+            return None
+        return self._explicit_grants(change.observed, rendered)
+
+    def _stage_upload(self, rendered: RenderedArtifact) -> None:
+        """Stage the file the artifact's statements read, when it publishes one."""
+        if rendered.upload_path is not None and rendered.upload_content is not None:
+            self._port.upload(rendered.upload_path, rendered.upload_content)
+
+    def _execute_with_retry(self, statements: tuple[Sql, ...], retry: RetryPolicy) -> tuple[ExecResult, int]:
+        """Run the statements, retrying a transient failure after the policy's backoff.
+
+        Only a script that wrote nothing is retried. One that failed after a statement
+        completed is a partial write, which the next plan finishes: re-running it from the
+        top would repeat statements that are not idempotent, such as ADD VERSION.
+
+        Returns:
+            The last attempt's result and how many attempts ran.
+        """
+        attempts = 0
+        result = None
+        for attempt in range(1, retry.max_attempts + 1):
+            attempts = attempt
+            result = self._port.execute_script(statements)
+            if result.ok or result.query_ids:
+                break
+            if not _script_error(result, "unknown Snowflake failure").retryable or attempt == retry.max_attempts:
+                break
+            self._clock.sleep(retry.delay_after(attempt))
+        assert result is not None
+        return result, attempts
+
+    def _execution_outcome(
+        self,
+        change: Change,
+        result: ExecResult,
+        attempts: int,
+        started: int,
+        ddl: str,
+    ) -> ApplyOutcome:
+        """Report how the statements ran: applied, or failed with the error they reported.
+
+        A failure after some statement completed is still a write, which state keeps as a
+        partial write so the next plan updates it; a failure before any completed wrote nothing.
+        """
+        duration = self._elapsed(started)
+        if result.ok:
+            return ApplyOutcome(
+                change.key,
+                change.action,
+                OutcomeStatus.APPLIED,
+                attempts,
+                duration,
+                ddl,
+                write_succeeded=True,
+            )
+        return ApplyOutcome(
+            change.key,
+            change.action,
+            OutcomeStatus.FAILED,
+            attempts,
+            duration,
+            ddl,
+            _script_error(result, "unknown Snowflake failure"),
+            write_succeeded=bool(result.query_ids),
+            partial_write=bool(result.query_ids),
+        )
+
+    def _verify_write(
+        self,
+        change: Change,
+        outcome: ApplyOutcome,
+        before: tuple[GrantRow, ...] | None,
+    ) -> ApplyOutcome:
+        """Check the ownership marker and the explicit grants of an object the statements fully wrote.
+
+        A partial write keeps the error Snowflake reported for the statement that failed: that
+        is why the write stopped, whatever the marker then reads. The grants are checked only
+        for an update that kept some.
+        """
+        assert change.rendered is not None
+        rendered = change.rendered
+        if outcome.status is OutcomeStatus.FAILED:
+            return outcome
+        if (
+            rendered.expected_marker is not None
+            and self._port.describe_marker(rendered.target, rendered.object_type) != rendered.expected_marker
+        ):
+            error = ClassifiedError("SST-APL012", MARKER_NOT_INSTALLED, ErrorKind.UNKNOWN)
+            return replace(outcome, status=OutcomeStatus.FAILED, error=error, write_succeeded=True)
+        if before is None or change.observed is None:
+            return outcome
+        return self._verify_grants(change, change.observed, outcome, before)
+
+    def _verify_grants(
+        self,
+        change: Change,
+        observed: ObservedArtifact,
+        outcome: ApplyOutcome,
+        before: tuple[GrantRow, ...],
+    ) -> ApplyOutcome:
+        """Replay the grants a replace drops, when the artifact needs it, then check none was lost.
+
+        Grants are compared by identity, so a changed grantor is no loss. Grants that cannot be
+        read again leave the write applied, with its grants unverified.
+        """
+        assert change.rendered is not None
+        if change.rendered.grant_preservation is GrantPreservation.REPLAY:
+            replay = self._replay_grants(change.rendered, before)
+            if replay is not None:
+                return replace(outcome, status=OutcomeStatus.FAILED, error=replay, write_succeeded=True)
+        try:
+            after = self._explicit_grants(observed, change.rendered)
+        except SnowflakePortError:
+            return replace(outcome, grants=GrantCheck.UNREADABLE)
+        after_identities = {grant.identity for grant in after}
+        lost = tuple(sorted(grant for grant in before if grant.identity not in after_identities))
+        if lost:
+            error = ClassifiedError("SST-APL009", repr(lost), ErrorKind.PRIVILEGE)
+            return replace(outcome, status=OutcomeStatus.FAILED, error=error, write_succeeded=True)
+        return replace(outcome, grants=GrantCheck.PRESERVED)
+
+    def _explicit_grants(self, observed: ObservedArtifact, rendered: RenderedArtifact) -> tuple[GrantRow, ...]:
+        """Read the grants on the object that a replace must keep: a role's privileges, not OWNERSHIP."""
+        return tuple(
+            grant
+            for grant in self._port.show_grants(
+                observed.object_type,
+                observed.qualified_name,
+                rendered.routine_signature,
+            )
+            if grant.is_explicit
+        )
+
+    def _replay_grants(self, rendered: RenderedArtifact, grants: tuple[GrantRow, ...]) -> ClassifiedError | None:
+        """Grant again, in identity order, what the object held before the replace; None when all ran.
+
+        Every GRANT passes the publication guards first, as a composite publish's statements do;
+        when one is refused, none is sent.
+
+        Diagnostics:
+            SST-VAL826, SST-VAL827: as `statement_diagnostic` reports them, as the failure's code.
+        """
+        statements = tuple(
+            grant_statement(rendered.object_type, rendered.target, grant)
+            for grant in sorted(grants, key=lambda item: item.identity)
+        )
+        if not statements:
+            return None
+        for statement in statements:
+            refused = statement_diagnostic(rendered.key, statement, certification_pending=False)
+            if refused is not None:
+                return ClassifiedError(refused.code, refused.message, ErrorKind.UNKNOWN, value=refused_value(refused))
+        result = self._port.execute_script(statements)
+        if result.ok:
+            return None
+        return _script_error(result, "grant replay failed")
+
+    def _marker_changed(self, observed: ObservedArtifact) -> bool:
+        """Report whether the object's ownership marker no longer reads as plan observed it."""
+        return self._port.describe_marker(observed.qualified_name, observed.object_type) != observed.marker
+
+    def _elapsed(self, started: int) -> int:
+        """Return the milliseconds since `started`, by the clock's monotonic reading."""
+        return self._clock.monotonic_ms() - started

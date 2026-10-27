@@ -1,0 +1,18 @@
+---
+verified_query:
+  name: order_count_by_state
+  description: |-
+    Order volume split by fulfilment state. The canonical first question against
+    jaffle_sales.
+  question: "How many orders are there in each fulfilment state?"
+  sql: |-
+    SELECT
+          orders.order_state                  AS order_state
+        , COUNT(DISTINCT orders.order_id)     AS order_count
+    FROM {{ ref('orders') }} AS orders
+    GROUP BY ALL
+    ORDER BY order_count DESC
+  use_as_onboarding_question: true
+  # Epoch seconds, rendered as written.
+  verified_at: 1769904000
+  verified_by: "analytics-platform"

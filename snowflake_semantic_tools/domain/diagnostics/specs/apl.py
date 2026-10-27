@@ -1,0 +1,668 @@
+"""Apply codes (APL): a refusal or failure while SST executes changes and runs checks in Snowflake."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
+
+TITLE: str = "Apply"
+
+SPECS: tuple[ErrorSpec, ...] = (
+    spec(
+        "SST-APL001",
+        Severity.ERROR,
+        "DDL execution failed",
+        "{artifact}: {value} failed: {detail}",
+        "fix the statement or the account as the error in the message says",
+        condition=(
+            "Snowflake rejected a statement `apply` or `drop` ran, or a change failed for a reason "
+            "no other APL code names"
+        ),
+        note=(
+            "The message's detail is the error itself; when SST recognizes a Snowflake refusal it "
+            "also reports it under its SST-SNO code."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL002",
+        Severity.WARNING,
+        "Skipped: a dependency failed",
+        "{artifact} skipped: {blocker} failed",
+        "fix the dependency, then re-apply",
+        condition=(
+            "a change this one depends on failed or was skipped, so it did not run; with "
+            "`--fail-fast` the run instead stops at the first failure and skips every change left"
+        ),
+        note=(
+            "The message names the change that failed, even when the dependency between them was "
+            "only skipped. A dependent the plan had nothing to do for (NOOP) is skipped without it."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL003",
+        Severity.ERROR,
+        "Refused: artifact is blocked",
+        "{artifact} is BLOCKED by {count} errors",
+        "fix the errors, then re-apply",
+        condition=(
+            "the plan holds a blocked change, and `apply.fail_fast` is true (or `--fail-fast` is "
+            "given) or the change carries an error of its own, such as a validation error; apply "
+            "then runs nothing, refusing the whole plan before it takes the lock. Otherwise the "
+            "blocked change is skipped (SST-APL042)"
+        ),
+    ),
+    spec(
+        "SST-APL004",
+        Severity.ERROR,
+        "Refused: replace would run without COPY GRANTS",
+        "{artifact}: replace statement omits COPY GRANTS",
+        "report this as a bug; SST renders COPY GRANTS on every such replace",
+        demotable=False,
+        condition=(
+            "a statement about to replace an object whose grants survive only by COPY GRANTS does "
+            "not say COPY GRANTS, so it would silently revoke consumer access"
+        ),
+        note=(
+            "Nothing runs for the change. SST renders COPY GRANTS on every such replace it plans, "
+            "so this points at a defect in SST rather than in the project."
+        ),
+    ),
+    spec(
+        "SST-APL005",
+        Severity.ERROR,
+        "Refused: plan was not computed for this target",
+        "{artifact}: plan target '{found}' differs from the apply target '{expected}'",
+        "re-run plan against the apply target",
+        condition="the plan `apply --plan` was given was saved for another target than the run's",
+    ),
+    spec(
+        "SST-APL006",
+        Severity.ERROR,
+        "Verification gate failed",
+        "{count} published probes failed",
+        "fix the metrics, then re-apply",
+        demotable=False,
+        condition=("one or more smoke probes failed in `sst test`, so the run is not a success"),
+        note=(
+            "Smoke queries are not part of a deployment, so this can never fail an `apply`. Each "
+            "failed probe is reported above it: SST-PLN100 for a metric, SST-APL100 for anything else."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL007",
+        Severity.ERROR,
+        "Tag application failed after a successful create",
+        "{artifact}: tags could not be applied: {detail}",
+        "grant the tag privilege, then re-apply",
+        condition=(
+            "the ALTER that tags a published skill or plugin version CERTIFIED failed, or the "
+            "catalog did not report the version certified afterwards"
+        ),
+        note="When roles already hold grants on the extension, SST-APL021 is reported instead.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL008",
+        Severity.WARNING,
+        "Explicit grants could not be read for a replace",
+        "{artifact}: its explicit grants could not be read",
+        "check the grants by hand; if the change failed, re-apply once they can be read",
+        condition=(
+            "the explicit grants of an object an update replaces could not be read: before the "
+            "replace, which fails the change with nothing written, or after it, which leaves the "
+            "change applied with its grants unverified"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL009",
+        Severity.ERROR,
+        "Explicit grant did not survive a replace",
+        "{artifact}: grant {value} was present before replace and is absent after",
+        "confirm COPY GRANTS was emitted",
+        demotable=False,
+        condition=(
+            "an explicit grant the object carried before a replace is absent after it, compared by "
+            "privilege, grantee and grant option, so a changed grantor is no loss"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL010",
+        Severity.WARNING,
+        "Stale lock broken",
+        "broke a stale lock held by {value}",
+        "confirm no other run is live; a broken lock means the previous run did not exit cleanly",
+        condition=(
+            "`--break-stale-lock` was given and the target's run lock, in Snowflake or in the local "
+            "cache, had expired, so this run took it over; or, with no flag, the lock was a run's on "
+            "this host whose process is gone, as the local lock file records it, so this run "
+            "released both of its locks first"
+        ),
+        note=(
+            "The lock in Snowflake expires 30 minutes after its run last extended it, and a live "
+            "run extends it every 5 minutes; the local lock goes stale 30 minutes after it was "
+            "taken. The run that held the lock can no longer extend it or write state: should it "
+            "still be running, it starts no further statement once its heartbeat finds the lock "
+            "taken, and reports SST-APL011."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL011",
+        Severity.ERROR,
+        "Lock held by a live run",
+        "{value} holds the apply lock",
+        "wait for the other run to end; once its lock has expired, re-run with --break-stale-lock, or, "
+        "when that run will never end, release it with `sst state unlock --run <run id> --yes`",
+        condition=(
+            "another run (`apply`, `drop`, `state recover`, or `sst eval`) holds the target's run "
+            "lock, in Snowflake or in the local cache; or the lock expired and "
+            "`--break-stale-lock` was not given; or this run lost its lock while it ran"
+        ),
+        note=(
+            "The message names the holder: its run id and, for the lock in Snowflake, the role and "
+            "host it runs as and when its lock expires; for the local lock, the lock file, that "
+            "it locks this checkout only, and when it goes stale. A live lock is never broken: "
+            "wait for that run to end. Only once its lock has expired does `--break-stale-lock` "
+            "take it over (SST-APL010). A run reads its lock again before each change and each "
+            "write statement, so a run that lost its lock starts no further statement and writes "
+            "no state."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL012",
+        Severity.ERROR,
+        "Object changed between plan and apply",
+        "{artifact}: {value} changed since the plan",
+        "re-run plan",
+        condition=(
+            "the target changed after the plan was computed: its state table no longer reads as the "
+            "plan read it, an object the plan would create now exists, an ownership marker changed "
+            "or was not installed, or a composite artifact's resources changed; `sst test` and "
+            "`sst eval` also report it when an artifact they would check is recorded as published as compiled "
+            "but its live object changed since; and `sst apply --plan` reports it, exiting 4, when "
+            "the saved plan's manifest, observation, or ordered changes are not a fresh plan's"
+        ),
+        note=(
+            "Under `sst test` or `sst eval`, the object was changed outside SST after it was applied: run `sst plan` "
+            "and `sst apply` to publish it again. An artifact never published on the target is "
+            "SST-APL036, and one published from an older compile SST-APL038."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL013",
+        Severity.ERROR,
+        "Write refused: target is a production-like environment under --temporary",
+        "{artifact}: --temporary against target '{target}' is not permitted",
+        "drop --temporary, or point at a scratch target",
+        condition=(
+            "a session-scoped artifact was requested against a prod-like target: one whose name, "
+            "split on `_`, `-` and `.`, has a part `prod`, `production` or `prd`"
+        ),
+    ),
+    spec(
+        "SST-APL014",
+        Severity.WARNING,
+        "Temporary artifact shadows a permanent one",
+        "{artifact} shadows a permanent object of the same name for this session",
+        "remember the change is local",
+        condition="an agent `apply --temporary` published has the name of a permanent agent the plan observed",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL015",
+        Severity.WARNING,
+        "alias ignored under --temporary",
+        "{artifact}: alias is meaningless under --temporary and was ignored",
+        "no action; the same committed file is reusable for a permanent apply",
+        condition="an agent published by `apply --temporary` declares an alias",
+    ),
+    spec(
+        "SST-APL016",
+        Severity.ERROR,
+        "Partial write left the artifact in an unusable state",
+        "{artifact}: {detail}",
+        "read the detail: when a statement failed, fix its cause and apply again; when what was "
+        "written does not read back as rendered, restore it or drop the object by hand, then apply",
+        condition=(
+            "a composite publish (an eval, or a skill or plugin) wrote part of "
+            "what it publishes, then a statement failed or what it wrote did not read back as "
+            "rendered"
+        ),
+        note="State keeps the partial write, so the next plan publishes the artifact again.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL019",
+        Severity.ERROR,
+        "Deletion of a removed bundle file failed",
+        "{artifact}: '{path}' could not be removed from the published version",
+        "re-publish from empty",
+        condition="a published skill or plugin version still holds a file its bundle no longer has",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL020",
+        Severity.ERROR,
+        "Version name collided under a parallel deploy",
+        "{artifact}: version '{value}' was minted twice",
+        "retry; derive versions from the content SHA",
+        condition=(
+            "ADD VERSION on a skill or plugin failed because the version name already exists: "
+            "another deploy published it between the plan and this statement"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL021",
+        Severity.ERROR,
+        "Grant issued before certification completed",
+        "{artifact}: grants were issued and certification did not succeed",
+        "revoke, certify, then grant",
+        condition=(
+            "certifying a published skill or plugin version failed while roles already hold "
+            "grants on the extension, so they reach a version that is not certified"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL022",
+        Severity.ERROR,
+        "Dataset version could not be added",
+        "dataset '{artifact}': ADD VERSION failed: {detail}",
+        "check OWNERSHIP on the dataset",
+        condition="Snowflake refused the statement that creates an eval's dataset or adds its version",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL023",
+        Severity.ERROR,
+        "Eval run failed",
+        "eval '{artifact}': {detail}",
+        "fix what the detail names, then re-run the eval",
+        condition=(
+            "an eval could not run, or one of its attempts failed: it has no run configuration; "
+            "its agent version could not be read or its config could not be staged; "
+            "EXECUTE_AI_EVALUATION refused to start the run; its status could not be read (a read "
+            "failed for good, or 5 reads in a row failed in transit); it did not reach a terminal "
+            "status within 20 minutes; or it ended FAILED, CANCELLED, or in a status Snowflake does "
+            "not document. A run SST gives up on while it may still be running is canceled in "
+            "Snowflake, and the detail says whether the cancel went through"
+        ),
+        note=(
+            "The detail carries Snowflake's error or the run's status details. A missing run "
+            "privilege is caught before any run starts (SST-VAL727, SST-VAL728), and a wrong "
+            "config stage format too (SST-VAL729). A run that ends partially completed reports "
+            "SST-APL024, and a completed run whose results cannot be read SST-SNO001. When a retry "
+            "(the eval's `retry` setting) completes in its place, the attempt reports "
+            "SST-APL029 instead; a CANCELLED run is not retried."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL024",
+        Severity.WARNING,
+        "Eval run reported a partial terminal status",
+        "eval '{artifact}': status '{found}'",
+        "treat this as a failure and re-run",
+        condition=(
+            "an attempt still read PARTIALLY_COMPLETED or INVOCATION_PARTIALLY_COMPLETED 3 minutes "
+            "after it first read so, or at the 20-minute deadline, and `run.accept_statuses` does "
+            "not name that status"
+        ),
+        note=(
+            "SST already counts the attempt as not passing: although this is a warning, the eval "
+            "is not accepted, and the `sst eval` gate fails, unless another attempt completes; then "
+            "SST-APL029 replaces this warning. A partial status `run.accept_statuses` names "
+            "reports SST-VAL730, an error, instead."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL028",
+        Severity.ERROR,
+        "Eval config stage has the wrong FILE FORMAT",
+        "eval config stage '{value}': FILE FORMAT is {found}, expected {expected}",
+        "run one ALTER STAGE to set the required FILE FORMAT; SST will not alter a stage it did not create",
+        condition=("`apply` found an existing eval config stage that does not carry the file format eval runs read"),
+        note="`sst eval` reports the same stage as SST-VAL729 before any eval run starts.",
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-APL029",
+        Severity.WARNING,
+        "Eval attempt did not pass and was retried",
+        "eval '{artifact}': run '{value}' ended {found} and was retried: {detail}",
+        "the retry's results were used; if this recurs, investigate the run's non-determinism",
+        condition=(
+            "an eval attempt failed, ended partial, or its status or results could not be read, "
+            "and later attempts completed every run the eval needed: one, or a baseline "
+            "capture's `baseline_runs`"
+        ),
+        note=(
+            "It replaces the error or warning the attempt reports on its own (SST-APL023, "
+            "SST-APL024, SST-SNO001), and the gate judges only completed attempts whose results "
+            "were read."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL030",
+        Severity.ERROR,
+        "Hybrid state table cannot be created where it is configured",
+        "{value}: a hybrid table cannot be created in a transient database or schema",
+        "point state.+database / state.+schema at a permanent schema, or set state.+table_kind: standard",
+        condition=(
+            "`state.+table_kind` is `hybrid`, and the state or lock table does not exist yet and "
+            "falls in a transient database or schema, where Snowflake refuses hybrid tables; or "
+            "`sst state convert --to hybrid` would create them there"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL031",
+        Severity.ERROR,
+        "State table is of the other kind than configured",
+        "{value} is a {found} table, and state.+table_kind says {expected}",
+        "run `sst state convert --to {expected}` to rebuild it, or set state.+table_kind back to {found}",
+        condition=(
+            "the state or lock table exists as a standard table while `state.+table_kind` is "
+            "`hybrid`, or as a hybrid table while it is `standard`; each kind takes its own "
+            "lock protocol, so SST refuses to run the other on it. `sst plan` reports it, even "
+            "for a plan with nothing to change, and apply before it takes the lock"
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-APL032",
+        Severity.INFO,
+        "State entries recovered from ownership markers and content digests",
+        "state entries recovered from ownership markers and content digests: {count}; "
+        "unrecorded artifacts left: {value}",
+        "run sst plan: what was recovered now plans as unchanged",
+        condition=(
+            "`sst state recover` ran: each artifact state did not record whose live objects prove "
+            "they hold the compiled definition under the compiled name -- by the ownership marker "
+            "on a semantic view, tool, agent, CoWork profile or Cortex Code profile, and by the content of a "
+            "skill's or plugin's version and bundle prefix, or an eval's dataset version and "
+            "staged config -- was recorded, without writing the object"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL033",
+        Severity.WARNING,
+        "Artifact not recoverable",
+        "{artifact}: not recovered ({found}); the next apply {value}",
+        "review the plan for it: an object SST cannot prove is its own stays unmanaged (SST-PLN024) "
+        "until dropped or renamed",
+        condition=(
+            "`sst state recover` found an artifact state does not record whose live content is not "
+            "the compiled definition: the object is absent, carries no marker, or carries one for "
+            "another definition; a skill's or plugin's version or bundle prefix is missing or holds "
+            "other files; an eval's dataset "
+            "version records other provenance, or its staged config other bytes; or Snowflake "
+            "would not report the objects"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL034",
+        Severity.ERROR,
+        "State tables not converted",
+        "{value} was not converted: {detail}",
+        "nothing was changed; resolve what the message names and run sst state convert again",
+        condition=(
+            "`sst state convert` refused before renaming anything: the state table is absent or "
+            "already of the kind asked for, a backup name is taken, a target's lock is live, or "
+            "the state table's rows changed during the copy"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL035",
+        Severity.ERROR,
+        "Hybrid state table cannot be created on this account",
+        "{value}: this account cannot create hybrid tables: {detail}",
+        "set state.+table_kind: standard",
+        condition=(
+            "`state.+table_kind` is `hybrid` (or `sst state convert --to hybrid` runs), and "
+            "Snowflake refuses to create the state or lock table with an error that names hybrid "
+            "tables and is not the transient schema's (SST-APL030)"
+        ),
+        note=(
+            "Its error number is not measured, so it is recognized by a message that names hybrid "
+            "tables; any other refusal is reported as Snowflake gave it"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL036",
+        Severity.ERROR,
+        "Artifact not published on this target",
+        "{artifact}: {value} is not published on this target",
+        "run `sst plan`, then `sst apply`",
+        condition=(
+            "`sst test` would probe, or `sst eval` run, an artifact the target's state records no successful "
+            "publish of; when that is true of every artifact the run checks, SST-APL037 reports it once"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL037",
+        Severity.ERROR,
+        "Nothing to check is published on this target",
+        "nothing `sst {command}` checks is published on this target ({count} not published)",
+        "run `sst plan`, then `sst apply`",
+        condition=(
+            "no artifact `sst test` would probe, or `sst eval` run, is published on the target, as on a target "
+            "nothing was applied to; reported once instead of SST-APL036 for each"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL038",
+        Severity.ERROR,
+        "Artifact published from an older compile",
+        "{artifact}: {value} is published from an older compile",
+        "run `sst plan`, then `sst apply`, to publish the current compile",
+        condition=(
+            "`sst test` would probe, or `sst eval` run, an artifact the target's state records at another "
+            "fingerprint or name than the project compiles to now"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL040",
+        Severity.WARNING,
+        "Run lock released by hand",
+        "released the run lock held by {value}",
+        "check the run is gone: one still going stops at its next statement and writes no state",
+        condition="`sst state unlock --run <run id> --yes` found that run holding the target's lock, and released it",
+        note=(
+            "The run's lock row is released in one lock transaction, so a lock another run took meanwhile is "
+            "kept; the local lock file is released too when it names the run."
+        ),
+    ),
+    spec(
+        "SST-APL041",
+        Severity.ERROR,
+        "Run does not hold the lock",
+        "run {value} does not hold the run lock of target {target}, so nothing was released",
+        "name the run SST-APL011 reports as holding the lock; `sst state unlock` releases only that run's",
+        condition="`sst state unlock --run <run id>` named a run that does not hold the target's lock in Snowflake",
+        note="A lock file beside the local state cache that names the run is released all the same.",
+    ),
+    spec(
+        "SST-APL042",
+        Severity.WARNING,
+        "Blocked change skipped",
+        "{artifact} was skipped: the plan blocked it, so apply goes on with the rest and exits 1",
+        "resolve what blocked it, as the plan's diagnostic for it says, then apply again; "
+        "`--fail-fast` refuses the whole plan instead",
+        condition=(
+            "`apply.fail_fast` is false, the default, and the plan holds a blocked change carrying "
+            "no error of its own: an object changed out of band (SST-PLN014), or a change that "
+            "depends on a blocked one"
+        ),
+        note=(
+            "Every change the blocked one blocked is skipped with it; the rest of the plan applies "
+            "and state records it. Under strict mode a warning about the blocked change, promoted "
+            "to an error, refuses nothing, since the change does not run."
+        ),
+    ),
+    spec(
+        "SST-APL039",
+        Severity.ERROR,
+        "Schema could not be created",
+        "{value}: the schema could not be created: {detail}",
+        "create the schema, or have its database's owner let the role create schemas, then apply again",
+        condition=(
+            "with `apply.create_schemas` on, apply ran `CREATE SCHEMA IF NOT EXISTS` for an absent schema "
+            "the plan publishes into, before taking the lock, and Snowflake refused it; nothing else ran"
+        ),
+        note="Set `apply.create_schemas: false` to have plan report an absent schema as SST-PLN010 instead.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL100",
+        Severity.ERROR,
+        "Smoke query failed",
+        "{artifact}: smoke probe failed: {detail}",
+        "fix the artifact the probe names; a created view is not a working view",
+        condition=(
+            "a smoke probe of a view, a verified query, or a DESCRIBE of a published artifact "
+            "failed, observed by `sst test` rather than by `apply`"
+        ),
+        note="Fix the artifact the probe names; a metric probe reports `SST-PLN100`.",
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL103",
+        Severity.ERROR,
+        "Connection to Snowflake lost mid-run",
+        "the connection to Snowflake was lost mid-run; finished before it: {value}",
+        "run sst plan, which shows what the run left to do, then apply again",
+        condition=(
+            "Snowflake ended a session apply was running on after the run took its lock: the "
+            "network dropped, or the session was aborted or expired (error 390111 or 390112)"
+        ),
+        note=(
+            "Apply opens one fresh connection to record in state the changes that finished and to "
+            "release its lock, so the target is not left locked. A change whose statements had "
+            "not returned is not recorded as written; the next plan sees what it left behind."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL105",
+        Severity.INFO,
+        "Eval of a temporary agent skipped",
+        "{artifact}: skipped, because --temporary publishes {value} as a temporary agent",
+        "apply without --temporary to publish the eval with its agent",
+        condition=(
+            "`apply --temporary` publishes an eval's agent as a temporary agent, which ends "
+            "with the run's session, so the eval is neither published nor recorded"
+        ),
+        note="Only agents are temporary: the views, tools and skills the same run publishes are permanent.",
+    ),
+    spec(
+        "SST-APL106",
+        Severity.INFO,
+        "CoWork or Cortex Code profile left out of a temporary run",
+        "{artifact}: skipped, because --temporary publishes no CoWork or Cortex Code profile",
+        "apply without --temporary to publish the CoWork or Cortex Code profile",
+        condition=(
+            "`apply --temporary` would publish a CoWork profile or a Cortex Code agent profile, each a Snowflake "
+            "private preview feature: a temporary profile has not been measured on Snowflake, a permanent CoWork "
+            "profile would route to agents that end with the run's session, and a Cortex Code profile would be "
+            "listed to no one once the session ends, so the profile is neither published nor recorded"
+        ),
+        note="The agents a CoWork profile routes to, and the skills a Cortex Code profile pins, still publish.",
+    ),
+    spec(
+        "SST-APL107",
+        Severity.WARNING,
+        "Agent's default left following LAST",
+        "{artifact}: the default version could not be pinned by name ({detail}); it is left "
+        "following LAST, and the next `sst plan` pins it",
+        "run `sst plan`, then `sst apply`, to pin it before anything else commits a version of the agent",
+        strict_exempt=True,
+        condition=(
+            "apply committed a new version of a permanent agent, then reading its versions back or "
+            "setting DEFAULT_VERSION to the version it committed failed"
+        ),
+        note=(
+            "The write succeeded and state records it. Until the default is pinned, it serves the "
+            "newest committed version, so a version committed later, such as an eval-model version, "
+            "would become the default; the next plan reports the agent as SST-PLN107. Strict mode "
+            "leaves this a warning, since the next apply is the repair."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL108",
+        Severity.ERROR,
+        "Comparison subject not published as compiled",
+        "{artifact}: the model comparison needs it published exactly as compiled, and {detail}",
+        "run `sst plan` to see what differs, then `sst apply`, and compare again",
+        condition=(
+            "before `sst eval --compare-models` commits anything, an eval's agent or CoWork profile "
+            "is one plan would change, has no live version, does not carry its alias on the version "
+            "holding its specification, or has a default not pinned by name to that version"
+        ),
+        note=(
+            "A comparison commits versions beside the release and restores the live version from "
+            "the released specification, so it starts only when that specification is what is "
+            "served: the live version, the default, and the alias all on the release."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
+        "SST-APL109",
+        Severity.ERROR,
+        "Comparison version not committed",
+        "{artifact}: the model comparison could not commit {value}: {detail}",
+        "check the role may ALTER the agent and write to its specification stage, then compare again; "
+        "the released version, its alias and the default were not changed",
+        condition=(
+            "committing the hold copy of the released specification, or one candidate's upload, ADD "
+            "VERSION, version read, or EVAL_ alias move failed; a failed hold commits no candidate, "
+            "and a failed candidate is left out of the comparison"
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL110",
+        Severity.ERROR,
+        "Live version not restored after a comparison",
+        "{artifact}: restoring the live version of {value} after the model comparison failed ({detail}); "
+        "until it is restored a caller naming no version is served the default, the release",
+        "run `sst plan`, then `sst apply`: the plan sees no live version, or an eval-model version "
+        "newest, and commits the released specification again with a live version",
+        demotable=False,
+        condition=(
+            "the comparison's restore -- staging the released specification, ADD VERSION from it, or "
+            "ADD LIVE VERSION FROM LAST -- failed, so the agent or CoWork profile has no live version"
+        ),
+        note=(
+            "Nothing a caller sees changed: with no live version Snowflake serves the default, which "
+            "`sst apply` pinned to the release by name. Snowsight shows no live version until the "
+            "repair, and the next comparison's precheck refuses (SST-APL108)."
+        ),
+        precheck=Precheck.RUNTIME,
+    ),
+    spec(
+        "SST-APL900",
+        Severity.ERROR,
+        "Outcome count does not match change count",
+        "applied {found} outcomes for {expected} changes",
+        "report this as a bug",
+        condition="apply did not account for every planned change",
+    ),
+)

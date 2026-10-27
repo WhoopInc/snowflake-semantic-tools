@@ -1,0 +1,14 @@
+---
+# The same measure at the EARLIEST month: `descending` puts the earliest month
+# last in sort order, and `null_order: first` keeps a row with no month from
+# ever being that last row.
+metric:
+  name: opening_supply_cost
+  description: |-
+    Cost of supplying the products sold, in cents, in the earliest month on
+    record. Not additive across months.
+  expr: "SUM({{ ref('supplies', 'supply_cost') }})"
+  non_additive_dimensions:
+    - ref: "{{ ref('supplies', 'snapshot_month') }}"
+      sort_direction: descending
+      null_order: first

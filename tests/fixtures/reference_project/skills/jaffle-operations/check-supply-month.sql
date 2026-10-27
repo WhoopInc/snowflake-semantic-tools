@@ -1,0 +1,46 @@
+-- ============================================================================
+-- skills/jaffle-operations/check-supply-month.sql
+-- ============================================================================
+-- A SCRIPT, AND IT SITS AT THE FOLDER ROOT BESIDE SKILL.md ON PURPOSE. A skill's
+-- scripts live in the same folder as `SKILL.md`; prose reference material goes under
+-- `reference/`, executable material does not. Every channel publishes the folder as
+-- authored, so `reference/month-close.md` reaches this script as `../check-supply-month.sql`
+-- and the goldens pin both paths.
+--
+-- The one literal is the enum member `completed`.
+-- ============================================================================
+
+-- Is a supply month complete? A month is final when every product sold in it has a
+-- supply snapshot row. A product with sales and no snapshot understates cost and so
+-- overstates margin.
+
+WITH sold_in_month AS (
+
+    SELECT DISTINCT
+          order_items.product_id                                AS product_id
+        , DATE_TRUNC('month', orders.ordered_at)                AS sales_month
+    FROM order_items AS order_items
+    INNER JOIN orders AS orders
+        ON order_items.order_id = orders.order_id
+    WHERE orders.order_state = 'completed'
+
+)
+
+, snapshotted AS (
+
+    SELECT DISTINCT
+          supplies.product_id                                   AS product_id
+        , DATE_TRUNC('month', supplies.snapshot_month)           AS sales_month
+    FROM supplies AS supplies
+
+)
+
+SELECT
+      sold_in_month.sales_month                                 AS sales_month
+    , sold_in_month.product_id                                  AS product_id_missing_snapshot
+FROM sold_in_month AS sold_in_month
+LEFT JOIN snapshotted AS snapshotted
+    ON  sold_in_month.product_id = snapshotted.product_id
+    AND sold_in_month.sales_month = snapshotted.sales_month
+WHERE snapshotted.product_id IS NULL
+ORDER BY sales_month DESC, product_id_missing_snapshot

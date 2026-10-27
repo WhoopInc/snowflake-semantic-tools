@@ -1,0 +1,727 @@
+"""Plan classification, prune safety, and dependency ordering."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from types import MappingProxyType
+
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import (
+    Action,
+    Change,
+    ChangeReason,
+    CompositeFacts,
+    CompositeObservation,
+    CompositePlan,
+    GrantRow,
+    ObservedArtifact,
+    OwnershipMarker,
+    PublishShape,
+    RenderedArtifact,
+    SnowflakeObservation,
+)
+from snowflake_semantic_tools.domain.model.registry import (
+    ARTIFACT_REGISTRY,
+    SEMANTIC_REGISTRY,
+    ArtifactLifecycle,
+    GrantPreservation,
+)
+from snowflake_semantic_tools.domain.plan import build_changeset, dependency_waves, topological_order
+from snowflake_semantic_tools.domain.plan.prune import KEPT_DETAILS
+from snowflake_semantic_tools.domain.state import DEACTIVATED, STATE_SCHEMA_VERSION, AppliedEntry, Manifest, State
+from tests.helpers.manifests import build_minimal_manifest
+from tests.helpers.plan_codes import live
+from tests.helpers.sql_values import statement
+
+
+def target() -> TargetIdentity:
+    return TargetIdentity("verify", "acct", Identifier.parse("db"), Identifier.parse("sch"))
+
+
+def rendered(name: str, ddl: str | None = None, depends_on: tuple[str, ...] = ()) -> RenderedArtifact:
+    return RenderedArtifact.create(
+        key=f"semantic_view:{name.casefold()}",
+        artifact_type="semantic_view",
+        target=QualifiedName.from_parts("db", "sch", name),
+        ddl=statement(ddl or f"create semantic view {name}"),
+        depends_on=depends_on,
+    )
+
+
+def context(
+    artifacts: dict[str, RenderedArtifact], applied: dict[str, AppliedEntry], manifest_id: str | None = None
+) -> tuple[Manifest, State]:
+    manifest = build_minimal_manifest(
+        artifacts,
+        project={},
+        sources={},
+        members={},
+        files={},
+        diagnostics_summary={},
+    )
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest_id if manifest_id is not None else manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType(applied),
+    )
+    return manifest, state
+
+
+def applied(artifact: RenderedArtifact, manifest_id: str) -> AppliedEntry:
+    return AppliedEntry(
+        artifact.fingerprint, artifact.target.sql, "now", "run", "applied", artifact.fingerprint, manifest_id
+    )
+
+
+def test_plan_classifies_create_update_noop_and_reports_grants_and_case() -> None:
+    create = rendered("create")
+    # A replace that omits COPY GRANTS, so the grant the live object carries would be dropped.
+    update = rendered("update", "create or replace semantic view update")
+    noop = rendered("noop")
+    artifacts = {item.key: item for item in (create, update, noop)}
+    manifest, _ = context(artifacts, {})
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType(
+            {
+                update.key: applied(rendered("update", "old"), manifest.manifest_id),
+                noop.key: applied(noop, manifest.manifest_id),
+            }
+        ),
+    )
+    observation = SnowflakeObservation(
+        MappingProxyType(
+            {
+                update.key: live(
+                    update,
+                    marker=OwnershipMarker(
+                        manifest.manifest_id,
+                        rendered("update", "old").fingerprint,
+                    ),
+                    grants=(GrantRow("SELECT", "ROLE", "R"),),
+                ),
+                noop.key: live(
+                    noop,
+                    raw_name="NoOp",
+                    marker=OwnershipMarker(manifest.manifest_id, noop.fingerprint),
+                ),
+            }
+        ),
+        "then",
+    )
+    result = build_changeset(artifacts, observation, manifest, state, SEMANTIC_REGISTRY, target())
+    assert [(item.key, item.action) for item in result.changes] == [
+        (create.key, Action.CREATE),
+        (noop.key, Action.NOOP),
+        (update.key, Action.UPDATE),
+    ]
+    assert {diagnostic.code for diagnostic in result.diagnostics} == {"SST-PLN013", "SST-PLN023"}
+    assert len(result.plan_id) == 64
+
+
+def test_plan_decides_each_artifact_by_its_own_entry_and_blocks_errors() -> None:
+    value = rendered("v")
+    manifest, state = context({value.key: value}, {}, manifest_id="old")
+    observation = SnowflakeObservation(MappingProxyType({value.key: live(value)}), "now")
+    mismatch = build_changeset({value.key: value}, observation, manifest, state, SEMANTIC_REGISTRY, target())
+    assert mismatch.changes[0].reason is ChangeReason.UNMANAGED_OBJECT
+    assert [item.code for item in mismatch.diagnostics] == ["SST-PLN024"]
+
+    old_manifest = "a" * 64
+    old_entry = applied(value, old_manifest)
+    fingerprint_match = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        "old",
+        "cfg",
+        None,
+        MappingProxyType({value.key: old_entry}),
+    )
+    marked_observation = SnowflakeObservation(
+        MappingProxyType(
+            {
+                value.key: live(
+                    value,
+                    marker=OwnershipMarker(old_manifest, value.fingerprint),
+                )
+            }
+        ),
+        "now",
+    )
+    stable = build_changeset(
+        {value.key: value},
+        marked_observation,
+        manifest,
+        fingerprint_match,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    # The live object is the one an earlier manifest published, at the fingerprint this one
+    # renders: it is unchanged, however far the manifest moved on.
+    assert stable.changes[0].action is Action.NOOP
+    assert stable.changes[0].reason is ChangeReason.UNCHANGED
+    assert [item.code for item in stable.diagnostics] == []
+
+    current_entry = applied(value, manifest.manifest_id)
+    mixed_state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        "older-manifest",
+        "cfg",
+        None,
+        MappingProxyType({value.key: current_entry}),
+    )
+    current_observation = SnowflakeObservation(
+        MappingProxyType(
+            {
+                value.key: live(
+                    value,
+                    marker=OwnershipMarker(manifest.manifest_id, value.fingerprint),
+                )
+            }
+        ),
+        "now",
+    )
+    mixed = build_changeset(
+        {value.key: value},
+        current_observation,
+        manifest,
+        mixed_state,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert mixed.changes[0].action is Action.NOOP
+
+    unmarked = build_changeset(
+        {value.key: value},
+        observation,
+        manifest,
+        fingerprint_match,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert unmarked.changes[0].reason is ChangeReason.VALIDATION_ERRORS
+    assert unmarked.changes[0].action is Action.BLOCKED
+
+    no_record = build_changeset(
+        {value.key: value},
+        observation,
+        manifest,
+        State.empty(target()),
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert no_record.changes[0].reason is ChangeReason.UNMANAGED_OBJECT
+    assert no_record.changes[0].action is Action.BLOCKED
+    assert no_record.diagnostics[-1].code == "SST-PLN024"
+
+    trusted_state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({value.key: applied(value, manifest.manifest_id)}),
+    )
+    out_of_band = build_changeset(
+        {value.key: value},
+        observation,
+        manifest,
+        trusted_state,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert out_of_band.changes[0].action is Action.BLOCKED
+    assert out_of_band.diagnostics[-1].code == "SST-PLN014"
+
+    moved = rendered("v")
+    moved = RenderedArtifact.create(
+        key=moved.key,
+        artifact_type=moved.artifact_type,
+        target=QualifiedName.from_parts("db", "new_schema", "v"),
+        ddl=statement(moved.ddl),
+    )
+    moved_manifest, _ = context({moved.key: moved}, {})
+    prior = applied(value, moved_manifest.manifest_id)
+    moved_state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        moved_manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({moved.key: prior}),
+    )
+    relocation = build_changeset(
+        {moved.key: moved},
+        SnowflakeObservation(
+            MappingProxyType(
+                {
+                    moved.key: live(
+                        value,
+                        marker=OwnershipMarker(moved_manifest.manifest_id, value.fingerprint),
+                    )
+                }
+            ),
+            "now",
+        ),
+        moved_manifest,
+        moved_state,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert relocation.changes[0].action is Action.BLOCKED
+    assert relocation.changes[0].reason is ChangeReason.TARGET_MOVED
+    assert relocation.diagnostics[-1].code == "SST-PLN025"
+
+    blocked = build_changeset(
+        {value.key: value},
+        observation,
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        blocked={value.key: DiagnosticBag((D("SST-REF001", model="x"),))},
+    )
+    assert blocked.changes[0].action is Action.BLOCKED
+    wrong_type = build_changeset(
+        {value.key: value},
+        SnowflakeObservation(MappingProxyType({value.key: live(value, object_type="VIEW")}), "now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert wrong_type.changes[0].action is Action.BLOCKED
+    assert [item.code for item in wrong_type.diagnostics] == ["SST-PLN002"]
+
+
+def test_prune_requires_marker_and_matching_authoritative_state() -> None:
+    orphan = rendered("orphan")
+    empty_manifest, empty_state = context({}, {})
+    no_marker = build_changeset(
+        {},
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan)}), "now"),
+        empty_manifest,
+        empty_state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+    )
+    assert no_marker.changes == () and no_marker.diagnostics[0].code == "SST-PLN003"
+
+    marker = OwnershipMarker("a" * 64, orphan.fingerprint)
+    absent_state = build_changeset(
+        {},
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan, marker=marker)}), "now"),
+        empty_manifest,
+        empty_state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+    )
+    assert absent_state.diagnostics[0].code == "SST-PLN004"
+
+    owned_state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        empty_manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({orphan.key: applied(orphan, marker.manifest_id)}),
+    )
+    prune = build_changeset(
+        {},
+        SnowflakeObservation(MappingProxyType({orphan.key: live(orphan, marker=marker)}), "now"),
+        empty_manifest,
+        owned_state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+    )
+    assert prune.changes[0].action is Action.PRUNE
+
+
+def test_dependencies_block_and_order_or_report_cycles() -> None:
+    upstream = rendered("up")
+    downstream = rendered("down", depends_on=(upstream.key,))
+    manifest, state = context({upstream.key: upstream, downstream.key: downstream}, {})
+    result = build_changeset(
+        {upstream.key: upstream, downstream.key: downstream},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        blocked={upstream.key: DiagnosticBag((D("SST-REF001", model="x"),))},
+    )
+    assert result.changes[0].action is Action.BLOCKED
+    assert result.changes[1].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert dependency_waves(result.changes) == ((result.changes[0],), (result.changes[1],))
+
+    first = Change("a", "semantic_view", Action.CREATE, ChangeReason.NOT_PRESENT, upstream, None, ("b",), 100)
+    second = Change("b", "semantic_view", Action.CREATE, ChangeReason.NOT_PRESENT, downstream, None, ("a",), 100)
+    ordered, cycle = topological_order((first, second))
+    assert ordered == () and cycle[0] == cycle[-1]
+    try:
+        dependency_waves((first, second))
+    except ValueError as exc:
+        assert str(exc) == "dependency cycle"
+    else:
+        raise AssertionError("cycle must fail")
+
+    malformed = Change("x", "semantic_view", Action.CREATE, ChangeReason.NOT_PRESENT, upstream, None, ("missing",), 100)
+    assert topological_order((malformed,))[0] == (malformed,)
+
+
+def test_blocking_reaches_every_change_down_a_dependency_chain() -> None:
+    top = rendered("top")
+    middle = rendered("middle", depends_on=(top.key,))
+    bottom = rendered("bottom", depends_on=(middle.key,))
+    unrelated = rendered("unrelated")
+    artifacts = {item.key: item for item in (top, middle, bottom, unrelated)}
+    manifest, state = context(artifacts, {})
+
+    result = build_changeset(
+        artifacts,
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        blocked={top.key: DiagnosticBag((D("SST-REF001", model="x"),))},
+    )
+
+    by_key = {change.key: change for change in result.changes}
+    assert by_key[top.key].action is Action.BLOCKED
+    assert by_key[middle.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    # Two links below the blocked view, so a single pass over direct dependents misses it.
+    assert by_key[bottom.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert by_key[unrelated.key].action is Action.CREATE
+
+
+def test_plan_returns_cycle_diagnostic_and_skips_declared_or_unknown_prunes() -> None:
+    first = rendered("a", depends_on=("semantic_view:b",))
+    second = rendered("b", depends_on=("semantic_view:a",))
+    manifest, state = context({first.key: first, second.key: second}, {})
+    cycle = build_changeset(
+        {first.key: first, second.key: second},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+    )
+    assert cycle.changes == () and cycle.diagnostics[-1].code == "SST-PLN005"
+
+    unknown = ObservedArtifact(
+        "unknown:x",
+        "X",
+        QualifiedName.from_parts("db", "sch", "x"),
+        "OTHER",
+        "O",
+        "now",
+        None,
+        None,
+    )
+    clean = build_changeset(
+        {first.key: first},
+        SnowflakeObservation(
+            MappingProxyType({first.key: live(first), "unknown:x": unknown}),
+            "now",
+        ),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+    )
+    assert all(change.key != "unknown:x" for change in clean.changes)
+
+    scoped_out = build_changeset(
+        {},
+        SnowflakeObservation(
+            MappingProxyType({first.key: live(first, marker=OwnershipMarker("a" * 64, first.fingerprint))}), "now"
+        ),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+        prune_types=frozenset(),
+    )
+    assert scoped_out.changes == ()
+
+    selected_out = build_changeset(
+        {},
+        SnowflakeObservation(
+            MappingProxyType(
+                {
+                    first.key: live(
+                        first,
+                        marker=OwnershipMarker("a" * 64, first.fingerprint),
+                    )
+                }
+            ),
+            "now",
+        ),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        include_prune=True,
+        prune_keys=frozenset(("semantic_view:other",)),
+    )
+    assert selected_out.changes == ()
+
+
+def test_plan_uses_composite_lifecycle_action_observation_and_diagnostics() -> None:
+    value = RenderedArtifact.create(
+        key="eval:sales",
+        artifact_type="eval",
+        target=QualifiedName.from_parts("db", "sch", "sales_eval"),
+        ddl=statement("payload"),
+        shape=PublishShape(""),
+        composite=CompositeFacts(),
+    )
+    manifest, state = context({value.key: value}, {})
+    diagnostic = D("SST-PLN028", artifact=value.key, detail="stage mismatch")
+    composite = CompositePlan(
+        Action.BLOCKED,
+        ChangeReason.VALIDATION_ERRORS,
+        CompositeObservation(value.key),
+        DiagnosticBag((diagnostic,)),
+    )
+    result = build_changeset(
+        {value.key: value},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        composite_plans={value.key: composite},
+    )
+    assert result.changes[0].action is Action.BLOCKED
+    assert result.changes[0].composite_observation == composite.observation
+    assert result.diagnostics == composite.diagnostics
+
+
+def _versioned(key: str, artifact_type: str, depends_on: tuple[str, ...] = ()) -> RenderedArtifact:
+    return RenderedArtifact.create(
+        key=key,
+        artifact_type=artifact_type,
+        target=QualifiedName.from_parts("db", "sch", key.split(":", 1)[1].replace("-", "_")),
+        ddl=statement(f"payload {key}"),
+        shape=PublishShape("AGENT" if artifact_type == "agent" else ""),
+        composite=None if artifact_type == "agent" else CompositeFacts(),
+        depends_on=depends_on,
+    )
+
+
+def test_a_write_that_pins_a_version_outside_the_plan_is_blocked() -> None:
+    agent = _versioned("agent:analyst", "agent", ("skill:guide", "plugin:kit", "semantic_view:sales"))
+    evaluation = _versioned("eval:analyst", "eval", (agent.key,))
+    skill = _versioned("skill:guide", "skill")
+    manifest, state = context({agent.key: agent, evaluation.key: evaluation}, {})
+    noop = CompositePlan(Action.NOOP, ChangeReason.UNCHANGED, CompositeObservation(skill.key))
+    result = build_changeset(
+        {agent.key: agent, evaluation.key: evaluation, skill.key: skill},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        composite_plans={
+            skill.key: noop,
+            evaluation.key: CompositePlan(
+                Action.CREATE, ChangeReason.NOT_PRESENT, CompositeObservation(evaluation.key)
+            ),
+        },
+    )
+    by_key = {change.key: change for change in result.changes}
+    # The skill is planned (NOOP proves its version exists); the plugin is not,
+    # and an unplanned semantic view is not a pinned version, so only the plugin blocks.
+    assert by_key[agent.key].action is Action.BLOCKED
+    assert by_key[agent.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert [(item.code, item.message) for item in by_key[agent.key].diagnostics] == [
+        (
+            "SST-PLN030",
+            "agent:analyst: pins the published version of plugin:kit; select plugin:kit as well",
+        )
+    ]
+    assert [item.code for item in result.diagnostics] == ["SST-PLN030"]
+    assert by_key[evaluation.key].reason is ChangeReason.DEPENDENCY_BLOCKED
+    assert by_key[skill.key].action is Action.NOOP
+
+    plugin = _versioned("plugin:kit", "plugin")
+    planned = build_changeset(
+        {agent.key: agent, skill.key: skill, plugin.key: plugin},
+        SnowflakeObservation(fetched_at="now"),
+        manifest,
+        state,
+        SEMANTIC_REGISTRY,
+        target(),
+        composite_plans={
+            skill.key: noop,
+            plugin.key: CompositePlan(Action.CREATE, ChangeReason.NOT_PRESENT, CompositeObservation(plugin.key)),
+        },
+    )
+    assert {change.key: change.action for change in planned.changes}[agent.key] is Action.CREATE
+    assert planned.diagnostics == DiagnosticBag()
+
+
+def test_an_unchanged_agent_is_not_blocked_by_an_unplanned_pinned_version() -> None:
+    agent = _versioned("agent:analyst", "agent", ("skill:guide",))
+    manifest, _ = context({agent.key: agent}, {})
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({agent.key: applied(agent, manifest.manifest_id)}),
+    )
+    observation = SnowflakeObservation(
+        MappingProxyType(
+            {
+                agent.key: live(
+                    agent,
+                    marker=OwnershipMarker(manifest.manifest_id, agent.fingerprint),
+                    object_type="AGENT",
+                )
+            }
+        ),
+        "now",
+    )
+    result = build_changeset({agent.key: agent}, observation, manifest, state, SEMANTIC_REGISTRY, target())
+    assert [(change.key, change.action) for change in result.changes] == [(agent.key, Action.NOOP)]
+
+
+def test_only_a_replaced_semantic_view_warns_of_the_tags_it_removes() -> None:
+    view = replace(rendered("v"), desired_tags=("DB.SCH.KEEP",))
+    agent = _versioned("agent:analyst", "agent")
+    manifest, _ = context({view.key: view, agent.key: agent}, {})
+    state = State(
+        STATE_SCHEMA_VERSION,
+        target(),
+        manifest.manifest_id,
+        "cfg",
+        None,
+        MappingProxyType({item.key: applied(item, manifest.manifest_id) for item in (view, agent)}),
+    )
+
+    def planned(stale: bool) -> tuple[tuple[Action, ...], list[str]]:
+        # A stale marker plans an update of both; a current one leaves both unchanged.
+        def seen(item: RenderedArtifact, object_type: str) -> ObservedArtifact:
+            fingerprint = "f" * 64 if stale else item.fingerprint
+            marker = OwnershipMarker(manifest.manifest_id, fingerprint)
+            return replace(live(item, marker=marker, object_type=object_type), tags=("DB.SCH.KEEP", "DB.SCH.HAND"))
+
+        observation = SnowflakeObservation(
+            MappingProxyType({view.key: seen(view, "SEMANTIC VIEW"), agent.key: seen(agent, "AGENT")}), "now"
+        )
+        recorded = (
+            state
+            if not stale
+            else replace(
+                state,
+                applied=MappingProxyType(
+                    {
+                        item.key: replace(applied(item, manifest.manifest_id), fingerprint="f" * 64)
+                        for item in (view, agent)
+                    }
+                ),
+            )
+        )
+        result = build_changeset(
+            {view.key: view, agent.key: agent}, observation, manifest, recorded, SEMANTIC_REGISTRY, target()
+        )
+        return tuple(change.action for change in result.changes), [
+            item.message for item in result.diagnostics if item.code == "SST-PLN039"
+        ]
+
+    # An agent's update unsets the tags itself, so only the view's replace warns, and only the
+    # tag the project does not declare.
+    assert planned(True) == (
+        (Action.UPDATE, Action.UPDATE),
+        ["semantic_view:v: replacing DB.SCH.V removes tags the project does not declare: DB.SCH.HAND"],
+    )
+    assert planned(False) == ((Action.NOOP, Action.NOOP), [])
+
+
+def test_a_narrowed_plan_keeps_its_order_and_hashes_its_id_anew() -> None:
+    from snowflake_semantic_tools.domain.plan.changeset import narrowed
+    from tests.helpers.artifact_builders import change, changeset, rendered
+
+    first, second = change(rendered("A")), change(rendered("B"))
+    plan = replace(changeset(first, second), plan_id="old")
+    notice = D("SST-PLN032", subject=second.key, artifact=second.key)
+    kept = narrowed(plan, (second,), DiagnosticBag((notice,)))
+    assert kept.changes == (second,) and [item.code for item in kept.diagnostics] == ["SST-PLN032"]
+    assert kept.plan_id not in ("old", "") and kept.plan_id == narrowed(plan, (second,), DiagnosticBag()).plan_id
+    assert kept.plan_id != narrowed(plan, (first, second), DiagnosticBag()).plan_id
+
+
+def test_every_type_sst_never_drops_says_what_to_do_with_a_kept_object() -> None:
+    # A composite type's handler reports its own prunes; any other type that is never pruned
+    # is reported by plan_prunes, which needs the advice its SST-PLN034 gives.
+    kept = {
+        name
+        for name, artifact_type in ARTIFACT_REGISTRY.artifacts.items()
+        if not artifact_type.prunable and artifact_type.lifecycle is not ArtifactLifecycle.COMPOSITE
+    }
+    assert kept == set(KEPT_DETAILS) == {"tool"}
+
+
+def test_a_rendered_artifact_keeps_grants_unless_a_clause_type_replaces_without_copy_grants() -> None:
+    replacing = rendered("v", "create or replace semantic view v")
+    assert not replacing.keeps_grants
+    assert rendered("v", "create or replace semantic view v\n  COPY grants").keeps_grants
+    assert rendered("v").keeps_grants  # nothing replaces the object
+    for preservation in (GrantPreservation.REPLAY, GrantPreservation.NONE):
+        assert replace(replacing, grant_preservation=preservation).keeps_grants
+
+
+def test_prune_reports_only_recorded_objects_of_a_type_never_dropped() -> None:
+    def recorded(key: str, outcome: str = "applied") -> AppliedEntry:
+        return AppliedEntry("a" * 64, "DB.SCH." + key.split(":")[1].upper(), "now", "run", outcome, "a" * 64, "m" * 64)
+
+    declared = rendered("declared")
+    entries = {
+        "tool:kept": recorded("tool:kept"),
+        "tool:retired": recorded("tool:retired", DEACTIVATED),
+        "tool:declared": recorded("tool:declared"),
+        "semantic_view:orphan": recorded("semantic_view:orphan"),  # prunable: dropped when observed
+        "skill:composite": recorded("skill:composite"),  # its handler reports it
+        "widget:unknown": recorded("widget:unknown"),  # no such type
+    }
+    artifacts = {declared.key: declared, "tool:declared": replace(declared, key="tool:declared", artifact_type="tool")}
+    manifest, _ = context(artifacts, {})
+    state = State(STATE_SCHEMA_VERSION, target(), manifest.manifest_id, "cfg", None, MappingProxyType(entries))
+    observation = SnowflakeObservation(MappingProxyType({}), "now")
+
+    def kept(prune_types: frozenset[str] | None = None, prune_keys: frozenset[str] | None = None) -> list[str]:
+        result = build_changeset(
+            artifacts,
+            observation,
+            manifest,
+            state,
+            ARTIFACT_REGISTRY,
+            target(),
+            include_prune=True,
+            prune_types=prune_types,
+            prune_keys=prune_keys,
+        )
+        return [change.key for change in result.changes if change.action is Action.PRUNE]
+
+    assert kept() == ["tool:kept"]
+    assert kept(prune_types=frozenset(("semantic_view",))) == []
+    assert kept(prune_keys=frozenset(("tool:other",))) == []
+    assert kept(prune_keys=frozenset(("tool:kept",))) == ["tool:kept"]

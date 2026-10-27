@@ -1,0 +1,24 @@
+{
+  "alias": "SST_76C15E292899",
+  "comment": "Use when writing or reviewing a question against the jaffle semantic views --\nJAFFLE_SALES, JAFFLE_MENU or JAFFLE_MINIMAL. Covers which view answers which\nquestion, how the three join kinds behave (equality, ASOF, range), why a line-item\ncount joined to order state does not fan out, why supply cost must never be summed\nacross months, and how the two view variables change what a metric returns. Invoke\nfor terms like order, customer, jaffle, menu item, revenue, AOV, margin, supply\ncost, pricing period, ASOF, fan-out, non-additive, or \"which view should I use\".\nDo NOT invoke for menu catalogue content -- that is the search tool -- and do NOT\ninvoke for questions about an individual named customer.",
+  "digest": "76c15e292899328a486a6112285957d4860c0d01ad9202fcb6631d9a1b61e8de",
+  "extension": "SST_REF_DEV.JAFFLE.JAFFLE_SEMANTICS",
+  "files": [
+    {
+      "path": "skills/jaffle-semantics/SKILL.md",
+      "sha256": "5dace22a3910addea823d87de2fec40136706d0b468bc07f039a489801a7731f",
+      "size": 3750
+    },
+    {
+      "path": "skills/jaffle-semantics/reference/join-paths.md",
+      "sha256": "183f3a6b83108a6c1812c5cdcb673e7c975aa5cef4760412572d4c6358ce3a36",
+      "size": 1998
+    },
+    {
+      "path": "skills/jaffle-semantics/reference/metric-shapes.md",
+      "sha256": "fe2db95802f3b0ac4694eb15abf3e12ddd4854c7f64171f9a37348b54c8186d4",
+      "size": 1871
+    }
+  ],
+  "type": "SKILL"
+}

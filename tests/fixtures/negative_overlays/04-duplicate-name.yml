@@ -1,0 +1,7 @@
+---
+# A second metric named order_count; the reference project already declares one.
+snowflake_metrics:
+  - name: order_count
+    description: |-
+      Duplicates an existing metric's name.
+    expr: "COUNT({{ ref('orders', 'order_id') }})"

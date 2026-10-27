@@ -1,42 +1,73 @@
 name: Test and Lint
 
+# The fast gate. Runs with the `pull_request` trigger only, never `pull_request_target`: a
+# fork's pull request gets a read-only token and no repository secrets. The suite needs
+# neither, since nothing here connects to Snowflake. publish-to-pypi.yml calls this workflow
+# (`workflow_call`), so a release passes exactly the gate a pull request does.
+#
+# tests/conftest.py refuses, for the whole session, any connection or name lookup a test outside
+# the `live` marker makes to anything but a Unix socket or loopback (tests/helpers/network_guard.py).
 on:
   push:
     branches:
       - main
   pull_request:
     # Run on all pull requests regardless of target branch
+  workflow_call:
 
 permissions:
   contents: read
 
 jobs:
+  # Every Python pyproject.toml admits and the README promises: a regression that shows on only
+  # one of them fails here. The coverage numbers are 3.11's alone (the ratchet and the per-ring
+  # floors below); every other check runs on each version.
   test:
-    name: Run tests and linting
+    name: Run tests and linting (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    env:
+      # Deterministic property tests, so a failure on a pull request reproduces on rerun.
+      HYPOTHESIS_PROFILE: ci
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python }}
 
       - name: Install Poetry
-        uses: snok/install-poetry@v1
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
         with:
-          version: latest
+          version: 2.2.1
           virtualenvs-create: true
           virtualenvs-in-project: true
 
+      # poetry.lock must be regenerated (`poetry lock`) whenever pyproject.toml's dependencies
+      # change; say so here rather than let `poetry install` fail further down.
+      - name: Check that poetry.lock matches pyproject.toml
+        run: |
+          poetry check --lock || {
+            echo "::error::poetry.lock is out of date with pyproject.toml. Regenerate it with: poetry lock"
+            exit 1
+          }
+
       - name: Load cached venv
         id: cached-poetry-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .venv
-          key: venv-${{ runner.os }}-3.11-${{ hashFiles('**/poetry.lock') }}
+          key: venv-${{ runner.os }}-${{ matrix.python }}-${{ hashFiles('**/poetry.lock') }}
 
       - name: Install dependencies
         run: poetry install --no-interaction --no-root
@@ -44,12 +75,272 @@ jobs:
       - name: Install project
         run: poetry install --no-interaction
 
-      - name: Run tests
-        run: poetry run pytest tests/unit/ -v
+      # The documented exit codes are a contract CI pipelines depend on, so a regression in
+      # one is reported as its own failed step rather than as one test among thousands.
+      - name: Check exit-code conformance
+        run: poetry run pytest tests/unit/cli/test_exit_codes.py
 
-      - name: Check code formatting with Black
-        run: poetry run black --check snowflake_semantic_tools/
+      # The semantic-layer YAML is the product; ruff says nothing about it. Exit 2 when a file
+      # of the reference project is not in canonical form.
+      - name: Check the reference project's YAML is canonical
+        run: poetry run sst --project-dir tests/fixtures/reference_project format --check
 
-      - name: Check import sorting with isort
-        run: poetry run isort --check snowflake_semantic_tools/
+      # Unit, contract, end-to-end (the offline negative corpus) and diagnostic-code guard tests,
+      # measured for coverage in the same run. Tests marked `live` are deselected by default;
+      # slow.yml runs them, by hand, against a maintainer's own account. pyproject.toml's
+      # per-test timeout fails a test that hangs, with every thread's stack, instead of letting
+      # the job run until GitHub kills it.
+      - name: Run tests with coverage
+        run: >-
+          poetry run pytest tests/ -v -n auto -m "not live"
+          --cov=snowflake_semantic_tools --cov-branch
+          --cov-report=term --cov-report=json:coverage.json
 
+      # Per-layer line and branch coverage over the whole suite may not fall below
+      # tests/coverage_baseline.json. Lowering a number is an edit to that file, in review.
+      # The baseline and the floors are measured on 3.11, so only that run checks them.
+      - name: Check that coverage did not fall
+        if: matrix.python == '3.11'
+        run: poetry run python -m tests.helpers.coverage_ratchet check --coverage-json coverage.json
+
+      - name: Check adapters coverage
+        if: matrix.python == '3.11'
+        run: >-
+          poetry run coverage report --include='snowflake_semantic_tools/adapters/*'
+          --fail-under=90 --skip-covered
+
+      - name: Check domain coverage
+        if: matrix.python == '3.11'
+        run: >-
+          poetry run coverage report --include='snowflake_semantic_tools/domain/*'
+          --fail-under=99 --skip-covered
+
+      - name: Check application coverage
+        if: matrix.python == '3.11'
+        run: >-
+          poetry run coverage report --include='snowflake_semantic_tools/app/*'
+          --fail-under=95 --skip-covered
+
+      - name: Check CLI coverage
+        if: matrix.python == '3.11'
+        run: >-
+          poetry run coverage report --include='snowflake_semantic_tools/cli/*'
+          --fail-under=90 --skip-covered
+
+      - name: Check strict typing
+        run: poetry run mypy snowflake_semantic_tools tests
+
+      - name: Check code formatting with ruff
+        run: poetry run ruff format --check snowflake_semantic_tools/ tests/
+
+      - name: Lint with ruff
+        run: poetry run ruff check snowflake_semantic_tools/ tests/
+
+      # The four-ring boundaries (cli -> app | adapters -> domain). This step IS the
+      # enforcement; tests/unit/test_ring_boundaries.py separately proves the
+      # contracts actually reject a crossing rather than passing vacuously.
+      - name: Check ring boundaries with import-linter
+        run: poetry run lint-imports
+
+      # The reference pages under docs/reference are generated from the engine's
+      # registries; a registry change without a regenerated page fails here.
+      - name: Check generated reference pages
+        run: poetry run sst docs --check
+
+      # Medium and high severity findings fail the build. No check is skipped: every
+      # statement is composed through domain/sql, so B608 has nothing to report.
+      - name: Scan for security issues with bandit
+        run: poetry run bandit -r snowflake_semantic_tools -ll
+
+      # Known vulnerabilities in the locked dependencies. The project itself is
+      # installed editable and is not on PyPI at this version, so it is skipped.
+      - name: Audit dependencies with pip-audit
+        run: poetry run pip-audit --skip-editable --progress-spinner off
+
+  # The one job that starts a real dbt. `dbt parse` needs no warehouse, and the reference project's
+  # default target names a placeholder account with no credential, so this connects to nothing
+  # but the package indexes `poetry` and `dbt deps` install from, and needs no secret.
+  dbt:
+    name: Parse the reference project with dbt ${{ matrix.dbt }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # Every release line the reference project's require-dbt-version admits -- dbt Core 1.10
+        # to 1.13, and dbt v2 2.0 in both its distributions -- each pinned to the release
+        # tests/fixtures/dbt_manifests/ holds a manifest of (tests/unit/test_ci_workflows.py).
+        # dbt Core installs with the dbt-snowflake release it was captured with. dbt v2 carries
+        # its own adapter and its own `dbt`, so it installs alone, without the dbt extra; its two
+        # distributions write the same manifest, so they share one fixture. 1.13 is a
+        # pre-release: repin it at GA.
+        dbt: ["1.10", "1.11", "1.12", "1.13", "2.0", "2.0-oss"]
+        include:
+          - dbt: "1.10"
+            release: "1.10.23"
+            install: "dbt-core==1.10.23 dbt-snowflake==1.10.8"
+          - dbt: "1.11"
+            release: "1.11.15"
+            install: "dbt-core==1.11.15 dbt-snowflake==1.11.6"
+          - dbt: "1.12"
+            release: "1.12.5"
+            install: "dbt-core==1.12.5 dbt-snowflake==1.12.1"
+          - dbt: "1.13"
+            release: "1.13.0b1"
+            install: "dbt-core==1.13.0b1 dbt-snowflake==1.12.3"
+          - dbt: "2.0"
+            release: "2.0.8"
+            install: "dbt==2.0.8"
+          - dbt: "2.0-oss"
+            release: "2.0.8"
+            install: "dbt-oss==2.0.8"
+    env:
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+      REFERENCE_PROJECT: tests/fixtures/reference_project
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      # A key of its own: this venv holds the dbt extra and a pinned dbt the test job's must not.
+      - name: Load cached venv
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.11-dbt${{ matrix.dbt }}-${{ matrix.release }}-${{ hashFiles('**/poetry.lock') }}
+
+      # dbt Core comes with the dbt extra, as a user's would; dbt v2 is installed on its own below.
+      - name: Install the project
+        run: poetry install --no-interaction ${{ startsWith(matrix.dbt, '1.') && '--extras dbt' || '' }}
+
+      # The lock resolves one dbt. This pins the matrix's exact releases: dbt Core and dbt-snowflake,
+      # or dbt v2. Nothing else is pinned: pip keeps each locked package they still accept and
+      # resolves, outside the lock, any they do not (dbt-adapters, dbt-common and their own
+      # dependencies), so those may differ from the lock and between runs.
+      - name: Install ${{ matrix.install }}
+        env:
+          DBT_INSTALL: ${{ matrix.install }}
+        run: |
+          poetry run pip install --disable-pip-version-check $DBT_INSTALL
+          poetry run dbt --version
+
+      - name: Install the reference project's dbt packages
+        run: (cd "$REFERENCE_PROJECT" && poetry run dbt deps)
+
+      # SST_GOLDEN_PROJECT and no manifest: SST runs `dbt parse` itself, through the same seam a
+      # user's project goes through, then renders every artifact and compares it with the goldens.
+      # `-n 0`: runs serially so concurrent xdist workers do not race on the reference project's target/manifest.json.
+      - name: Render the goldens from the manifest SST has dbt parse
+        env:
+          SST_GOLDEN_PROJECT: ${{ env.REFERENCE_PROJECT }}
+        run: poetry run pytest -n 0 -m "not live" tests/unit/test_goldens.py
+
+      # The same contract the committed manifests are held to: the schema version is accepted,
+      # every path SST reads is present with its type, and the views render as the goldens'.
+      - name: Hold the manifest dbt wrote to the dbt manifest contract
+        run: >-
+          poetry run pytest tests/contract/test_dbt_manifest_contract.py
+          --dbt-manifest "$REFERENCE_PROJECT/target/manifest.json"
+
+  wheel:
+    name: Install the built wheel alone and run it (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@a783c322200f0519c7926aa6faa857c4e23e9263 # v1.4.2
+        with:
+          version: 2.2.1
+
+      - name: Build the wheel
+        run: poetry build --no-interaction --format wheel
+
+      # Only the wheel, into a venv outside the checkout, resolved as a user's `pip install`
+      # resolves it: a module or data file the wheel leaves out, or a dependency it does not
+      # declare, fails here instead of after a release.
+      - name: Install the wheel into a venv of its own
+        env:
+          SMOKE: ${{ runner.temp }}/wheel-smoke
+        run: |
+          python -m venv "$SMOKE/venv"
+          "$SMOKE/venv/bin/pip" install --disable-pip-version-check dist/*.whl
+
+      # From outside the checkout, on a copy of the reference project with its vendored manifest,
+      # so nothing is imported from the source tree and no dbt is needed.
+      - name: Validate and compile with the installed sst
+        env:
+          SMOKE: ${{ runner.temp }}/wheel-smoke
+        run: |
+          cp -R tests/fixtures/reference_project "$SMOKE/project"
+          cd "$SMOKE"
+          venv/bin/sst --version
+          where=$(venv/bin/python -c "import snowflake_semantic_tools as s; print(s.__file__)")
+          case "$where" in "$GITHUB_WORKSPACE"/*) echo "imported from the checkout: $where"; exit 1;; esac
+          M="$GITHUB_WORKSPACE/tests/fixtures/reference_project_manifest.json"
+          venv/bin/sst --project-dir project validate --manifest "$M" --no-strict --no-snowflake-syntax-check
+          venv/bin/sst --project-dir project compile --manifest "$M" --emit-ddl "$SMOKE/ddl"
+
+  semgrep:
+    name: Scan with semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Kept out of the project's environment: semgrep's own dependencies are not the package's,
+      # and poetry.lock should not have to resolve them. Every package is pinned by version and
+      # wheel hash for this runner, so a changed or added distribution fails the install.
+      - name: Install semgrep
+        run: >-
+          python -m pip install --disable-pip-version-check --no-input
+          --require-hashes --only-binary :all: -r .github/requirements/semgrep.txt
+
+      # The Python and SQL-injection rulesets, vendored in .semgrep/ so the scan does not change
+      # with what the registry serves; any finding fails the job. A false positive is silenced at
+      # its line with `# nosemgrep: <rule-id>` and a reason.
+      - name: Run semgrep
+        run: >-
+          semgrep scan --config .semgrep/
+          --error --metrics off --disable-version-check
+          snowflake_semantic_tools

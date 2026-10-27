@@ -1,0 +1,10 @@
+# A synthetic project written in the SST 0.3 authoring dialect. It exists to
+# prove the 1.0 compatibility guarantee: this project is REJECTED as authored,
+# `sst migrate refs` converts it, and the converted project renders the DDL in
+# expected/. The models come from the reference fixture's dbt manifest.
+name: v1_dialect
+version: "1.0.0"
+config-version: 2
+profile: v1_dialect
+model-paths: ["models"]
+target-path: "target"

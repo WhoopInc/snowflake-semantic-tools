@@ -1,0 +1,7 @@
+---
+# A derived metric whose expression calls a window function.
+snowflake_metrics:
+  - name: windowed_derived
+    description: |-
+      A derived metric cannot be a window function metric.
+    expr: "RANK() OVER (ORDER BY {{ metric('total_revenue') }})"

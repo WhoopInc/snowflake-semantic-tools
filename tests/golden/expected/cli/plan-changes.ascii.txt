@@ -1,0 +1,28 @@
+$ sst --project-dir <project> --manifest <manifest> plan --target dev --no-plan-out
+--- exit 2
+--- stdout
+  + create  semantic_view:jaffle_menu        SST_REF_DEV.CORE.JAFFLE_MENU
+  + create  semantic_view:jaffle_minimal     SST_REF_DEV...JAFFLE_MINIMAL
+  + create  semantic_view:jaffle_sales       SST_REF_DEV.JAFFLE.JAFFLE_SALES
+  + create  tool:menu_docs_search            SST_REF_DEV...MENU_DOCS_SEARCH
+  + create  tool:order_status                SST_REF_DEV.JAFFLE.ORDER_STATUS
+  + create  skill:jaffle-catalogue           SST_REF_DEV...JAFFLE_CATALOGUE   alias SST_9513F01FCF43
+  + create  skill:jaffle-operations          SST_REF_DEV...JAFFLE_OPERATIONS  alias SST_171042A05A30
+  + create  skill:jaffle-semantics           SST_REF_DEV...JAFFLE_SEMANTICS   alias SST_76C15E292899
+  + create  skill:supply-backfill            SST_REF_DEV...SUPPLY_BACKFILL    alias SST_5EEE74F03EF2
+  + create  plugin:jaffle-toolkit            SST_REF_DEV...JAFFLE_TOOLKIT     alias SST_A52873E3F1B1
+  + create  agent:jaffle_delivery_agent      ...JAFFLE_DELIVERY_AGENT
+  + create  agent:jaffle_minimal_agent       ...JAFFLE_MINIMAL_AGENT
+  + create  coco_profile:jaffle_analyst      ...JAFFLE_ANALYST_REHEARSAL
+  + create  coco_profile:jaffle_operator     ...JAFFLE_OPERATOR_REHEARSAL
+  + create  agent:jaffle_analytics_agent     ...JAFFLE_ANALYTICS_AGENT
+  + create  cowork_profile:jaffle_concierge  SST_REF_DEV...JAFFLE_CONCIERGE
+  + create  eval:jaffle_analytics_agent      SST_REF_DEV.JAFFLE.EVAL_JAFF...
+--- stderr
+warning[SST-VAL714]: dataset 'eval:jaffle_analytics_agent': METADATA has no git SHA
+  = help: write the SHA into METADATA
+  = sst explain SST-VAL714
+
+~ plan: 17 to create, 0 to update, 0 to prune; 0 unchanged - 0 errors, 1 warning - <n>s
+  hidden: 3 info (--show-info)
+  next: review the plan; `sst apply` makes these changes in Snowflake, so run it only when you mean to

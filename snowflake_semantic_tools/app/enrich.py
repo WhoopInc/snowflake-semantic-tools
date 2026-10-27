@@ -1,0 +1,595 @@
+"""Orchestrate `sst enrich`: select dbt models, read what the warehouse holds, and edit their YAML.
+
+Every edit is computed in memory before anything is written, so a run that stops early, or
+fails reading a file, writes nothing; the caller decides whether to write at all. A model either
+gains everything its components derive or, when one of its reads fails, nothing.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, replace
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.enrich import (
+    COLUMN_SYNONYMS_SCHEMA,
+    COLUMNS_PER_PROMPT,
+    DEFAULT_COMPONENTS,
+    TABLE_SYNONYMS_SCHEMA,
+    ColumnUpdate,
+    Component,
+    EnrichOptions,
+    ModelEnrichment,
+    WarehouseColumn,
+    collection_refusal,
+    column_synonyms,
+    column_synonyms_prompt,
+    enrich_model,
+    governed_columns,
+    needs_table_synonyms,
+    parse_column_synonyms,
+    parse_table_synonyms,
+    prompt_columns,
+    rejected_synonyms,
+    sample_columns,
+    synonym_columns,
+    table_synonyms,
+    table_synonyms_prompt,
+    taken_names,
+    withhold_pii_samples,
+    yaml_column_name,
+)
+from snowflake_semantic_tools.domain.lineage.graph import GraphSelector, dbt_lineage, parse_graph_selector
+from snowflake_semantic_tools.domain.model.config_schema import (
+    EnrichmentConfig,
+    GovernanceConfig,
+    enrichment_config,
+    governance_config,
+)
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtModel
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
+from snowflake_semantic_tools.domain.model.semantic_view import SemanticView
+from snowflake_semantic_tools.domain.ports.enrich import EnrichFilesPort, EnrichPort
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import lifecycle_concern
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+
+# A failure no other model would escape: the connection, a transient fault, or a privilege.
+# It stops the run as a connection failure instead of failing one model.
+_RUN_FAILURES = frozenset(("SST-PRT001", "SST-PRT002", "SST-PRT003", "SST-PRT004"))
+# The configuration blocks whose diagnostics decide whether enrich runs at all.
+_OWN_BLOCKS = ("config:enrichment", "config:governance")
+
+
+@dataclass(frozen=True, slots=True)
+class _Settings:
+    """The configuration one run reads: what it collects, and which column tags are sensitive."""
+
+    enrichment: EnrichmentConfig
+    governance: GovernanceConfig
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichRequest:
+    """What one `sst enrich` run selects and fills.
+
+    Attributes:
+        paths: Project-relative paths; a model is selected when its SQL or YAML file is one of
+            them or lies under one. Empty selects every model of the project.
+        selected: Model names or globs; empty selects every model the paths do.
+        excluded: Model names or globs taken out of the selection.
+        options: The components the run fills and forces.
+        database: Read every relation in this database instead of the manifest's.
+        schema: Read every relation in this schema instead of the manifest's.
+        fail_fast: Stop at the first model that fails, so nothing is written.
+    """
+
+    paths: tuple[str, ...] = ()
+    selected: tuple[str, ...] = ()
+    excluded: tuple[str, ...] = ()
+    options: EnrichOptions = EnrichOptions(DEFAULT_COMPONENTS)
+    database: Identifier | None = None
+    schema: Identifier | None = None
+    fail_fast: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class EditedFile:
+    """One file the run edits: its text before and after.
+
+    Attributes:
+        before: The text it has; None for a file the run creates.
+        reformatted: Writing it also changes lines the run did not edit.
+    """
+
+    path: str
+    before: str | None
+    after: str
+    reformatted: bool = False
+
+    @property
+    def changed(self) -> bool:
+        """Report whether writing the file would change it."""
+        return self.before != self.after
+
+
+@dataclass(frozen=True, slots=True)
+class ModelReport:
+    """What the run did for one selected model.
+
+    Attributes:
+        path: The YAML file its column updates go to.
+        enrichment: What its columns gain; None when one of its reads failed.
+        table_synonyms: The table synonyms its `meta.sst` gains; empty when it gains none.
+        section: The top-level key of the YAML file that describes it: `models`, `snapshots`
+            or `seeds`.
+    """
+
+    model: str
+    path: str
+    enrichment: ModelEnrichment | None
+    table_synonyms: tuple[str, ...] = ()
+    section: str = "models"
+
+    @property
+    def failed(self) -> bool:
+        """Report whether the model was left unchanged because a read failed."""
+        return self.enrichment is None
+
+
+@dataclass(frozen=True, slots=True)
+class EnrichReport:
+    """Everything one run decided, before anything is written.
+
+    Attributes:
+        models: One report per model enriched, in name order; fewer than selected after a stop.
+        files: Every file the run edits, in path order, changed or not.
+        diagnostics: What the run found, in the order it found it.
+        stopped: `--fail-fast` stopped the run at a failure, so nothing may be written.
+        selected: How many models the selection matched.
+    """
+
+    models: tuple[ModelReport, ...] = ()
+    files: tuple[EditedFile, ...] = ()
+    diagnostics: DiagnosticBag = field(default_factory=DiagnosticBag)
+    stopped: bool = False
+    selected: int = 0
+
+    @property
+    def changed(self) -> tuple[EditedFile, ...]:
+        """Return the files writing would change, in path order."""
+        return tuple(item for item in self.files if item.changed)
+
+    @property
+    def writable(self) -> tuple[EditedFile, ...]:
+        """Return the files to write: the changed ones, unless the run stopped."""
+        return () if self.stopped else self.changed
+
+
+def _matches(name: str, patterns: Sequence[str]) -> bool:
+    folded = name.casefold()
+    return any(fnmatch.fnmatchcase(folded, pattern.casefold()) for pattern in patterns)
+
+
+def _under(file: str | None, paths: Sequence[str]) -> bool:
+    if file is None:
+        return False
+    return any(file == path or file.startswith(path.rstrip("/") + "/") for path in paths)
+
+
+def select_models(catalog: DbtCatalog, request: EnrichRequest) -> tuple[tuple[DbtModel, ...], list[Diagnostic]]:
+    """Return the project's models the request selects, in name order, with what selecting found.
+
+    Only the root project's models are selected; an installed package's are never edited. With
+    no name or path, only models are: a snapshot or seed is selected by name or path alone. A
+    name inside dbt's graph operators, such as `+orders`, also selects the models dbt's graph
+    reaches from it.
+
+    Diagnostics:
+        SST-DBT031: a model selected by name has no relation.
+        SST-DBT002: a name selected without a wildcard is no model the manifest knows.
+    """
+    known = {model.name.casefold() for model in catalog.models} | {
+        name.casefold() for name in catalog.relationless_models
+    }
+    absent = [
+        D("SST-DBT002", model=pattern, subject=f"dbt_model:{pattern}")
+        for pattern in (_core(item) for item in request.selected)
+        if not any(character in pattern for character in "*?[") and pattern.casefold() not in known
+    ]
+    request = replace(request, selected=_walked(request.selected, catalog), excluded=_walked(request.excluded, catalog))
+    models = _filtered(
+        [model for model in catalog.models if model.package_name in (None, catalog.project_name)], request
+    )
+    diagnostics = [
+        *absent,
+        *(
+            D("SST-DBT031", model=name, subject=f"dbt_model:{name}")
+            for name in catalog.relationless_models
+            if request.selected and _matches(name, request.selected) and not _matches(name, request.excluded)
+        ),
+    ]
+    return tuple(sorted(models, key=lambda model: model.name.casefold())), diagnostics
+
+
+def _operators(pattern: str) -> GraphSelector | None:
+    """Return the graph operators a pattern writes; None when it writes none, or misplaces them."""
+    try:
+        return parse_graph_selector(pattern)
+    except ValueError:
+        return None
+
+
+def _core(pattern: str) -> str:
+    """Return the name a pattern's graph operators apply to; the pattern itself when it writes none."""
+    operators = _operators(pattern)
+    return operators.core if operators is not None else pattern
+
+
+def _walked(patterns: Sequence[str], catalog: DbtCatalog) -> tuple[str, ...]:
+    """Return the patterns, each one with graph operators replaced by the models dbt's graph reaches.
+
+    The walk starts from every model, seed or snapshot the pattern's name matches.
+    """
+    graph = None
+    found: list[str] = []
+    for pattern in patterns:
+        operators = _operators(pattern)
+        if operators is None:
+            found.append(pattern)
+            continue
+        graph = graph if graph is not None else dbt_lineage(catalog.nodes)
+        name = operators.core.casefold()
+        start = [
+            key for key, node in graph.nodes.items() if node.kind in _TABLES and fnmatch.fnmatchcase(node.name, name)
+        ]
+        walked = graph.walk(start, operators)
+        found.extend(sorted(graph.nodes[key].name for key in walked if graph.nodes[key].kind in _TABLES))
+    return tuple(found)
+
+
+# The dbt resource types enrich edits, by the kind the lineage graph records.
+_TABLES = frozenset(("model", "seed", "snapshot"))
+
+
+def yaml_section(model: DbtModel) -> str:
+    """Return the dbt YAML key that describes the model: `models`, `snapshots` or `seeds`."""
+    return {"snapshot": "snapshots", "seed": "seeds"}.get(model.resource_type, "models")
+
+
+def _filtered(models: list[DbtModel], request: EnrichRequest) -> list[DbtModel]:
+    """Keep the models the request's paths, names and exclusions select.
+
+    With no path or name, only models are kept: a snapshot or seed is enriched only when one
+    asks for it, as enrich samples its rows and sends them to Cortex, and a seed is often raw
+    data no view reads.
+    """
+    if not request.paths and not request.selected:
+        models = [model for model in models if model.resource_type == "model"]
+    if request.paths:
+        paths = [path.strip("/") for path in request.paths]
+        models = [
+            model for model in models if _under(model.original_file_path, paths) or _under(model.patch_file, paths)
+        ]
+    if request.selected:
+        models = [model for model in models if _matches(model.name, request.selected)]
+    if request.excluded:
+        models = [model for model in models if not _matches(model.name, request.excluded)]
+    return models
+
+
+def model_file(model: DbtModel) -> str:
+    """Return the YAML file a model's updates go to: its patch file, else a new one beside its SQL."""
+    if model.patch_file:
+        return model.patch_file
+    if model.original_file_path:
+        stem, _, _ = model.original_file_path.rpartition(".")
+        return f"{stem or model.original_file_path}.yml"
+    return f"models/{model.name}.yml"
+
+
+def relation(model: DbtModel, request: EnrichRequest) -> QualifiedName:
+    """Return the relation a model's columns are read from, with the request's overrides applied.
+
+    Raises:
+        ValueError: dbt's relation name is not a three-part Snowflake name.
+    """
+    parsed = QualifiedName.parse(model.raw_relation_name or model.relation_name)
+    return QualifiedName(request.database or parsed.database, request.schema or parsed.schema, parsed.name)
+
+
+def taken_by_views(views: Sequence[SemanticView], model: str) -> frozenset[str]:
+    """Return the casefolded names and synonyms of every other table of each view using `model`."""
+    wanted = model.casefold()
+    others = [
+        table
+        for view in views
+        if wanted in view.referenced_models
+        for table in view.tables
+        if table.logical_name.casefold() != wanted
+    ]
+    return taken_names([table.logical_name for table in others], [s for table in others for s in table.synonyms])
+
+
+def _asks_cortex(request: EnrichRequest) -> bool:
+    """Report whether the run may ask Cortex anything: it fills column or table synonyms."""
+    return request.options.includes(Component.COLUMN_SYNONYMS) or request.options.includes(Component.TABLE_SYNONYMS)
+
+
+class _ModelFailed(Exception):
+    """One model's read failed; the diagnostic says which and why."""
+
+    def __init__(self, diagnostic: Diagnostic) -> None:
+        super().__init__(diagnostic.message)
+        self.diagnostic = diagnostic
+
+
+class EnrichProject:
+    """Run `sst enrich` over one project: read, decide, and edit in memory; `write` writes."""
+
+    def __init__(self, inputs: ProjectInputs, port: EnrichPort, files: EnrichFilesPort) -> None:
+        self._inputs = inputs
+        self._port = port
+        self._files = files
+
+    def run(self, request: EnrichRequest) -> EnrichReport:
+        """Enrich every selected model in memory and report what each file would become.
+
+        Raises:
+            SnowflakePortError: The connection failed, a fault was transient, or a privilege was
+                refused; no model would get further.
+            ProjectError: The manifest, the semantic views, or a YAML file cannot be read.
+
+        Diagnostics:
+            SST-CFG003, SST-CFG004, SST-CFG008: the `enrichment:` block has an unknown key, a value
+                of the wrong type, or one out of bounds; an error stops the run before any read.
+            SST-CFG057: a `governance.sensitive_tags` entry names no tag; the run stops before
+                any read, as for any error in the `governance:` block.
+            SST-CFG038: the run reads row data and the project forbids collecting it.
+            SST-DBT031: a model selected by name has no relation.
+            SST-DBT002: a name selected without a wildcard is no model the manifest knows.
+            SST-SNO032: the synonym model refused a one-token completion; the run stops before
+                any read.
+            SST-SNO033: SHOW CORTEX BASE MODELS lists the synonym model as INTERNAL, past
+                end-of-life, legacy or in preview, or does not list it.
+            SST-SNO030: a model's relation is missing or not visible.
+            SST-SNO031: reading a model's columns, column tags or values, or asking Cortex, failed;
+                or a column's name, or a value enrich would write for it, holds template syntax,
+                and it is not written.
+            SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.
+            SST-PRS125: a file enrich writes is also reformatted.
+        """
+        config = self._inputs.config()
+        # Only the enrichment and governance blocks decide what enrich does; the rest is
+        # validate's to report. A malformed sensitive tag stops the run, so it never samples a
+        # column the entry meant to protect.
+        problems = [item for item in config.diagnostics if (item.subject or "").startswith(_OWN_BLOCKS)]
+        if DiagnosticBag(problems).has_errors:
+            return EnrichReport(diagnostics=DiagnosticBag(problems), stopped=True)
+        settings = enrichment_config(config.tree)
+        governance = governance_config(config.tree)
+        refusal = collection_refusal(request.options, allowed=settings.allow_sample_value_collection)
+        if refusal is not None:
+            return EnrichReport(diagnostics=DiagnosticBag((*problems, refusal)), stopped=True)
+        models, diagnostics = select_models(self._inputs.dbt_catalog(), request)
+        diagnostics[:0] = problems
+        if models and _asks_cortex(request):
+            checked = self._synonym_model(settings.synonym_model)
+            diagnostics.extend(checked)
+            if DiagnosticBag(checked).has_errors:
+                return EnrichReport(diagnostics=DiagnosticBag(diagnostics), stopped=True, selected=len(models))
+        views = self._inputs.load_project().views if request.options.includes(Component.TABLE_SYNONYMS) else ()
+        run = _Settings(settings, governance)
+        reports: list[ModelReport] = []
+        stopped = False
+        for model in models:
+            report, found = self._model(model, request, run, views)
+            reports.append(report)
+            diagnostics.extend(found)
+            if report.failed and request.fail_fast:
+                stopped = True
+                break
+        files = self._edited_files(reports)
+        diagnostics.extend(
+            D("SST-PRS125", file=item.path, origin=Origin(item.path))
+            for item in files
+            if item.changed and item.reformatted
+        )
+        return EnrichReport(tuple(reports), files, DiagnosticBag(diagnostics), stopped, len(models))
+
+    def write(self, report: EnrichReport) -> tuple[str, ...]:
+        """Write the report's changed files, unless the run stopped; return the paths written.
+
+        Raises:
+            OSError: A file cannot be written; the files before it stay written.
+        """
+        for item in report.writable:
+            self._files.write(item.path, item.after)
+        return tuple(item.path for item in report.writable)
+
+    def _model(
+        self, model: DbtModel, request: EnrichRequest, run: _Settings, views: Sequence[SemanticView]
+    ) -> tuple[ModelReport, list[Diagnostic]]:
+        """Read one model's relation, its column tags, values and synonyms, and decide what its YAML gains."""
+        path = model_file(model)
+        settings = run.enrichment
+        withheld: tuple[Diagnostic, ...] = ()
+        try:
+            warehouse = self._columns(model, request, run.governance)
+            samples, withheld = withhold_pii_samples(model, self._samples(model, request, warehouse, settings))
+            synonyms, dropped = self._column_synonyms(model, warehouse, samples, request.options, settings)
+            enrichment = enrich_model(
+                model,
+                warehouse,
+                request.options,
+                settings,
+                samples=samples,
+                synonyms=synonyms,
+                tags_read=run.governance.reads_tags,
+            )
+            taken = taken_by_views(views, model.name)
+            edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
+        except _ModelFailed as failure:
+            return ModelReport(model.name, path, None, section=yaml_section(model)), [*withheld, failure.diagnostic]
+        report = ModelReport(model.name, path, enrichment, edits, yaml_section(model))
+        return report, [*withheld, *enrichment.diagnostics, *dropped, *dropped_tables]
+
+    def _synonym_model(self, model: str) -> list[Diagnostic]:
+        """Check once that the synonym model answers, and how SHOW lists it, before any read.
+
+        A model Cortex refuses would fail every model's synonyms after its warehouse reads,
+        so the run stops on it. A SHOW that cannot be read says nothing about the model.
+        """
+        subject = "config:enrichment.synonym_model"
+        refused = self._port.probe_completion(model)
+        if refused is not None:
+            return [D("SST-SNO032", model=model, detail=refused, subject=subject)]
+        try:
+            listed = {row.name.casefold(): row for row in self._port.base_models()}
+        except SnowflakePortError:
+            return []
+        concern = lifecycle_concern(listed.get(model.casefold()))
+        return [D("SST-SNO033", model=model, reason=concern, subject=subject)] if concern else []
+
+    def _failure(self, model: DbtModel, step: str, error: SnowflakePortError) -> _ModelFailed:
+        if error.diagnostic is not None and error.diagnostic.code in _RUN_FAILURES:
+            raise error
+        detail = str(error).strip().splitlines()[0] if str(error).strip() else type(error).__name__
+        return _ModelFailed(
+            D("SST-SNO031", model=model.name, step=step, detail=detail, subject=f"dbt_model:{model.name}")
+        )
+
+    def _columns(
+        self, model: DbtModel, request: EnrichRequest, governance: GovernanceConfig
+    ) -> tuple[WarehouseColumn, ...]:
+        """Read a model's relation's columns and, when `governance:` asks, the sensitive tags on each.
+
+        A tag read that fails fails the model, so no column it might have protected is sampled.
+        """
+        target = relation(model, request)
+        try:
+            columns = self._port.relation_columns(target)
+        except SnowflakePortError as error:
+            raise self._failure(model, "reading columns", error) from error
+        if columns is None:
+            raise _ModelFailed(
+                D("SST-SNO030", model=model.name, relation=target.sql, subject=f"dbt_model:{model.name}")
+            )
+        if not governance.reads_tags:
+            return columns
+        try:
+            tags = self._port.column_tags(target)
+        except SnowflakePortError as error:
+            raise self._failure(model, "reading column tags", error) from error
+        return governed_columns(columns, tags, governance.sensitive_tags)
+
+    def _samples(
+        self, model: DbtModel, request: EnrichRequest, warehouse: Sequence[WarehouseColumn], settings: EnrichmentConfig
+    ) -> dict[str, tuple[str, ...]]:
+        columns = [column.name for column in sample_columns(model, warehouse, request.options)]
+        if not columns:
+            return {}
+        try:
+            found = self._port.distinct_values(relation(model, request), columns, settings.distinct_limit + 1)
+        except SnowflakePortError as error:
+            raise self._failure(model, "sampling values", error) from error
+        return {name.casefold(): tuple(values) for name, values in found.items()}
+
+    def _complete(
+        self, model: DbtModel, step: str, settings: EnrichmentConfig, prompt: str, schema: Mapping[str, object]
+    ) -> object:
+        try:
+            return self._port.complete_json(settings.synonym_model, prompt, schema)
+        except SnowflakePortError as error:
+            raise self._failure(model, step, error) from error
+
+    def _column_synonyms(
+        self,
+        model: DbtModel,
+        warehouse: Sequence[WarehouseColumn],
+        samples: Mapping[str, Sequence[str]],
+        options: EnrichOptions,
+        settings: EnrichmentConfig,
+    ) -> tuple[dict[str, tuple[str, ...]], tuple[Diagnostic, ...]]:
+        """Ask Cortex for the columns' synonyms; return those to write, and a report per refused one."""
+        columns = synonym_columns(model, warehouse, options)
+        proposals: dict[str, tuple[object, ...]] = {}
+        for start in range(0, len(columns), COLUMNS_PER_PROMPT):
+            batch = prompt_columns(model, columns[start : start + COLUMNS_PER_PROMPT], samples)
+            prompt = column_synonyms_prompt(model.name, model.description, batch, max_count=settings.synonym_max_count)
+            parsed = parse_column_synonyms(
+                self._complete(model, "column synonyms", settings, prompt, COLUMN_SYNONYMS_SCHEMA)
+            )
+            if parsed is None:
+                raise _ModelFailed(_shape_failure(model, "column synonyms"))
+            proposals.update(parsed)
+        dropped = tuple(
+            diagnostic
+            for column, proposed in proposals.items()
+            for diagnostic in rejected_synonyms(
+                proposed,
+                artifact=f"{model.name}.{column}",
+                subject=f"dbt_model:{model.name}",
+                limit=settings.synonym_max_count,
+            )
+        )
+        return column_synonyms(model, warehouse, proposals, limit=settings.synonym_max_count), dropped
+
+    def _table_synonyms(
+        self,
+        model: DbtModel,
+        warehouse: Sequence[WarehouseColumn],
+        taken: frozenset[str],
+        options: EnrichOptions,
+        settings: EnrichmentConfig,
+    ) -> tuple[tuple[str, ...], tuple[Diagnostic, ...]]:
+        """Ask Cortex for the model's table synonyms; return those to write, and the refused ones."""
+        if not needs_table_synonyms(model.synonyms, options):
+            return (), ()
+        names = [yaml_column_name(column.name) for column in warehouse]
+        prompt = table_synonyms_prompt(
+            model.name, model.description, names, sorted(taken), max_count=settings.synonym_max_count
+        )
+        proposals = parse_table_synonyms(
+            self._complete(model, "table synonyms", settings, prompt, TABLE_SYNONYMS_SCHEMA)
+        )
+        if proposals is None:
+            raise _ModelFailed(_shape_failure(model, "table synonyms"))
+        dropped = rejected_synonyms(
+            proposals, artifact=model.name, subject=f"dbt_model:{model.name}", limit=settings.synonym_max_count
+        )
+        written = table_synonyms(
+            model.name, model.synonyms, proposals, taken, options, limit=settings.synonym_max_count
+        )
+        return written, dropped
+
+    def _edited_files(self, reports: Sequence[ModelReport]) -> tuple[EditedFile, ...]:
+        """Compute every model file's text after the run, in path order."""
+        by_file: dict[str, tuple[dict[str, tuple[ColumnUpdate, ...]], dict[str, tuple[str, ...]], dict[str, str]]] = {}
+        for report in reports:
+            updates = report.enrichment.updates if report.enrichment is not None else ()
+            if not updates and not report.table_synonyms:
+                continue
+            columns, synonyms, sections = by_file.setdefault(report.path, ({}, {}, {}))
+            sections[report.model] = report.section
+            if updates:
+                columns[report.model] = updates
+            if report.table_synonyms:
+                synonyms[report.model] = report.table_synonyms
+        edited = []
+        for path, (columns, synonyms, sections) in sorted(by_file.items()):
+            before = self._files.read(path)
+            written = self._files.edit_models(before, path, columns, synonyms, sections)
+            edited.append(EditedFile(path, before, written.text, written.reformatted))
+        return tuple(edited)
+
+
+def _shape_failure(model: DbtModel, step: str) -> Diagnostic:
+    return D(
+        "SST-SNO031",
+        model=model.name,
+        step=step,
+        detail="Cortex answered in another shape than the one requested",
+        subject=f"dbt_model:{model.name}",
+    )

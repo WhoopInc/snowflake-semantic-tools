@@ -1,0 +1,8 @@
+{
+  "author": {
+    "name": "Jaffle Analytics"
+  },
+  "description": "The jaffle analytics toolkit: which semantic view answers which question, and\nthe month-close procedure for supply cost.",
+  "name": "jaffle-toolkit",
+  "skills": "./skills/"
+}

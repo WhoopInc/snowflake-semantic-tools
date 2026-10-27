@@ -1,0 +1,114 @@
+"""`sst init`: scaffold SST into a dbt project, never overwriting a file that exists.
+
+The configuration it writes sets every policy key explicitly, each at the value the reference
+documents, so a scaffolded project never relies on a default it cannot see. `--check-only`
+reports what is in place and creates nothing.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import click
+
+from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.paths import make_folders_within, output_root
+from snowflake_semantic_tools.cli import confirm as asking
+from snowflake_semantic_tools.cli.exit_codes import CONFIG, ERROR, OK
+from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
+from snowflake_semantic_tools.cli.render.diagnostics import plural
+from snowflake_semantic_tools.cli.runner import CommandResult, ConfigNeed, command_body, write_text
+from snowflake_semantic_tools.cli.settings import semantic_models_dir
+from snowflake_semantic_tools.domain.diagnostics import D, DiagnosticBag
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, CONFIG_KEYS
+
+_DEFAULT_SEMANTIC_DIR = "semantic_models"
+
+
+def config_template(semantic_models_dir: str) -> str:
+    """Return the configuration `sst init` writes, every policy key at its documented default."""
+
+    def default(path: str) -> str:
+        return CONFIG_KEYS[path].default or ""
+
+    return (
+        "project:\n"
+        f"  semantic_models_dir: {semantic_models_dir}\n"
+        "\n"
+        "validation:\n"
+        f"  strict: {default('validation.strict')}\n"
+        f"  snowflake_syntax_check: {default('validation.snowflake_syntax_check')}\n"
+        "\n"
+        "enrichment:\n"
+        f"  distinct_limit: {default('enrichment.distinct_limit')}\n"
+        f"  sample_values_display_limit: {default('enrichment.sample_values_display_limit')}\n"
+        f"  synonym_model: {default('enrichment.synonym_model')}\n"
+        f"  synonym_max_count: {default('enrichment.synonym_max_count')}\n"
+        f"  allow_sample_value_collection: {default('enrichment.allow_sample_value_collection')}\n"
+        "\n"
+        "governance:\n"
+        f"  sensitive_tags: {default('governance.sensitive_tags')}\n"
+        f"  read_column_tags: {default('governance.read_column_tags')}\n"
+        "\n"
+        "apply:\n"
+        f"  fail_fast: {default('apply.fail_fast')}\n"
+        "\n"
+        "state:\n"
+        '  +database: "{{ target.database }}"\n'
+        '  +schema: "{{ target.schema }}"\n'
+        f"  +table: {default('state.+table')}\n"
+    )
+
+
+@click.command(cls=SstCommand)
+@click.option("--skip-prompts", is_flag=True)
+@click.option("--check-only", is_flag=True)
+@command_body("init", config=ConfigNeed.OPTIONAL)
+def init(paths: ProjectPaths, skip_prompts: bool, check_only: bool, options: GlobalOptions) -> CommandResult:
+    """Scaffold SST into an existing dbt project without overwriting a file.
+
+    Writes `sst_config.yml`, with the validation, enrichment, governance, apply and state keys at
+    their defaults, and creates the semantic models directory it names (views and their members
+    may sit in any folder of it). On a terminal (stdin and stderr both terminals) it asks for that directory, unless
+    --skip-prompts or --output json or agent; off one it takes the default. A file or directory
+    that exists is left as it is, and an existing configuration's `project.semantic_models_dir`
+    is the directory used. With --check-only nothing is written, and the command exits
+    1 unless the configuration file and the semantic models directory exist. Exit 4 when the
+    directory is not a dbt project.
+    """
+    project_dir = paths.project_dir
+    if not (project_dir / "dbt_project.yml").is_file():
+        refusal = D("SST-CFG046", subject="config:project", key="sst init")
+        return CommandResult(
+            CONFIG, DiagnosticBag((refusal,)), {"created": [], "skipped": [], "status": "not a dbt project"}
+        )
+    config = paths.config_file or project_dir / CONFIG_FILE
+    # A configuration that exists names the semantic models directory; a new one is asked for.
+    semantic_dir = semantic_models_dir(paths) if config.is_file() else _DEFAULT_SEMANTIC_DIR
+    models_dir = Path(semantic_dir)
+    wanted = ((config, str(config.relative_to(project_dir))), (project_dir / models_dir, models_dir.as_posix()))
+    present = [name for path, name in wanted if path.exists()]
+    missing = [name for path, name in wanted if not path.exists()]
+    if check_only:
+        status = "incomplete" if missing else "complete"
+        data = {"created": [], "skipped": present, "missing": missing, "status": status}
+        listed = f": missing {', '.join(missing)}" if missing else ""
+        return CommandResult(
+            ERROR if missing else OK,
+            data=data,
+            human=lambda: click.echo(f"setup {status}{listed}"),
+            headline=f"setup {status}",
+        )
+    created: list[str] = []
+    if not config.exists():
+        if not skip_prompts and options.output not in ("json", "agent") and asking.can_ask():
+            semantic_dir = asking.ask("Semantic models directory", _DEFAULT_SEMANTIC_DIR)
+        write_text(output_root(project_dir, config.parent), config, config_template(semantic_dir))
+        created.append(config.name)
+    directory = project_dir / semantic_dir
+    if not directory.is_dir():
+        make_folders_within(project_dir, directory)
+        created.append(Path(semantic_dir).as_posix())
+    skipped = [item for item in present if item not in created]
+    data = {"created": created, "skipped": skipped, "status": "scaffolded"}
+    return CommandResult(data=data, headline=f"initialized the SST project; created {plural(len(created), 'item')}")

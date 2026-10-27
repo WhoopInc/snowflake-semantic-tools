@@ -1,0 +1,594 @@
+"""What exists in Snowflake and how it is defined, read with SHOW, DESCRIBE, and INFORMATION_SCHEMA.
+
+Nothing here writes. SHOW ... LIKE ignores case and reads `_` and `%` as wildcards, so a
+lookup by name compares each listed name again, under the case rule that lookup has always
+used: uppercased for ownership markers and object existence, casefolded for datasets,
+stages, and extensions. The two differ only for names outside ASCII.
+
+While the session keeps a read cache, as one plan's reads do, a lookup by name reads its
+schema's whole listing once instead: SHOW <type>S IN SCHEMA for an ASCII name without a
+backslash, which LIKE would match only by itself, and one INFORMATION_SCHEMA.TABLES read
+per schema for a table's existence. Either keeps exactly the rows the lookup by name keeps.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable, Mapping
+from types import MappingProxyType
+from typing import Any
+
+from snowflake_semantic_tools.adapters.bounded_yaml import YAMLError, safe_load_core
+from snowflake_semantic_tools.adapters.snowflake.connector.session import Session, _json_text, _variant_value
+from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.diagnostics.signatures import SessionFailure, session_failure
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import GrantRow, OwnershipMarker, ShowRow, extract_marker
+from snowflake_semantic_tools.domain.ports.snowflake.catalog import (
+    AgentVersion,
+    AgentVersions,
+    CatalogPort,
+    DescribedMember,
+    ExtensionObservation,
+    ExtensionVersion,
+)
+from snowflake_semantic_tools.domain.ports.snowflake.errors import AgentVersionNotFound, SnowflakePortError
+from snowflake_semantic_tools.domain.sql import (
+    Sql,
+    boolean,
+    ident,
+    keyword,
+    literal,
+    qname,
+    routine_ref,
+    scope,
+    sql,
+)
+
+# The object types SST observes, each spelled as SHOW spells it once pluralized with an S.
+OBJECT_TYPES = frozenset(
+    (
+        "SEMANTIC VIEW",
+        "CORTEX SEARCH SERVICE",
+        "CORTEX EXTENSION",
+        "PROCEDURE",
+        "FUNCTION",
+        "STAGE",
+        "AGENT",
+        "DATASET",
+        "TABLE",
+        "VIEW",
+        "TAG",
+    )
+)
+# The account-level object types SHOW PARAMETERS ... IN <type> is asked about.
+PARAMETER_OBJECT_TYPES = frozenset(("WAREHOUSE",))
+# The observed types SHOW GRANTS ON <type> cannot address: Snowflake reports a dataset's
+# grants only in SHOW GRANTS TO ROLE, and its owner in SHOW DATASETS. Snowflake's docs give
+# SHOW GRANTS ON for any object; the server rejects it for a dataset (docs/design/snowflake-behavior.md).
+_UNLISTED_GRANTS = frozenset(("DATASET",))
+# How GET_DDL spells each observed type it reads. MEASURED: it rejects 'AGENT' as an invalid
+# object type and reads an agent as 'CORTEX_AGENT'. It reads no stage, dataset, or Cortex
+# extension, so a definition of one is never asked for.
+_GET_DDL_TYPES: Mapping[str, str] = {
+    "SEMANTIC VIEW": "SEMANTIC_VIEW",
+    "CORTEX SEARCH SERVICE": "CORTEX_SEARCH_SERVICE",
+    "AGENT": "CORTEX_AGENT",
+    "PROCEDURE": "PROCEDURE",
+    "FUNCTION": "FUNCTION",
+    "TABLE": "TABLE",
+    "VIEW": "VIEW",
+    "TAG": "TAG",
+}
+_ROUTINE_TYPES = frozenset(("PROCEDURE", "FUNCTION"))
+# The object_domain TAG_REFERENCES is asked for a semantic view's tags. UNVERIFIED against a
+# live account: the documented domain list has no semantic-view entry, and says 'TABLE' is for
+# all table-like objects such as views, so 'TABLE' is sent. The probe in
+# docs/design/snowflake-behavior.md must confirm it before a release.
+_SEMANTIC_VIEW_TAG_DOMAIN = "TABLE"
+# The domain of each type whose tags are read: only a semantic view's, which a replace without
+# WITH TAG removes (docs/design/snowflake-behavior.md).
+_TAG_DOMAINS: Mapping[str, str] = {"SEMANTIC VIEW": _SEMANTIC_VIEW_TAG_DOMAIN}
+# An account without SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW answers so; DESCRIBE is read instead.
+_UNKNOWN_FUNCTION = re.compile(r"unknown function", re.IGNORECASE)
+# The levels a tag set on a parent shows at; a replace of the object keeps such a tag.
+_PARENT_TAG_LEVELS = frozenset(("DATABASE", "SCHEMA"))
+
+
+class CatalogMethods(Session, CatalogPort):
+    """Observe objects, grants, stages, extensions, agents, and the session's identity."""
+
+    def show_objects(self, object_type: str, scope: SchemaScope) -> tuple[ShowRow, ...]:
+        normalized_type = _object_type(object_type)
+        rows = self._dict_rows(
+            sql("SHOW {kind} IN SCHEMA {scope}", kind=keyword(normalized_type, plural=True), scope=_scope(scope))
+        )
+        return shown_rows(rows, normalized_type, scope.database.folded, scope.schema.folded)
+
+    def show_grants(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> tuple[GrantRow, ...]:
+        object_name = qname(qualified_name)
+        kind = _object_type(object_type)
+        if kind in _UNLISTED_GRANTS:
+            # Snowflake rejects SHOW GRANTS ON DATASET in every form; it is never sent.
+            raise SnowflakePortError(f"Snowflake lists no grants on a {kind.lower()}; read its owner from SHOW")
+        if kind in _ROUTINE_TYPES:
+            object_name = routine_ref(qualified_name, routine_signature)
+        rows = self._dict_rows(sql("SHOW GRANTS ON {kind} {name}", kind=keyword(kind), name=object_name))
+        return tuple(
+            sorted(
+                GrantRow(
+                    privilege=str(row.get("privilege") or ""),
+                    granted_to=str(row.get("granted_to") or ""),
+                    grantee_name=str(row.get("grantee_name") or ""),
+                    granted_by=str(row.get("granted_by") or ""),
+                    grant_option=str(row.get("grant_option") or "").lower() in {"true", "yes"},
+                )
+                for row in rows
+            )
+        )
+
+    def tag_references(self, object_type: str, qualified_name: QualifiedName) -> tuple[str, ...]:
+        kind = _object_type(object_type)
+        domain = _TAG_DOMAINS.get(kind)
+        if domain is None:
+            raise SnowflakePortError(f"tags are read only on a semantic view, not on {kind}")
+        rows = self._dict_rows(
+            sql(
+                "SELECT * FROM TABLE({database}.INFORMATION_SCHEMA.TAG_REFERENCES({name}, {domain}))",
+                database=ident(qualified_name.database),
+                name=literal(qualified_name.sql),
+                domain=literal(domain),
+            )
+        )
+        names = {
+            QualifiedName(
+                Identifier.shown(str(row.get("tag_database") or "")),
+                Identifier.shown(str(row.get("tag_schema") or "")),
+                Identifier.shown(str(row.get("tag_name") or "")),
+            ).sql
+            for row in rows
+            if row.get("tag_name") and str(row.get("level") or "").upper() not in _PARENT_TAG_LEVELS
+        }
+        return tuple(sorted(names))
+
+    def describe_marker(
+        self,
+        qualified_name: QualifiedName,
+        object_type: str,
+    ) -> OwnershipMarker | None:
+        rows = self._show_like(object_type, qualified_name, str.upper)
+        return extract_marker(_show_comment(rows[0])) if rows else None
+
+    def get_ddl(
+        self,
+        object_type: str,
+        qualified_name: QualifiedName,
+        routine_signature: tuple[str, ...] = (),
+    ) -> str:
+        observed_type = _object_type(object_type)
+        kind = _GET_DDL_TYPES.get(observed_type)
+        if kind is None:
+            raise SnowflakePortError(f"GET_DDL cannot read a {observed_type.lower()}")
+        # GET_DDL takes the name as a string, a routine's with its argument types. The third
+        # argument asks for fully qualified names, so the text re-executes in a session with no
+        # current database; it defaults to FALSE.
+        name = str(routine_ref(qualified_name, routine_signature)) if kind in _ROUTINE_TYPES else qualified_name.sql
+        result = self.query(
+            sql(
+                "SELECT GET_DDL({kind}, {name}, {qualified})",
+                kind=literal(kind),
+                name=literal(name),
+                qualified=boolean(True),
+            )
+        )
+        if not result.rows or result.rows[0][0] is None:
+            raise SnowflakePortError(f"GET_DDL returned nothing for {object_type} {qualified_name.sql}")
+        return str(result.rows[0][0])
+
+    def current_role(self) -> str:
+        return str(self.query(sql("SELECT CURRENT_ROLE()")).rows[0][0])
+
+    def current_account_locator(self) -> str:
+        return str(self.query(sql("SELECT CURRENT_ACCOUNT()")).rows[0][0])
+
+    def show_row(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        rows = self._show_like(object_type, qualified_name, str.upper)
+        return _text_row(rows[0]) if rows else None
+
+    def describe_semantic_view(self, qualified_name: QualifiedName) -> tuple[DescribedMember, ...]:
+        rows = self._dict_rows(sql("DESCRIBE SEMANTIC VIEW {name}", name=qname(qualified_name)))
+        return tuple(
+            DescribedMember(
+                _optional_text(row.get("object_kind")),
+                _optional_text(row.get("object_name")),
+                _optional_text(row.get("parent_entity")),
+                _text(row.get("property")),
+                # Kept exactly: a verified query's SQL or an instruction is compared as written.
+                None if row.get("property_value") is None else str(row.get("property_value")),
+            )
+            for row in rows
+        )
+
+    def read_semantic_view_yaml(self, qualified_name: QualifiedName) -> Mapping[str, Any] | None:
+        try:
+            result = self.query(
+                sql("SELECT SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW({name})", name=literal(qualified_name.sql))
+            )
+        except SnowflakePortError as error:
+            failure = session_failure(str(error), errno=error.errno, sqlstate=error.sqlstate)
+            if failure is SessionFailure.NOT_VISIBLE or _UNKNOWN_FUNCTION.search(str(error)):
+                return None
+            raise
+        value = result.rows[0][0] if result.rows else None
+        if value is None:
+            return None
+        try:
+            document = safe_load_core(str(value))
+        except YAMLError as exc:
+            raise SnowflakePortError(
+                f"SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW returned YAML SST cannot read: {exc}"
+            ) from exc
+        return document if isinstance(document, Mapping) else None
+
+    def describe_properties(self, object_type: str, qualified_name: QualifiedName) -> Mapping[str, str] | None:
+        if not self.object_exists(object_type, qualified_name):
+            return None
+        rows = self._dict_rows(
+            sql("DESCRIBE {kind} {name}", kind=keyword(_object_type(object_type)), name=qname(qualified_name))
+        )
+        properties: dict[str, str] = {}
+        for row in rows:
+            key = row.get("property", row.get("name"))
+            if len(rows) > 1 and key is not None and ("value" in row or "property_value" in row):
+                properties[str(key).casefold()] = _text(row.get("property_value", row.get("value")))
+        if len(rows) == 1:
+            properties.update(_text_row(rows[0]))
+        return properties
+
+    def object_parameter(self, object_type: str, name: str, parameter: str) -> str | None:
+        kind = " ".join(object_type.upper().split())
+        if kind not in PARAMETER_OBJECT_TYPES:
+            raise SnowflakePortError(f"unsupported parameter object type {object_type!r}")
+        rows = self._dict_rows(
+            sql(
+                "SHOW PARAMETERS LIKE {parameter} IN {kind} {name}",
+                parameter=literal(parameter),
+                kind=keyword(kind),
+                name=ident(Identifier.parse(name)),
+            )
+        )
+        match = next((row for row in rows if str(row.get("key") or "").upper() == parameter.upper()), None)
+        return _text(match.get("value")) if match is not None else None
+
+    # Snowflake private preview (PrPr): CoWork profiles
+    def cowork_object(self) -> str | None:
+        rows = self._dict_rows(sql("SHOW SNOWFLAKE INTELLIGENCES"))
+        return next((name for row in rows if (name := _optional_text(row.get("name")))), None)
+
+    # Snowflake private preview (PrPr): CoWork profiles
+    def attached_agents(self, cowork_object: str) -> tuple[QualifiedName, ...]:
+        rows = self._dict_rows(
+            sql("SHOW AGENTS IN SNOWFLAKE INTELLIGENCE {name}", name=ident(Identifier.shown(cowork_object)))
+        )
+        parts = ((row.get("database_name"), row.get("schema_name"), row.get("name")) for row in rows)
+        return tuple(
+            QualifiedName(Identifier.shown(str(database)), Identifier.shown(str(schema)), Identifier.shown(str(name)))
+            for database, schema, name in parts
+            if database and schema and name
+        )
+
+    def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
+        normalized_input = " ".join(object_type.upper().split())
+        if normalized_input == "DATASET":
+            return self.dataset_exists(qualified_name)
+        if normalized_input in {"TABLE OR VIEW", "TABLE"} and self._read_cache is not None:
+            types = self._schema_tables(SchemaScope.from_qualified_name(qualified_name)).get(qualified_name.name.folded)
+            return types is not None and (normalized_input == "TABLE OR VIEW" or "BASE TABLE" in types)
+        if normalized_input in {"TABLE OR VIEW", "TABLE"}:
+            type_filter = sql("") if normalized_input == "TABLE OR VIEW" else sql(" AND TABLE_TYPE = 'BASE TABLE'")
+            result = self.query(
+                sql(
+                    "SELECT COUNT(*) FROM {database}.INFORMATION_SCHEMA.TABLES "
+                    "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s{type_filter}",
+                    database=ident(qualified_name.database),
+                    type_filter=type_filter,
+                ),
+                (qualified_name.schema.folded, qualified_name.name.folded),
+            )
+            count = result.rows[0][0] if result.rows else 0
+            return isinstance(count, (int, float, str)) and int(count) > 0
+        database, schema = qualified_name.database.folded, qualified_name.schema.folded
+        # A row that omits its database or schema is taken to be in the schema SHOW searched.
+        return any(
+            str(row.get("database_name") or database).upper() == database.upper()
+            and str(row.get("schema_name") or schema).upper() == schema.upper()
+            for row in self._show_like(normalized_input, qualified_name, str.upper)
+        )
+
+    def dataset_exists(self, qualified_name: QualifiedName) -> bool:
+        return any(
+            _identifier_matches(row.get("database_name"), qualified_name.database.folded)
+            and _identifier_matches(row.get("schema_name"), qualified_name.schema.folded)
+            for row in self._show_like("DATASET", qualified_name, str.casefold)
+        )
+
+    def dataset_versions(self, qualified_name: QualifiedName) -> tuple[str, ...]:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
+        # SHOW VERSIONS IN DATASET names each version in `version`; it has no `name` column.
+        return tuple(str(row.get("version") or "") for row in rows if row.get("version"))
+
+    def dataset_version_metadata(self, qualified_name: QualifiedName, version: str) -> str | None:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN DATASET {dataset}", dataset=qname(qualified_name)))
+        # MEASURED: SHOW VERSIONS IN DATASET lists a version's METADATA in `metadata`, as JSON
+        # text (docs/design/snowflake-behavior.md); an object is taken as the same JSON.
+        match = next((row for row in rows if str(row.get("version") or "").casefold() == version.casefold()), None)
+        value = match.get("metadata") if match is not None else None
+        if value is None:
+            return None
+        return value if isinstance(value, str) else _json_text(value)
+
+    def describe_routine(
+        self, object_type: str, qualified_name: QualifiedName, routine_signature: tuple[str, ...]
+    ) -> Mapping[str, str]:
+        kind = _object_type(object_type)
+        if kind not in _ROUTINE_TYPES:
+            raise SnowflakePortError(f"{kind.lower()} is not a procedure or function")
+        rows = self._dict_rows(
+            sql("DESCRIBE {kind} {routine}", kind=keyword(kind), routine=routine_ref(qualified_name, routine_signature))
+        )
+        # MEASURED: DESCRIBE PROCEDURE answers one row per property, as `property` and `value`.
+        return {
+            str(row.get("property") or "").casefold(): _text(row.get("value", row.get("property_value")))
+            for row in rows
+            if row.get("property")
+        }
+
+    def describe_stage_file_format(self, qualified_name: QualifiedName) -> str | None:
+        rows = self._dict_rows(sql("DESCRIBE STAGE {stage}", stage=qname(qualified_name)))
+        properties = {
+            str(row.get("property") or row.get("name") or "").upper(): row.get("property_value", row.get("value"))
+            for row in rows
+        }
+        file_format = properties.get("FILE_FORMAT")
+        if file_format is not None:
+            return str(file_format)
+        required = (
+            "TYPE",
+            "FIELD_DELIMITER",
+            "RECORD_DELIMITER",
+            "SKIP_HEADER",
+            "FIELD_OPTIONALLY_ENCLOSED_BY",
+            "ESCAPE_UNENCLOSED_FIELD",
+        )
+        if not any(key in properties for key in required):
+            return None
+        return " ".join(f"{key}={properties.get(key)}" for key in required)
+
+    def stage_type(self, qualified_name: QualifiedName) -> str | None:
+        rows = self._show_like("STAGE", qualified_name, str.casefold)
+        return str(rows[0].get("type") or "") if rows else None
+
+    def observe_extension(self, qualified_name: QualifiedName) -> ExtensionObservation | None:
+        rows = self._show_like("CORTEX EXTENSION", qualified_name, str.casefold)
+        if not rows:
+            return None
+        match = rows[0]
+        return ExtensionObservation(
+            qualified_name=qualified_name,
+            extension_type=str(match.get("type") or "").upper(),
+            comment=str(match["comment"]) if match.get("comment") is not None else None,
+            owner=str(match.get("owner") or ""),
+            effective_version=_optional_text(match.get("effective_version")),
+            latest_certified_version=_optional_text(match.get("latest_certified_version")),
+        )
+
+    def extension_versions(self, qualified_name: QualifiedName) -> tuple[ExtensionVersion, ...]:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN CORTEX EXTENSION {extension}", extension=qname(qualified_name)))
+        return tuple(
+            ExtensionVersion(
+                name=str(row.get("name") or "").upper(),
+                alias=_optional_text(row.get("alias")),
+                location=str(row.get("location_uri") or ""),
+                is_default=str(row.get("is_default") or "").casefold() == "true",
+                certification_status=_optional_text(row.get("certification_status")),
+            )
+            for row in rows
+            if row.get("name")
+        )
+
+    def table_columns(self, qualified_name: QualifiedName) -> tuple[tuple[str, str], ...] | None:
+        if not self.object_exists("TABLE", qualified_name):
+            return None
+        rows = self._dict_rows(sql("DESCRIBE TABLE {table}", table=qname(qualified_name)))
+        if any("name" not in row or "type" not in row for row in rows):
+            raise _unexpected_describe(f"TABLE {qualified_name.sql}")
+        return tuple((str(row.get("name") or "").upper(), str(row.get("type") or "").upper()) for row in rows)
+
+    def observe_agent_versions(self, qualified_name: QualifiedName) -> AgentVersions:
+        rows = self._dict_rows(sql("SHOW VERSIONS IN AGENT {agent}", agent=qname(qualified_name)))
+        # MEASURED: the live version is the row whose `name` is NULL, and each row shows at
+        # most one alias; setting another alias on a version replaces the one it had.
+        # `agent_spec` holds each version's specification, and `is_default` reads 'true' or 'false'.
+        return AgentVersions(
+            tuple(
+                AgentVersion(
+                    name=_optional_text(row.get("name")),
+                    alias=_optional_text(row.get("alias")),
+                    is_default=str(row.get("is_default") or "").casefold() == "true",
+                    comment=_optional_text(row.get("comment")),
+                    specification=_optional_text(row.get("agent_spec")),
+                )
+                for row in rows
+            ),
+            default_setting=self._default_setting(qualified_name),
+        )
+
+    def _default_setting(self, qualified_name: QualifiedName) -> str | None:
+        """Read what an agent's default is set to from DESCRIBE AGENT; None when that read cannot tell.
+
+        SHOW VERSIONS marks the default version but not whether it was set by name, which only
+        DESCRIBE says. A DESCRIBE that fails leaves the setting unread, and the versions SHOW
+        listed still serve the plan.
+        """
+        try:
+            rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
+        except SnowflakePortError:
+            return None
+        # MEASURED: DESCRIBE AGENT's one row holds `default_version_name`: 'LAST' for a default
+        # that follows the newest committed version, also when it was never set, or the name
+        # it was pinned to, such as 'VERSION$1'. Column names compare casefolded.
+        if len(rows) != 1:
+            return None
+        columns = {str(key).casefold(): value for key, value in rows[0].items()}
+        return _optional_text(columns.get("default_version_name"))
+
+    def resolve_agent_version(self, qualified_name: QualifiedName, selector: str) -> str:
+        if selector.upper().startswith("VERSION$"):
+            return selector.upper()
+        rows = self._dict_rows(sql("DESCRIBE AGENT {agent}", agent=qname(qualified_name)))
+        # MEASURED: DESCRIBE AGENT answers one row whose columns include `aliases`, a JSON
+        # object from alias to version such as {"LAST": "VERSION$1"}; column names compare
+        # casefolded.
+        if len(rows) != 1:
+            raise _unexpected_describe(f"AGENT {qualified_name.sql}")
+        columns = {str(key).casefold(): value for key, value in rows[0].items()}
+        aliases = _variant_value(columns.get("aliases"), {})
+        if not isinstance(aliases, dict):
+            raise _unexpected_describe(f"AGENT {qualified_name.sql}")
+        # `committed` is the default version: what `sst apply` released, never a version an
+        # eval-model comparison committed after it.
+        key = "DEFAULT" if selector == "committed" else selector.removeprefix("alias:")
+        resolved = next((value for alias, value in aliases.items() if str(alias).casefold() == key.casefold()), None)
+        if not isinstance(resolved, str) or not resolved.upper().startswith("VERSION$"):
+            raise AgentVersionNotFound(
+                f"agent {qualified_name.sql} selector {selector!r} does not resolve to a committed version"
+            )
+        return resolved.upper()
+
+    def _schema_tables(self, schema: SchemaScope) -> Mapping[str, frozenset[str]]:
+        """Return each table and view of a schema INFORMATION_SCHEMA lists: its TABLE_TYPEs by name."""
+
+        def read() -> Mapping[str, frozenset[str]]:
+            result = self.query(
+                sql(
+                    "SELECT TABLE_NAME, TABLE_TYPE FROM {database}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s",
+                    database=ident(schema.database),
+                ),
+                (schema.schema.folded,),
+            )
+            types: dict[str, set[str]] = {}
+            for name, table_type in result.rows:
+                types.setdefault(str(name), set()).add(str(table_type))
+            return MappingProxyType({name: frozenset(found) for name, found in types.items()})
+
+        return self._cached(f"tables in {schema.sql}", read)
+
+    def _show_like(
+        self, object_type: str, qualified_name: QualifiedName, fold: Callable[[str], str]
+    ) -> tuple[dict[str, Any], ...]:
+        """Return the rows SHOW <type>S LIKE lists for a name in its schema, keeping those it names.
+
+        A row is kept when its name equals the looked-up name once `fold` (`str.upper` or
+        `str.casefold`, the caller's case rule) is applied to both; rows keep SHOW's order.
+        While a read cache is in use, an ASCII name without a backslash is looked up in the
+        schema's whole listing instead: LIKE, ignoring case, matches such a name by itself
+        exactly when its letters match, so the rows kept are the same.
+
+        Raises:
+            SnowflakePortError: SST does not observe `object_type`, or the SHOW failed.
+        """
+        kind = keyword(_object_type(object_type), plural=True)
+        schema = _scope(SchemaScope.from_qualified_name(qualified_name))
+        name = qualified_name.name.folded
+        if self._read_cache is not None and name.isascii() and "\\" not in name:
+            rows = self._dict_rows(sql("SHOW {kind} IN SCHEMA {scope}", kind=kind, scope=schema))
+        else:
+            rows = self._dict_rows(
+                sql("SHOW {kind} LIKE {pattern} IN SCHEMA {scope}", kind=kind, pattern=literal(name), scope=schema)
+            )
+        expected = fold(name)
+        return tuple(row for row in rows if fold(str(row.get("name") or "")) == expected)
+
+
+def _scope(value: SchemaScope) -> Sql:
+    return scope(value)
+
+
+def _object_type(value: str) -> str:
+    normalized = " ".join(value.upper().split())
+    if normalized not in OBJECT_TYPES:
+        raise SnowflakePortError(f"unsupported Snowflake object type {value!r}")
+    return normalized
+
+
+def _identifier_matches(value: object, expected: str) -> bool:
+    return str(value or "").casefold() == expected.casefold()
+
+
+def _show_comment(row: Mapping[str, object]) -> str | None:
+    """An object's COMMENT from a SHOW row; routines report it as `description`."""
+    value = row["comment"] if "comment" in row else row.get("description")
+    return str(value) if value is not None else None
+
+
+def _text(value: object) -> str:
+    return "" if value is None else str(value)
+
+
+def _text_row(row: Mapping[str, object]) -> dict[str, str]:
+    return {str(key).casefold(): _text(value) for key, value in row.items()}
+
+
+def _optional_text(value: object) -> str | None:
+    text = str(value).strip() if value is not None else ""
+    return text or None
+
+
+def _unexpected_describe(described: str) -> SnowflakePortError:
+    """The error for a DESCRIBE whose rows lack what SST reads, such as `type` from a table.
+
+    Diagnostics:
+        SST-SNO025: the DESCRIBE of `described` returned an unexpected shape.
+    """
+    return SnowflakePortError(
+        f"the DESCRIBE of {described} returned an unexpected shape", diagnostic=D("SST-SNO025", value=described)
+    )
+
+
+def shown_rows(rows: tuple[dict[str, Any], ...], object_type: str, database: str, schema: str) -> tuple[ShowRow, ...]:
+    """Return SHOW's rows of one object type as `ShowRow`s, built-in routines left out, sorted by name.
+
+    Args:
+        database, schema: The names a row that does not list its own is given, as SHOW ... IN
+            SCHEMA leaves them out for some types.
+    """
+    return tuple(
+        sorted(
+            (
+                ShowRow(
+                    name=str(row["name"]),
+                    # SHOW FUNCTIONS and SHOW PROCEDURES name the database `catalog_name`.
+                    database_name=str(row.get("database_name") or row.get("catalog_name") or database),
+                    schema_name=str(row.get("schema_name") or schema),
+                    owner=str(row.get("owner") or ""),
+                    created_on=str(row.get("created_on") or ""),
+                    comment=_show_comment(row),
+                    object_type=object_type,
+                    # What a drift digest reads of a routine or search service: SHOW
+                    # lists each, so comparing them costs plan no further query.
+                    is_secure=_optional_text(row.get("is_secure")),
+                    target_lag=_optional_text(row.get("target_lag")),
+                    warehouse=_optional_text(row.get("warehouse")),
+                )
+                for row in rows
+                # Both also list every built-in routine in every schema; none is an artifact.
+                if str(row.get("is_builtin") or "").upper() != "Y"
+            ),
+            key=lambda item: item.qualified_name.folded,
+        )
+    )

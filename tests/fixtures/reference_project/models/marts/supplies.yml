@@ -1,0 +1,111 @@
+---
+# supplies: one row per product per month, the snapshot grain the two
+# non-additive supply-cost metrics are written for.
+
+version: 2
+
+models:
+  - name: supplies
+    description: |-
+      One row per product per month, restating the cost of supplying that product. A snapshot grain.
+    config:
+      # No contract, so dbt does not require data_type and the columns carry
+      # their Snowflake type in meta.sst.data_type instead. SST reads dbt's
+      # data_type first and falls back to meta.sst.data_type; if both are set
+      # and disagree, SST-DBT004 warns.
+      contract:
+        enforced: false
+      on_schema_change: fail
+      meta:
+        sst:
+          primary_key:
+            - supply_id
+    columns:
+      - name: supply_id
+        description: |-
+          Surrogate key for the supply snapshot row. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              data_type: VARCHAR
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - supply key
+                - supply snapshot identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: product_id
+        description: |-
+          The product this supply cost belongs to.
+        config:
+          meta:
+            sst:
+              data_type: VARCHAR
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - product key
+                - which item is supplied
+        data_tests:
+          - not_null
+
+      # The non-additive dimension: total_supply_cost and opening_supply_cost
+      # name it so supply cost is never summed across months.
+      - name: snapshot_month
+        description: |-
+          The month this supply cost was restated for.
+        config:
+          meta:
+            sst:
+              data_type: TIMESTAMP_NTZ
+              column_type: dimension
+              synonyms:
+                - snapshot month
+                - as-of month
+                - restatement month
+              sample_values:
+                - "2024-07-01 00:00:00"
+                - "2024-08-01 00:00:00"
+
+      # Boolean sample values render as the strings 'true' and 'false'.
+      - name: is_perishable
+        description: |-
+          Whether the supply spoils and must be reordered on a schedule.
+        config:
+          meta:
+            sst:
+              data_type: BOOLEAN
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - perishable flag
+                - needs refrigeration
+              sample_values:
+                - true
+                - false
+
+      - name: supply_cost
+        description: |-
+          Cost to supply one unit of the product in this month, in cents.
+        config:
+          meta:
+            sst:
+              data_type: NUMBER(38,2)
+              column_type: fact
+              synonyms:
+                - cost of supply
+                - unit supply cost
+              sample_values:
+                - 100
+                - 250
+
+    data_tests:
+      # Asserts the snapshot grain the non-additive metrics depend on.
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - product_id
+              - snapshot_month

@@ -1,0 +1,289 @@
+# Skills
+
+A skill is a folder with a `SKILL.md`: instructions an agent loads when a
+question matches the skill's description, plus any files those instructions
+point at. SST validates the folder, publishes it as a skill-type Cortex
+Extension, and pins every agent that uses it to the published version.
+
+A skill can also reach Cortex Code users through a Cortex Code profile, which
+pins it as an agent does; see
+[plugins and Cortex Code profiles](plugins-and-coco-profiles.md).
+
+These are skills SST publishes. The skills `sst agent-kit` installs into `.cortex/skills` or
+`.claude/skills` are a different thing: they teach the coding agent that edits the project,
+are never published, and may not sit inside `skills_dir`; see [the agent kit](agent-kit.md).
+
+## Layout
+
+```text
+skills/
+  sales-semantics/
+    SKILL.md
+    reference/
+      join-paths.md
+      metric-shapes.md
+    eda-agent/               # a nested skill: a skill of its own, and part of sales-semantics
+      SKILL.md
+  finance/                   # a grouping folder: not a skill, just a directory
+    month-close/
+      SKILL.md
+      check-supply-month.sql
+```
+
+- A skill is any directory under `project.skills_dir` (default `skills/`) that
+  holds a `SKILL.md`. Other directories only group skills; no folder name has
+  special meaning, and the skill is named after its own folder, not the path to
+  it.
+- A grouping folder holds only folders. One that also holds files of its own is
+  a skill whose `SKILL.md` sits one level too deep, which is an error
+  (`SST-PRS120`).
+- A skill is its folder: `SKILL.md` and every file and folder beside it. A
+  folder inside a skill that holds its own `SKILL.md` is a nested skill. It is a
+  skill of its own, published under its own folder name, and it is also part of
+  the folder that holds it, so the outer skill's bundle carries it as it sits on
+  disk. Nested skill names are unique across the project like any other
+  (`SST-VAL832`).
+- Hidden files, `__pycache__`, and `.pyc` files are skipped.
+- SST never follows a symbolic link. A linked file or folder under the skills or
+  plugins directory is an error (`SST-PRT009`) and is left out of every bundle,
+  even when it points inside the project.
+- Every bundled file must have a name a stage accepts: letters, digits, `.`,
+  `_`, `-`, and `$` (`SST-VAL857`).
+
+## `SKILL.md`
+
+```markdown
+---
+name: sales-semantics
+description: |-
+  Use when writing or reviewing a question against the sales semantic views:
+  which view answers which question, and how the joins behave. Do NOT use for
+  menu catalog questions.
+---
+# Sales semantics
+
+Read [the join paths](reference/join-paths.md) before combining views.
+```
+
+- `name` and `description` are both required (`SST-PRS034`).
+- The folder name is lowercase kebab-case of at most 64 characters, and `name`
+  matches it (`SST-VAL801`). It becomes the extension name in UPPER_SNAKE form,
+  so `sales-semantics` publishes `SALES_SEMANTICS`. To publish to the catalog
+  that name must start with a letter (`SST-VAL801`), and it must be unique
+  across the project's skills and plugins (`SST-VAL832`).
+- An agent decides whether to load the skill from the description alone, so
+  say when to use it and when not to. The description is also the extension's
+  comment.
+- A `SKILL.md` with nothing after its frontmatter is a warning (`SST-RND031`).
+- Other frontmatter keys pass through unchanged.
+
+## References to bundled files
+
+A skill publishes as authored, so a relative path that resolves in the
+repository resolves where an agent reads the skill. SST checks the paths a
+skill's Markdown names against the skill's own files.
+
+- A Markdown link, image, or reference-style definition must name a file or
+  folder of the skill (`SST-VAL808`). It resolves relative to the file that
+  contains it, or else relative to the skill folder. URLs, `#anchor` links, and
+  absolute or `~/` paths are not checked.
+- A path in prose or inside a code block is never an error. It is an
+  instruction or an example -- often a file the skill tells the agent to create
+  -- and the agent resolves it by reading the folder. It still counts the file
+  it names as referenced: by its path, or by its file name alone when exactly
+  one file of the skill has that name, so `run eppo_stats.py` names
+  `scripts/eppo_stats.py`.
+- A path written from the repository root, such as
+  `skills/sales-semantics/reference/join-paths.md`, is a warning
+  (`SST-VAL810`): the published bundle has no repository around it, so write the
+  path from the skill folder instead.
+- A file no Markdown names is a warning (`SST-VAL813`). A nested skill's files
+  are its own to name, so they are not reported against the skill that holds
+  them.
+- A line that shows an example link on purpose can opt out of `SST-VAL808` by
+  carrying the text `sst: ignore SST-VAL808`, for example in a trailing
+  comment.
+
+Every file that is not Markdown counts as a script. A script that names an
+absolute or home-directory path, or any text file that holds what looks like a
+literal credential, is a warning (`SST-VAL815`). An absolute path is one below
+a local file system's top folder (`/Users`, `/home`, `/opt`, `/etc`, `/tmp`,
+`/var`, `/usr`, `/private`, `/root`, `/mnt`, `/Volumes`, `/srv`), below `~/`,
+or on a drive (`C:\`); a URL's path is not. A credential is a key such as
+`password`, `secret` or `api_key`, alone or inside a longer name such as
+`AWS_SECRET_ACCESS_KEY`, set with `:` or `=` to a literal of six or more
+characters, quoted or not. A value that starts with `$`, `{` or `<`, such as
+`$SNOWFLAKE_PASSWORD` or `<yours>`, is a variable or a placeholder, not a
+credential.
+
+## Layout as published
+
+Every channel publishes a skill's folder as authored, under `skills/<name>/`,
+so `reference/join-paths.md` publishes as
+`skills/sales-semantics/reference/join-paths.md`: the catalog extension
+and a plugin's bundle hold the same paths. A nested skill's folder rides along in the skill that holds it, and also
+publishes alone as its own extension.
+
+## Limits
+
+The extension scanner accepts at most 50 files, 2 MiB per file, and 10 MiB per
+version, and one file over a limit fails the whole version. SST checks the
+limits offline (`SST-VAL834`), before anything is uploaded. It also warns when
+`SKILL.md` exceeds 25 KiB (`SST-VAL812`), and when the bundle exceeds 1 MiB
+(`SST-VAL811`). A nested skill counts toward the limits of the skill that holds
+it.
+
+## Versions
+
+A version is named by its content: the skill's `version_prefix` setting
+(`skills.+version_prefix`, default `SST_`)
+followed by the first 12 hex characters, in upper case, of the
+bundle's digest, for example `SST_16D8F6686433`. The digest is a SHA-256 over
+every file's path, size, and content hash, so it changes exactly when the
+bundle does. The prefix must start with a letter or underscore and hold only
+letters, digits, and underscores (`SST-CFG008`).
+
+- Unchanged content keeps its alias, so an unchanged skill publishes nothing.
+- Reverting a change returns to an alias that already exists, so the revert
+  publishes nothing either: the plan shows an update that makes that version the
+  extension's default again, and state records it.
+- After every apply the extension's default version is the one holding the
+  declared alias, so the catalog serves what the project declares. A default
+  moved by hand is an update in the next plan, which moves it back. Only a
+  certified version outranks the default: the plan warns when one will be
+  served instead (`SST-VAL841`), and leaves the default alone.
+- The commit that published each version is recorded in SST's state, not in
+  the version name.
+
+## Configuration
+
+```yaml
+skills:
+  +database: "{{ target.database }}"
+  +schema: "{{ target.schema }}"
+  +bundle_stage: SKILL_BUNDLE_SRC
+  +version_prefix: "SST_"
+  +certified: false
+  finance:                 # skills/finance/<skill>/SKILL.md
+    +schema: FINANCE
+```
+
+```markdown
+---
+name: month-close
+description: Close the month.
+config:
+  certified: true          # this skill's versions alone
+---
+```
+
+Each skill resolves these settings through the one
+[precedence chain](configuration.md#precedence): its frontmatter's `config:`
+(the keys without their `+`), then the closest folder route over its folder,
+then the `skills:` root, then the default. The frontmatter is published with
+the rest of `SKILL.md`, so a `config:` there is part of the bundle's content.
+
+- A skill publishes as a Cortex Extension only where `+bundle_stage` resolves
+  for it: the internal stage that versions are built from, in the skill's
+  database and schema unless the name is qualified. SST creates it when it is
+  absent, with server-side encryption; an existing stage that is not an
+  internal server-side encrypted stage blocks the plan (`SST-PLN026`). SST
+  never alters a stage.
+- `+database` and `+schema` default to the target's. A route or a skill's own
+  `config:` that places it outside the root's database and schema is a warning
+  (`SST-VAL806`): agents then need USAGE on that schema too.
+- Every version is built from the complete bundle, so a deleted
+  file is gone from the next version; neither is configurable.
+- `+certified: true` tags each new version with
+  `SNOWFLAKE.CORE.CERTIFICATION_STATUS = 'CERTIFIED'` and reads the tag back.
+  There is no un-certify step.
+- Certification decides what the catalog serves. Once any version of an
+  extension is certified, catalog users receive the latest certified version
+  instead of the default, so a version published without `+certified: true`
+  stays behind a certified one; the plan says so (`SST-VAL841`), and apply
+  leaves the default where it is. Agents pin their version and are unaffected.
+- `+certified: true` on an extension that state records in another schema
+  blocks the plan (`SST-VAL807`): moving it would change the name every pinned
+  reference uses.
+- `session.threads` caps concurrent catalog publishes, as it does every other
+  change apply makes (default 4, 1 to 16).
+- An unprefixed key of `skills:` is a folder route; one that names no folder
+  under `skills_dir` is an error (`SST-CFG041`). `skills.catalog` and
+  `skills.extensions` moved to `skills:` itself and `extensions:`, and
+  `skills.stage`, whose desktop profiles Cortex Code profiles replaced, is gone
+  (`SST-CFG042`). `+grant_read_to` and
+  `+enabled` were removed (`SST-CFG043`): SST issues no grants, and a skill
+  with no `+bundle_stage` does not publish.
+- The top-level `extensions:` block names extensions this project consumes but
+  does not publish; see the [agents guide](agents.md#skills).
+- `sst list skills --long` prints each skill's settings and where each came
+  from.
+
+## Publishing
+
+For each skill, `sst apply`:
+
+1. creates the bundle stage if it is absent;
+2. uploads the bundle to `@<bundle_stage>/<name>/<ALIAS>/`, where
+   `<name>` is the skill's folder name, so `SKILL.md` lands at
+   `<name>/<ALIAS>/skills/<name>/SKILL.md`; then checks that the prefix holds
+   exactly the bundle's files, byte for byte;
+3. creates the extension if it is absent, with `TYPE = 'SKILL'` and the skill's
+   description as its comment, from that prefix: its first version,
+   `VERSION$1`, is the bundle, named by the alias. An extension created
+   without a source would begin with an empty, unnamed `VERSION$1` that
+   Snowflake can neither drop nor name, and which the catalog would serve;
+4. adds a version named by the alias from that prefix, unless it already exists;
+5. checks that the version holds exactly the bundle's files, sets the comment
+   again if the description changed, makes the version the extension's default
+   unless a certified version outranks it -- by its system name, `VERSION$<n>`,
+   since Snowflake refuses an alias there, then reads the default back -- and
+   certifies the version when `+certified: true` asks for it.
+
+A prefix is never reused for different content, so an upload cannot change a
+version that exists. The plan blocks a skill instead of publishing it when:
+
+- an extension of that name exists that SST's state does not record
+  (`SST-PLN024`), or one of another type (`SST-VAL802`, `SST-PLN002`);
+- the alias already names a version whose files differ from the bundle
+  (`SST-PLN027`);
+- the prefix holds a file the bundle no longer has, which the new version would
+  publish (`SST-VAL824`).
+
+SST never grants, un-certifies, or changes the discoverability of an
+extension, and a prune never drops one; access to extensions is managed outside
+SST. With `--prune`, a skill whose folder was deleted is only reported
+(`SST-PLN034`), naming the command that removes it once nothing uses it:
+`sst drop <DB>.<SCHEMA>.<EXTENSION> --type skill --target <target> --yes`, which drops the
+extension only while state records it at a version it still lists, and forgets
+it. The next `apply --prune` forgets one already gone, dropped by hand
+included (`SST-VAL861`), so a later extension of that name is never taken for
+SST's.
+
+## Using a skill from an agent
+
+```yaml
+  skills:
+    - source:
+        type: CORTEX_EXTENSION
+        path: "{{ skill('sales-semantics') }}"
+```
+
+Leave `version:` and `name:` out: SST pins the alias it publishes, and an
+authored version on a project skill is an error (`SST-VAL838`); the entry is
+named after the skill, and an authored `name:` is an error (`SST-VAL540`). A skill that cannot
+publish -- it has errors, or no `+bundle_stage` resolves for it -- leaves the
+agent nothing to pin, which is an error on the agent (`SST-VAL856`).
+
+Because the pin names a version, a plan that creates or updates the agent must
+include the skill too: with `--select agent:analyst` alone the agent is blocked
+(`SST-PLN030`), and `--select agent:analyst --select skill:sales-semantics`
+plans the skill as NOOP when its version is already published.
+
+In a project that has agents, a skill that no agent references, no plugin
+contains, and no profile includes is reported as information (`SST-VAL804`), since
+people may use it straight from the catalog; raise it with
+`diagnostics.severity_overrides` to make it a warning. A skill that
+ships scripts when none of the agents that pin it has a `code_execution` tool is
+a warning (`SST-VAL814`). See the [agents guide](agents.md#skills) for
+extensions other projects publish.

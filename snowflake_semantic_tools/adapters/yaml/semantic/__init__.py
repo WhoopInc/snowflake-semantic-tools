@@ -1,0 +1,41 @@
+"""Load SST's semantic models into fully resolved `domain` semantic views.
+
+Everything it produces is fully resolved: `{{ ref('products') }}` has become
+`SST_REF_DEV.JAFFLE.PRODUCTS` and `{{ target.database }}` has been replaced from the
+dbt target, so `domain` never needs to know either exists.
+
+WHERE THE INFORMATION LIVES. A view declares its name, tables, and a few view-level
+keys. Everything else in the rendered DDL arrives by ATTACHMENT from elsewhere in the
+project:
+
+    semantic_models/**/*.yml (semantic_view:) the view, in any folder
+    target/manifest.json                      physical relation, model grain and
+                                              resolved column metadata
+    semantic_models/<member>/*.yml            metrics, filters, relationships,
+                                              verified queries and custom
+                                              instructions, attached by the tables
+                                              they reference
+    profiles.yml + dbt_project.yml            the target database and schema
+
+Nothing here reads dbt: `adapters.dbt.project` loads the target and the manifest's
+models, and the caller passes both in. Every authored key the loader does not read is
+reported (`domain.validate.semantic.authored_keys.AUTHORED_KEYS`), so no setting is
+dropped silently.
+
+The checks themselves are pure and live in `domain.validate.semantic`; the member records are
+`domain.model.authored`'s. Modules here, lowest first: `nodes` and `defs` (the strings and
+tables a node is read with, and the parts of a record YAML shapes); `readers`,
+`relationships`, `target` and `file_reads` (reading one concern, and the files the checks
+read); `collect` (the parsed project);
+`build` and `build_members` (one view); `poison` (which members and views are not
+built, as one frozen value); `phases` and `view_instructions` (the load's phases);
+`pipeline` (the whole load, phase by phase).
+"""
+
+from snowflake_semantic_tools.adapters.yaml.semantic.pipeline import (
+    SemanticInputs,
+    load_semantic_views_result,
+    read_semantic_inputs,
+)
+
+__all__ = ["SemanticInputs", "load_semantic_views_result", "read_semantic_inputs"]

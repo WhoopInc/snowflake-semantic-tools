@@ -1,0 +1,8 @@
+---
+# CASE WHEN over the order_state enum; the literal comes from the
+# returned_state var.
+metric:
+  name: returned_order_count
+  description: |-
+    Number of orders that were returned.
+  expr: "COUNT(DISTINCT CASE WHEN {{ ref('orders', 'order_state') }} = '{{ var('returned_state') }}' THEN {{ ref('orders', 'order_id') }} END)"

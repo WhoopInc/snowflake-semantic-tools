@@ -1,0 +1,171 @@
+"""Config value readers, the project and golden ports, and whether a saved plan still applies."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+from snowflake_semantic_tools.domain.diagnostics import D
+from snowflake_semantic_tools.domain.model.config_schema import (
+    EnrichmentConfig,
+    config_block,
+    config_bool,
+    config_int,
+    configured_dir,
+    enrichment_config,
+    route_root,
+    target_text,
+)
+from snowflake_semantic_tools.domain.model.dbt import DbtTarget
+from snowflake_semantic_tools.domain.model.identifier import Identifier, TargetIdentity
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs, ValidationDefaults
+from snowflake_semantic_tools.domain.state import PlanMismatch, SavedChange, SavedPlan
+
+TARGET = TargetIdentity("dev", "ACCT", Identifier.parse("db"), Identifier.parse("sch"), "ROLE", "WH")
+
+
+def test_blocks_and_project_roots_read_as_empty_or_default_when_absent_or_mistyped() -> None:
+    assert config_block({1: "one"}) == {"1": "one"}
+    assert config_block(["not", "a", "block"]) == {}
+    assert configured_dir({"project": {"tools_dir": "t"}}, "tools_dir", "tools") == "t"
+    assert configured_dir({"project": {"tools_dir": ""}}, "tools_dir", "tools") == "tools"
+    assert configured_dir({"project": "nope"}, "tools_dir", "tools") == "tools"
+    views, skills = ARTIFACT_REGISTRY.artifacts["semantic_view"], ARTIFACT_REGISTRY.artifacts["skill"]
+    assert route_root({}, views) == "semantic_models"
+    assert route_root({"project": {"skills_dir": "kit"}}, skills) == "kit"
+
+
+def test_target_text_replaces_each_template_with_the_targets_own_value() -> None:
+    template = "{{ target.database }}.{{ target.schema }}.{{ target.warehouse }}"
+    assert target_text(template, TARGET, None) == "DB.SCH.WH"
+    assert target_text("{{ target.warehouse }}", replace(TARGET, warehouse=None), "default") == "default"
+    assert target_text(None, TARGET, "default") == "default"
+    assert target_text(3, TARGET, "default") == "3"
+    assert target_text("", TARGET, "fallback") == "fallback"
+
+
+def test_target_text_renders_a_dbt_target_as_dbt_resolved_it() -> None:
+    template = "{{ target.database }}.{{ target.schema }}.{{ target.warehouse }}"
+    assert target_text(template, DbtTarget("db", "sch"), None) == "db.sch."
+    assert target_text("{{ target.schema }}_V", DbtTarget("db", "sch"), None) == "sch_V"
+
+
+def test_integers_and_flags_read_only_their_own_type() -> None:
+    assert [config_int(value) for value in (4, True, "4", None)] == [4, None, None, None]
+    assert [config_bool(value) for value in (False, 0, "true")] == [False, None, None]
+
+
+def test_validation_flags_override_the_configured_defaults() -> None:
+    defaults = ValidationDefaults(strict=True, snowflake_syntax_check=False)
+    assert defaults.resolve(None, None) == (True, False)
+    assert defaults.resolve(False, True) == (False, True)
+    assert ValidationDefaults().resolve(None, None) == (False, True)
+
+
+def test_project_port_methods_are_declarations_only() -> None:
+    source = object()
+    assert ProjectInputs.config(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.target(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.skill_catalog(source, skills_dir="s", plugins_dir="p") is None  # type: ignore[arg-type]
+    assert ProjectInputs.coco_profile_catalog(source, coco_profiles_dir="p") is None  # type: ignore[arg-type]
+    assert ProjectInputs.dbt_catalog(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.tool_catalog(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.agents(source, agents_dir="a") is None  # type: ignore[arg-type]
+    assert ProjectInputs.eval_catalog(source, (), None) is None  # type: ignore[arg-type]
+    assert ProjectInputs.git_sha(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.validation_defaults(source) is None  # type: ignore[arg-type]
+    assert ProjectInputs.manifest_sources(source) is None  # type: ignore[arg-type]
+
+
+def change(**overrides: object) -> SavedChange:
+    values: dict[str, object] = {
+        "key": "semantic_view:v",
+        "artifact_type": "semantic_view",
+        "action": "create",
+        "reason": "not_present",
+        "target": "DB.SCH.V",
+        "fingerprint": "f" * 64,
+        "previous_marker": None,
+        "statement_hashes": ("a" * 64,),
+        "depends_on": (),
+        "order": 100,
+    }
+    values.update(overrides)
+    return SavedChange(**values)  # type: ignore[arg-type]
+
+
+def plan(**overrides: object) -> SavedPlan:
+    values: dict[str, object] = {
+        "schema_version": 2,
+        "plan_id": "p" * 64,
+        "manifest_id": "m" * 64,
+        "target": TARGET,
+        "observation_at": "now",
+        "observation_fingerprint": "o" * 64,
+        "changes": (change(),),
+    }
+    values.update(overrides)
+    return SavedPlan(**values)  # type: ignore[arg-type]
+
+
+def test_a_saved_plan_applies_only_in_place_of_an_identical_fresh_plan() -> None:
+    current = plan()
+    assert plan().check_applicable(current, source="plan.json") is None
+
+
+def test_a_saved_plan_for_another_target_names_both_targets() -> None:
+    saved = plan(target=replace(TARGET, role="OTHER", warehouse=None))
+
+    mismatch = saved.check_applicable(plan(), source="plan.json")
+
+    assert isinstance(mismatch, PlanMismatch)
+    [diagnostic] = mismatch.diagnostics
+    assert diagnostic.code == "SST-APL005"
+    assert mismatch.message == diagnostic.message
+    assert (
+        mismatch.message
+        == "plan.json: plan target 'dev/ACCT/DB/SCH/OTHER' differs from the apply target 'dev/ACCT/DB/SCH/ROLE/WH'"
+    )
+
+
+def test_a_stale_saved_plan_says_what_changed_in_order() -> None:
+    current = plan()
+    cases = [
+        (plan(manifest_id="b" * 64), "the compiled manifest"),
+        (plan(observation_fingerprint="0" * 64), "the live Snowflake observation"),
+        (plan(changes=(change(statement_hashes=("1" * 64,)),)), "the ordered changes or their statement hashes"),
+        (plan(manifest_id="b" * 64, observation_fingerprint="0" * 64), "the compiled manifest"),
+    ]
+
+    found = [saved.check_applicable(current, source="plan.json") for saved, _ in cases]
+
+    assert found == [PlanMismatch(D("SST-APL012", artifact="plan.json", value=value)) for _, value in cases]
+    first = found[1]
+    assert first is not None and first.diagnostics == (first.diagnostic,)
+    assert first.message == "plan.json: the live Snowflake observation changed since the plan"
+
+
+def test_the_enrichment_block_reads_each_key_or_its_default() -> None:
+    assert enrichment_config({}) == EnrichmentConfig(25, 10, "claude-sonnet-4-5", 4, True)
+    written = {
+        "enrichment": {
+            "distinct_limit": 30,
+            "sample_values_display_limit": 12,
+            "synonym_model": " claude-sonnet-4-6 ",
+            "synonym_max_count": 6,
+            "allow_sample_value_collection": False,
+        }
+    }
+    assert enrichment_config(written) == EnrichmentConfig(30, 12, "claude-sonnet-4-6", 6, False)
+    # Validation reports each of these; the reader falls back to the default instead.
+    mistyped = {
+        "enrichment": {
+            "distinct_limit": 0,
+            "sample_values_display_limit": True,
+            "synonym_model": "  ",
+            "synonym_max_count": "4",
+            "allow_sample_value_collection": "no",
+        }
+    }
+    assert enrichment_config(mistyped) == EnrichmentConfig()
+    assert enrichment_config({"enrichment": "off"}) == EnrichmentConfig()

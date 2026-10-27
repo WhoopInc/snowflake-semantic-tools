@@ -1,0 +1,7 @@
+---
+# An eval question pinned to a relative period, whose right answer moves with the
+# date the eval runs.
+edits:
+  agents/jaffle_analytics/evals/dataset.yml:
+    - old: "compare with the number of orders in each location?"
+      new: "compare with the number of orders in each location last quarter?"

@@ -1,0 +1,109 @@
+---
+# =============================================================================
+# dbt_project.yml -- the reference-impl fixture
+# =============================================================================
+# SST reads exactly TWO keys out of this file directly -- `name` and
+# `model-paths` -- and everything else about a model through target/manifest.json.
+# Nothing here is an SST authoring surface.
+# =============================================================================
+
+name: sst_reference_impl
+version: "1.0.0"
+config-version: 2
+
+# Must match a key in profiles.yml. SST resolves its connection through the SAME
+# profile, which is what makes `--target dev` mean one thing to both tools.
+profile: sst_reference_impl
+
+# THE ONE PATH KEY SST READS. sst_config.yml deliberately has no key for it.
+model-paths: ["models"]
+macro-paths: ["macros"]
+test-paths: ["tests"]
+snapshot-paths: ["snapshots"]
+seed-paths: ["seeds"]
+target-path: "target"
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# PINNED TO THE MANIFEST SCHEMA, NOT TO A dbt MINOR. The range spans the dbt
+# releases that write manifest schema v12 and SST tests, dbt Core 1.10-1.13 and
+# dbt v2 2.0, which is the shape SST's manifest reader reads. Widen or re-pin
+# when the manifest schema moves, not when dbt does.
+require-dbt-version: [">=1.10.0", "<2.1.0"]
+
+models:
+  sst_reference_impl:
+    +materialized: table
+
+    # THE KEY THAT MAKES DESCRIPTIONS REACH THE SEMANTIC LAYER. Without it the
+    # column descriptions exist in dbt docs and nowhere Cortex Analyst can read
+    # them.
+    +persist_docs:
+      relation: true
+      columns: true
+
+    staging:
+      +materialized: view
+
+    marts:
+      +materialized: table
+
+# =============================================================================
+# SEEDS -- THE RAW LAYER, FOR EVERY TARGET THAT IS NOT PROD
+# =============================================================================
+# The seven CSVs under `seeds/` carry the same seven relations that
+# `models/staging/_sources.yml` declares. In prod that source resolves to the
+# real replicated schema; everywhere else it resolves to these seeds, which is
+# what makes the whole DAG runnable from a clean account with no upstream
+# replication. `_sources.yml` does the switching.
+#
+# COLUMN TYPES ARE DECLARED, NOT INFERRED. dbt infers a seed's types from the
+# CSV text, and it gets timestamps and booleans wrong often enough that the
+# marts' casts then fail on type rather than on value -- a failure that reads
+# like a model bug and is not one. `_replicated_at` is the one that matters
+# most: `stg_orders` ORDERs BY it to dedup, and a VARCHAR sorts
+# lexicographically, which happens to agree with a TIMESTAMP for ISO-8601 text
+# and so hides the defect until a format changes.
+#
+# The data itself lives in the seed CSVs, which are synthetic.
+seeds:
+  sst_reference_impl:
+    +quote_columns: false
+    orders_raw:
+      +column_types:
+        ordered_at: TIMESTAMP_NTZ
+        subtotal: NUMBER(38,2)
+        order_total: NUMBER(38,2)
+        _replicated_at: TIMESTAMP_NTZ
+    order_items_raw:
+      +column_types:
+        occurred_at: TIMESTAMP_NTZ
+        item_price: NUMBER(38,2)
+    products_raw:
+      +column_types:
+        list_price: NUMBER(38,2)
+    locations_raw:
+      +column_types:
+        opened_at: TIMESTAMP_NTZ
+        tax_rate: NUMBER(38,4)
+    pricing_periods_raw:
+      +column_types:
+        effective_start_at: TIMESTAMP_NTZ
+        effective_end_at: TIMESTAMP_NTZ
+        base_price_multiplier: NUMBER(38,4)
+        discount_pct: NUMBER(38,4)
+    supplies_raw:
+      +column_types:
+        snapshot_month: TIMESTAMP_NTZ
+        is_perishable: BOOLEAN
+        supply_cost: NUMBER(38,2)
+
+# NOTE ON WHAT IS ABSENT, AND WHY:
+#   +schema is NOT set. Every model therefore lands in the target's own schema,
+#   so the resolved relation for a model is <target database>.<target schema>.
+#   <alias or name>. That keeps the resolved relations in expected/ddl/*.sql
+#   derivable from profiles.yml alone, with no generate_schema_name question to
+#   settle. Adding a +schema here would be a legitimate fixture extension and
+#   would change every relation in both golden DDL files.

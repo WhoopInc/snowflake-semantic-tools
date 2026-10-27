@@ -1,0 +1,10 @@
+---
+relationship:
+  name: order_items_to_products
+  description: |-
+    Each line item sells exactly one product. Many line items to one product, so
+    `order_items` is the left table.
+  left_table: "{{ ref('order_items') }}"
+  right_table: "{{ ref('products') }}"
+  relationship_conditions:
+    - "{{ ref('order_items', 'product_id') }} = {{ ref('products', 'product_id') }}"

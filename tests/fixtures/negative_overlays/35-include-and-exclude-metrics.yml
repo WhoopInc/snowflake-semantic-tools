@@ -1,0 +1,12 @@
+---
+# A view that both lists the metrics it keeps and the metrics it drops.
+semantic_views:
+  - name: customers_kept_and_dropped
+    description: |-
+      Use this view for questions about customers and how many there are.
+    tables:
+      - "{{ ref('customers') }}"
+    metrics:
+      - "{{ metric('customer_count') }}"
+    exclude_metrics:
+      - "{{ metric('cumulative_customer_count') }}"

@@ -1,0 +1,38 @@
+$ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-syntax-check
+--- exit 0
+--- stdout
+--- stderr
+[33m[1mwarning[[0m[33m[1mSST-RND013[0m[33m[1m][0m: [1magent 'jaffle_analytics_agent': tool_resources for 'order_tier_lookup' is not validated by Snowflake[0m
+  [34m[1m=[0m [36mhelp:[0m confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  [34m[1m=[0m [2msst explain SST-RND013[0m
+
+[33m[1mwarning[[0m[33m[1mSST-RND013[0m[33m[1m][0m: [1magent 'jaffle_analytics_agent': tool_resources for 'order_status' is not validated by Snowflake[0m
+  [34m[1m=[0m [36mhelp:[0m confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  [34m[1m=[0m [2msst explain SST-RND013[0m
+
+[33m[1mwarning[[0m[33m[1mSST-VAL528[0m[33m[1m][0m: [1magent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'[0m
+  [34m[1m=[0m [36mhelp:[0m accept that tool-name uniqueness and eval coverage are incomplete here
+  [34m[1m=[0m [2msst explain SST-VAL528[0m
+
+[33m[1mwarning[[0m[33m[1mSST-RND010[0m[33m[1m][0m: [1magent 'jaffle_minimal_agent' renders with no tools[0m
+  [34m[1m=[0m [36mhelp:[0m declare at least one tool
+  [34m[1m=[0m [2msst explain SST-RND010[0m
+
+[33m[1mwarning[[0m[33m[1mSST-CFG018[0m[33m[1m][0m: [1mtool member 'payment_settlement_view' is referenced by nothing[0m
+  [34m[1m-->[0m [1mtools/partner/partner_objects.yml:13:11[0m
+   [34m[1m|[0m
+[34m[1m13[0m [34m[1m|[0m   - name: payment_settlement_view
+   [34m[1m|[0m           [33m[1m^^^^^^^^^^^^^^^^^^^^^^^[0m
+   [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
+   [34m[1m=[0m [2msst explain SST-CFG018[0m
+
+[33m[1mwarning[[0m[33m[1mSST-CFG018[0m[33m[1m][0m: [1mtool member 'partner_invoice_stage' is referenced by nothing[0m
+  [34m[1m-->[0m [1mtools/partner/partner_objects.yml:27:11[0m
+   [34m[1m|[0m
+[34m[1m27[0m [34m[1m|[0m   - name: partner_invoice_stage
+   [34m[1m|[0m           [33m[1m^^^^^^^^^^^^^^^^^^^^^[0m
+   [34m[1m=[0m [36mhelp:[0m reference it from an agent, or delete it
+   [34m[1m=[0m [2msst explain SST-CFG018[0m
+
+[32m[1m✓[0m [1mvalidated 17 artifacts[0m · 0 errors, 6 warnings · <n>s
+[2m  hidden: 61 info (--show-info)[0m

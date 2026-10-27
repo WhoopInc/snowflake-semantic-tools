@@ -1,0 +1,36 @@
+---
+# =============================================================================
+# tools/partner/partner_objects.yml -- reference project
+# =============================================================================
+# A `tools:` root holds a list of members, each written as a `tool:` file's
+# member is; one file per member is the norm, and this one covers the list
+# form. Both members inherit `+immutable: true` from the partner/ route in
+# sst_config.yml (see partner_delivery_agent.yml).
+# =============================================================================
+
+tools:
+  # ---- generic --------------------------------------------------------------
+  - name: payment_settlement_view
+    type: generic
+    description: |-
+      Settlement records published by the payment partner. The generic kind is
+      the escape hatch for an object whose type SST does not model.
+    relations:
+      dev: SST_REF_DEV.PARTNER.SETTLEMENTS
+      prod: SST_REF_PROD.PARTNER.SETTLEMENTS
+      verify: SST_REF_VERIFY.PARTNER.SETTLEMENTS
+    meta:
+      owner: partner-integrations
+
+  # ---- stage: referenced only; without `relations:` SST would emit
+  # CREATE STAGE IF NOT EXISTS for it.
+  - name: partner_invoice_stage
+    type: stage
+    description: |-
+      Stage the payment partner drops invoices into. Read-only to this repo.
+    relations:
+      dev: SST_REF_DEV.PARTNER.INVOICE_STAGE
+      prod: SST_REF_PROD.PARTNER.INVOICE_STAGE
+      verify: SST_REF_VERIFY.PARTNER.INVOICE_STAGE
+    meta:
+      owner: partner-integrations

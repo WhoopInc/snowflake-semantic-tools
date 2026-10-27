@@ -1,0 +1,133 @@
+---
+# pricing_periods: the target of the range relationship orders_to_pricing_periods,
+# and the one model whose alias differs from its name.
+
+version: 2
+
+models:
+  - name: pricing_periods
+    description: |-
+      One row per pricing period. Non-overlapping by construction, which the range join relies on.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      # dbt builds the relation PRICING_CALENDAR. SST takes the relation from
+      # the manifest's relation_name and the logical table name from the model
+      # name, so the view renders PRICING_PERIODS AS <db>.<schema>.PRICING_CALENDAR
+      # and relationships still name pricing_periods.
+      alias: pricing_calendar
+      meta:
+        sst:
+          primary_key:
+            - pricing_period_id
+          # Renders as a DISTINCT RANGE ... EXCLUSIVE constraint after the
+          # primary key: half-open periods that do not overlap, which the
+          # orders_to_pricing_periods range join relies on.
+          distinct_range:
+            start: effective_start_at
+            end: effective_end_at
+    columns:
+      - name: pricing_period_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the pricing period. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: false
+              synonyms:
+                - pricing period key
+                - rate period identifier
+        data_tests:
+          - unique
+          - not_null
+
+      - name: period_name
+        data_type: VARCHAR
+        description: |-
+          Human-readable label for the pricing period.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              is_enum: true
+              synonyms:
+                - pricing window
+                - promo name
+                - rate period
+              sample_values:
+                - summer promo
+                - standard
+
+      # The range bounds. jaffle_menu declares them as this table's
+      # distinct_range, which renders CONSTRAINT PRICING_PERIODS_DISTINCT_RANGE
+      # DISTINCT RANGE BETWEEN EFFECTIVE_START_AT AND EFFECTIVE_END_AT EXCLUSIVE:
+      # the start is inclusive and the end exclusive, so adjacent periods do not
+      # overlap.
+      - name: effective_start_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          Inclusive start of the pricing period.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - period start
+                - when the rate took effect
+              sample_values:
+                - "2024-06-01 00:00:00"
+                - "2024-09-01 00:00:00"
+
+      - name: effective_end_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          Exclusive end of the pricing period.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+              synonyms:
+                - period end
+                - when the rate stopped applying
+              sample_values:
+                - "2024-09-01 00:00:00"
+                - "2024-12-01 00:00:00"
+
+      - name: base_price_multiplier
+        data_type: NUMBER(38,4)
+        description: |-
+          Multiplier applied to list price during this period.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - price multiplier
+                - rate factor
+              sample_values:
+                - 1.0
+                - 1.15
+
+      - name: discount_pct
+        data_type: NUMBER(38,4)
+        description: |-
+          Percentage discount applied during this period.
+        config:
+          meta:
+            sst:
+              column_type: fact
+              synonyms:
+                - discount rate
+                - percent off
+              sample_values:
+                - 0.0
+                - 0.1
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - pricing_period_id

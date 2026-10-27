@@ -1,0 +1,27 @@
+"""SST-VAL114: a metric's using_relationships names a relationship that starts at another table."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.reference_project import edited, member_file, reported
+
+METRICS = member_file("metrics", "line_item_count")
+USING = "  using_relationships:\n    - \"{{ relationship('order_items_to_orders') }}\"\n"
+
+
+def test_sst_val114_fires(tmp_path: Path) -> None:
+    project = edited(
+        tmp_path, METRICS, USING, "  using_relationships:\n    - \"{{ relationship('orders_to_customers') }}\"\n"
+    )
+    [diagnostic] = reported(project, "SST-VAL114")
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.message == (
+        "metric 'line_item_count': relationship 'ORDERS_TO_CUSTOMERS' does not start from 'order_items'"
+    )
+    assert diagnostic.subject == "metric:line_item_count"
+
+
+def test_sst_val114_silent(tmp_path: Path) -> None:
+    assert reported(edited(tmp_path, METRICS, USING, USING), "SST-VAL114") == []

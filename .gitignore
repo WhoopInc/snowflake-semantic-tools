@@ -1,5 +1,7 @@
 # Sensitive Configuration - NEVER COMMIT
 .env
+# Your own live-test account (docs/guides/testing-live.md); tests/live.example.env is the template
+tests/live.local.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -44,8 +46,10 @@ pip-delete-this-directory.txt
 htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
+.coverage*
+# mutmut's working copy, and the coverage report the ratchet reads
+mutants/
+coverage.json
 .cache
 nosetests.xml
 coverage.xml
@@ -76,6 +80,9 @@ docs/_build/
 
 # PyBuilder
 target/
+
+# SST's build directory, in the reference project and any project the tests copy
+sst_target/
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -131,12 +138,24 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
+# Ruff
+.ruff_cache/
+
+# import-linter (lint-imports)
+.import_linter_cache/
+
 # Project-specific ignores
 # Secrets and configuration
 .env*
 *.env
+# The live-test template is committed; your copy, tests/live.local.env, stays ignored
+!tests/live.example.env
 secrets/
 config/secrets/
+
+# Private keys (Snowflake key-pair authentication)
+*.p8
+*.pem
 
 # Cloned repositories
 analytics-dbt/
@@ -161,6 +180,17 @@ Thumbs.db
 
 # Cortex Code local state
 .snowflake/
+.cortex/plans/
+
+# dbt-generated anonymous user id
+.user.yml
+
+# dbt package installs (dbt deps)
+dbt_packages/
+dbt_internal_packages/
+
+# The project is managed with Poetry; a uv lockfile is local-only
+uv.lock
 
 # Temporary files
 tmp/
@@ -176,6 +206,7 @@ temp/
 # Snowflake connection files (if any)
 snowflake_config.json
 connections.json
+connections.toml
 
 # Local testing artifacts
 test_data/
@@ -189,7 +220,6 @@ staging_tables_backup/
 
 # Development files
 api_test.py
-planning/*
 
 # Snowflake CLI
 .snowflake/

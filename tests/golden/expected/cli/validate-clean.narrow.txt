@@ -1,0 +1,38 @@
+$ sst --project-dir <project> --manifest <manifest> validate --no-snowflake-syntax-check
+--- exit 0
+--- stdout
+--- stderr
+warning[SST-RND013]: agent 'jaffle_analytics_agent': tool_resources for 'order_tier_lookup' is not validated by Snowflake
+  = help: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  = sst explain SST-RND013
+
+warning[SST-RND013]: agent 'jaffle_analytics_agent': tool_resources for 'order_status' is not validated by Snowflake
+  = help: confirm the key and the backing object yourself; `CREATE AGENT` will accept a wrong one
+  = sst explain SST-RND013
+
+warning[SST-VAL528]: agent 'jaffle_delivery_agent' inherits the tools of another agent through toolset 'partner_delivery_agent'
+  = help: accept that tool-name uniqueness and eval coverage are incomplete here
+  = sst explain SST-VAL528
+
+warning[SST-RND010]: agent 'jaffle_minimal_agent' renders with no tools
+  = help: declare at least one tool
+  = sst explain SST-RND010
+
+warning[SST-CFG018]: tool member 'payment_settlement_view' is referenced by nothing
+  --> tools/partner/partner_objects.yml:13:11
+   |
+13 |   - name: payment_settlement_view
+   |           ^^^^^^^^^^^^^^^^^^^^^^^
+   = help: reference it from an agent, or delete it
+   = sst explain SST-CFG018
+
+warning[SST-CFG018]: tool member 'partner_invoice_stage' is referenced by nothing
+  --> tools/partner/partner_objects.yml:27:11
+   |
+27 |   - name: partner_invoice_stage
+   |           ^^^^^^^^^^^^^^^^^^^^^
+   = help: reference it from an agent, or delete it
+   = sst explain SST-CFG018
+
+✓ validated 17 artifacts · 0 errors, 6 warnings · <n>s
+  hidden: 61 info (--show-info)

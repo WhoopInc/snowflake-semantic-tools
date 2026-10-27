@@ -1,0 +1,69 @@
+---
+# The jaffle_service source, in its own file because several models read it.
+
+version: 2
+
+sources:
+  - name: jaffle_service
+    description: |-
+      Raw relations replicated from the ordering service. Not read by the
+      semantic layer; the marts layer is what the semantic views reference.
+
+      IN PROD this resolves to the replicated schema below. EVERYWHERE ELSE it
+      resolves to the target's own schema, where `seeds/*.csv` materialises the
+      same seven relations -- see the seeds block in `../../dbt_project.yml`.
+      That is what lets the whole DAG run in a clean account with no upstream
+      replication, which is how the golden DDL gets smoke-tested end to end.
+
+      THE SWITCH LIVES HERE RATHER THAN IN THE MODELS because a source is
+      declared once and read by several models; putting the conditional in each
+      model would put the same decision in seven places.
+    database: "{{ 'SST_REF_RAW' if target.name == 'prod' else target.database }}"
+    schema: "{{ 'JAFFLE_SERVICE' if target.name == 'prod' else target.schema }}"
+    tables:
+      # Freshness is declared on orders_raw alone: it is the only relation with
+      # a _replicated_at column.
+      - name: orders_raw
+        description: |-
+          Append-only replica of the service's order table.
+        # Under config:, where dbt 1.11 reads freshness and loaded_at_field; the
+        # table-level form warns (PropertyMovedToConfigDeprecation).
+        config:
+          freshness:
+            warn_after:
+              count: 6
+              period: hour
+            error_after:
+              count: 24
+              period: hour
+          loaded_at_field: _replicated_at
+
+      # The marts read these six directly; only orders_raw, an append-only
+      # replica, needs a staging model. Columns are documented on the marts
+      # that select them.
+      - name: customers_raw
+        description: |-
+          Raw customer relation. Consumed by `marts/customers.sql`.
+
+      - name: order_items_raw
+        description: |-
+          Raw line-item relation, one row per item on an order. Consumed by
+          `marts/order_items.sql`.
+
+      - name: products_raw
+        description: |-
+          Raw product catalogue. Consumed by `marts/products.sql`.
+
+      - name: locations_raw
+        description: |-
+          Raw location relation. Consumed by `marts/locations.sql`.
+
+      - name: pricing_periods_raw
+        description: |-
+          Raw pricing periods, each a half-open interval. Consumed by
+          `marts/pricing_periods.sql`.
+
+      - name: supplies_raw
+        description: |-
+          Raw supply snapshot, restated per month. Consumed by
+          `marts/supplies.sql`.

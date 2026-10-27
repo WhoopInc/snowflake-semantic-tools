@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import pytest
+
+from snowflake_semantic_tools.adapters.snowflake.connector.catalog import _object_type
+from snowflake_semantic_tools.adapters.snowflake.connector.session import _port_error
+from snowflake_semantic_tools.adapters.snowflake.connector.state_table import _json_resources, _physical_resources
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.state import AppliedEntry, AppliedResource, ResourceStatus
+
+
+def test_connector_validates_object_type_and_preserves_error_metadata() -> None:
+    assert _object_type(" semantic   view ") == "SEMANTIC VIEW"
+    with pytest.raises(SnowflakePortError, match="unsupported"):
+        _object_type("SEMANTIC VIEW; DROP DATABASE X")
+
+    class Error(Exception):
+        sqlstate = "42000"
+        errno = 1
+
+    result = _port_error(Error("bad"))
+    assert (str(result), result.sqlstate, result.errno) == ("bad", "42000", 1)
+
+
+def test_state_resource_json_preserves_retention_status() -> None:
+    entry = AppliedEntry(
+        "a" * 64,
+        "DB.S.V",
+        "now",
+        "run",
+        "applied",
+        "a" * 64,
+        "m",
+        physical_resources=(AppliedResource("DATASET", "DB.S.V", ResourceStatus.RETAINED),),
+    )
+
+    encoded = _json_resources(entry)
+
+    assert _physical_resources(encoded) == entry.physical_resources

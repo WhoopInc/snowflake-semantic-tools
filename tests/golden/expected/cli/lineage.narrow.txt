@@ -1,0 +1,12 @@
+$ sst --project-dir <project> --manifest <manifest> lineage tool:order_status
+--- exit 0
+--- stdout
+tool:order_status
+├── reads
+│   └── model:orders
+└── read by
+    └── agent:jaffle_analytics_agent
+        ├── cowork_profile:jaffle_concierge
+        └── eval:jaffle_analytics_agent
+--- stderr
+✓ traced 5 nodes from tool:order_status · <n>s

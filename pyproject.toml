@@ -4,8 +4,8 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "snowflake-semantic-tools"
-version = "0.3.3"
-description = "dbt extension for managing Snowflake Semantic Views and Cortex Analyst semantic models"
+version = "1.0.0"
+description = "Compile and publish Snowflake semantic views, Cortex Agents, skills, and CoCo Desktop profiles from a dbt project"
 readme = "README.md"
 authors = ["Matt Luizzi <matthew.luizzi@whoop.com>"]
 license = "Apache-2.0"
@@ -15,64 +15,116 @@ keywords = ["snowflake", "dbt", "semantic-layer"]
 
 [tool.poetry.scripts]
 # Main CLI entry points
-snowflake-semantic-tools = "snowflake_semantic_tools.interfaces.cli.main:cli"
-sst = "snowflake_semantic_tools.interfaces.cli.main:cli"  # Short alias for convenience
+snowflake-semantic-tools = "snowflake_semantic_tools.cli.main:cli"
+sst = "snowflake_semantic_tools.cli.main:cli"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
-numpy = ">=1.24.0,<1.25.0"
-pyyaml = ">=6.0.2,<6.1.0"
-ruamel-yaml = ">=0.18.6,<0.19.0"
-snowflake-connector-python = {extras = ["pandas", "secure-local-storage"], version = ">=3.12.3,<5.0"}
-python-dotenv = ">=1.0.1,<2.0"
-rich = ">=13.9.4,<14.0"
-click = ">=8.1.7,<9.0"
-tqdm = ">=4.67.1,<4.68.0"
-typing-extensions = ">=4.12.2,<5.0"
-packaging = ">=24.2,<25.0"
+python = ">=3.11,<3.14"
+pyyaml = ">=6.0.2,<7.0"
+# Round-trip YAML for sst enrich, which edits dbt and view files in place.
+ruamel-yaml = ">=0.18.6,<0.19"
+snowflake-connector-python = {extras = ["secure-local-storage"], version = ">=4.7.1,<5.0"}
+# Imported directly, though the connector also requires both: certifi's CA bundle verifies the
+# agent stream, and cryptography reads a key-pair profile's private key. cryptography's floor is
+# the connector's own. certifi's is higher on purpose: every release before 2026.10.19 trusts the
+# emSign root behind the compromised eMudhra intermediates (GHSA-6q48-6c7w-9gw2), so an older
+# bundle would let a forged certificate intercept SST's TLS.
 certifi = ">=2026.10.19"
-questionary = ">=2.0.0,<3.0"
+cryptography = ">=46.0.5"
+click = ">=8.3.3,<9.0"
+# The full-screen `sst ask` conversation; imported only when one opens.
+textual = ">=8.2,<9.0"
+# Typed decode of dbt's manifest.json, skipping every field SST does not read; imported only by
+# adapters.dbt.manifest_schema. 0.x, so capped at the minor release it is tested against.
+msgspec = ">=0.22,<0.23"
+dbt-snowflake = {version = ">=1.10,<2.0", optional = true}
 
 [tool.poetry.extras]
-# Optional extra for dbt Core users: pip install snowflake-semantic-tools[dbt]
-# Installs dbt-snowflake (dbt Core with Snowflake adapter)
-# Note: dbt Cloud CLI users don't need this extra - install 'dbt' separately
-# SST auto-detects both dbt Core and dbt Cloud CLI
+# pip install snowflake-semantic-tools[dbt] installs dbt Core 1.x with the Snowflake
+# adapter. SST runs whichever dbt is on PATH, so a dbt Cloud CLI or dbt v2 user skips
+# it and installs their own dbt (dbt v2: `pip install dbt` or `pip install dbt-oss`).
 dbt = ["dbt-snowflake"]
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "4.0.1"
-pytest = "8.3.4"
-pytest-mock = "3.14.0"
+pytest = "9.0.3"
 pytest-cov = "6.0.0"
 mypy = "1.13.0"
-isort = "5.13.2"
-black = "24.10.0"
+import-linter = "^2.1"
+types-PyYAML = "^6.0.12"
+ruff = ">=0.16"
+hypothesis = ">=6.100"
+pytest-xdist = ">=3.6"
+# A per-test timeout, so a deadlocked test fails with every thread's stack instead of hanging CI.
+pytest-timeout = ">=2.3"
+mutmut = ">=3.2"
+bandit = ">=1.8"
+pip-audit = ">=2.7"
 
-[tool.black]
+[tool.ruff]
 line-length = 120
-exclude = '''
-/(
-    \.git
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-)/
-'''
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "C4", "SIM", "PIE", "T10", "LOG", "G", "ICN", "TID", "PGH"]
+
+# Absolute imports only; tests/unit/test_import_style.py enforces the same rule with its own scan.
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+# cli/main.py imports `cli.commands` only for its side effect -- registering every command on
+# `cli` -- so the import is unused by name. The package's planning-identifier scan rejects a
+# rule code in source, so the exemption lives here rather than as an inline comment.
+[tool.ruff.lint.per-file-ignores]
+"snowflake_semantic_tools/cli/main.py" = ["F401"]
+
+# Frozen dataclasses (and DiagnosticBag, a tuple) are immutable, so sharing one instance as a
+# default argument is safe; B008 cannot tell them from mutable calls without this list.
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "snowflake_semantic_tools.app.evals.suite.EvalGateRequest",
+    "snowflake_semantic_tools.app.lifecycle.evals.EvalLifecycleConfig",
+    "snowflake_semantic_tools.domain.diagnostics.DiagnosticBag",
+    "snowflake_semantic_tools.domain.model.eval.EvalDefaults",
+    "snowflake_semantic_tools.domain.model.lifecycle.ApplyOptions",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.DesiredMetadata",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.PublishShape",
+    "snowflake_semantic_tools.domain.model.lifecycle.rendered.StatementPlan",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["snowflake_semantic_tools", "tests"]
 
 [tool.coverage.run]
 branch = true
-omit = ["test/*"]
+source = [
+    "snowflake_semantic_tools/domain",
+    "snowflake_semantic_tools/app",
+    "snowflake_semantic_tools/cli",
+    "snowflake_semantic_tools/adapters",
+]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true
+skip_covered = true
 
 [tool.coverage.xml]
 output = "test-coverage-results/coverage.xml"
 
+# Mutation testing, over the pure ring only, by the nightly workflow. Report-only: a surviving
+# mutant is a test that executes a line without being able to fail on it. Run with
+# `mutmut run`, then `mutmut results`; it works in `mutants/`, which git ignores.
+[tool.mutmut]
+source_paths = ["snowflake_semantic_tools/"]
+only_mutate = ["snowflake_semantic_tools/domain/*"]
+pytest_add_cli_args = ["-p", "no:xdist", "-p", "no:cacheprovider", "-o", "addopts=", "-q"]
+pytest_add_cli_args_test_selection = ["tests/unit/domain", "tests/unit/test_render_semantic_view.py", "tests/codes"]
+mutate_only_covered_lines = true
+
 [tool.mypy]
+strict = true
 ignore_missing_imports = true
 namespace_packages = true
 explicit_package_bases = true
@@ -80,28 +132,33 @@ disallow_untyped_defs = true
 exclude = [
 ]
 
-[tool.isort]
-profile = "black"
-line_length = 120
-
+[[tool.mypy.overrides]]
+module = "snowflake_semantic_tools.adapters.dbt.manifest_schema"
+disable_error_code = ["override"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The repository root, so test modules can import shared test support as `tests.helpers.*`.
+pythonpath = ["."]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --strict-markers --color=yes --durations=10 --maxfail=5"
+# `-m "not live"`: the tests that connect to Snowflake run only when asked for, with `-m live`
+# (the slow workflow does; a later `-m` replaces this one). Without credentials they skip, and
+# with `--require-snowflake` they fail instead, so a gate that cannot connect is never green.
+# `slow` (tests that start a nested pytest, a subprocess `sst`, or a fresh interpreter, or copy
+# and compile whole projects) is left out of a local run too; CI passes `-m "not live"` to run it.
+# `-n 6`: six workers leave a laptop's other cores free (`-n auto` takes every core); CI's
+# own `-n auto` comes later on its command line and wins, and `-n 0` runs serially.
+addopts = "-v --tb=short --strict-markers --color=yes --durations=10 -n 6 -m 'not live and not slow'"
 markers = [
-    "unit: Unit tests (fast, no external dependencies)",
-    "integration: Integration tests (may require external services)",
-    "slow: Slow running tests",
-    "snowflake: Tests requiring Snowflake connection",
-    "ci: Tests suitable for CI/CD pipeline",
-    "smoke: Quick smoke tests for basic functionality",
-    "core_models: Tests for core data models and validation",
-    "parsing: Tests for YAML parsing and template resolution",
-    "cli: Tests for command-line interface",
-    "api: Tests for Python API interface",
+    "live: connects to a real Snowflake account; deselected by default, run with -m live",
+    "e2e: drives the sst CLI over a whole project, as a user runs it",
+    "slow: starts processes or compiles whole projects; deselected locally, run with -m slow or in CI",
 ]
+# No test may run longer than this. The thread method dumps every thread's stack and ends the
+# worker, which a deadlocked lock wait cannot ignore the way it can ignore a signal.
+timeout = 120
+timeout_method = "thread"
 log_cli = true
 log_cli_level = "WARNING"
 log_cli_format = "%(asctime)s [%(levelname)s] %(message)s"
@@ -112,3 +169,152 @@ filterwarnings = [
     "ignore::DeprecationWarning",
     "ignore::PendingDeprecationWarning",
 ]
+
+# ---------------------------------------------------------------------------
+# Ring boundaries: cli -> (app | adapters) -> domain. These contracts ARE the
+# enforcement -- an architecture rule that lives only in a README is a comment.
+# tests/unit/test_ring_boundaries.py proves each contract rejects a crossing.
+#
+# Run with: lint-imports
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "snowflake_semantic_tools"
+# Required because the domain/ and app/ contracts forbid third-party packages
+# (yaml, click, snowflake, ...) and not just internal modules.
+include_external_packages = true
+
+# cli -> (app | adapters) -> domain.
+# app and adapters are SIBLINGS declared independent: app must not reach for a
+# concrete adapter, and an adapter must not call back into a use case. cli is the
+# composition root above both and may import anything.
+#
+# The delimiter is load-bearing and the two are near-opposites: "|" makes siblings
+# INDEPENDENT (neither may import the other), ":" makes them non-independent (both
+# may). An earlier draft used ":" here, which licensed the exact crossing this
+# contract exists to forbid -- caught by tests/unit/test_ring_boundaries.py.
+[[tool.importlinter.contracts]]
+name = "Rings are layered: cli above (app | adapters) above domain"
+type = "layers"
+layers = [
+    "snowflake_semantic_tools.cli",
+    "snowflake_semantic_tools.app | snowflake_semantic_tools.adapters",
+    "snowflake_semantic_tools.domain",
+]
+
+# domain/ is the pure ring: no I/O, no clock, no environment. Everything it needs
+# from the outside world arrives as a PARAMETER. This is what makes rendering a
+# pure function of its input, hence the manifest byte-reproducible, hence golden
+# testing possible.
+[[tool.importlinter.contracts]]
+name = "domain is pure -- no I/O, no clock, no environment, no SDKs"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.domain"]
+forbidden_modules = [
+    "yaml",
+    "click",
+    "snowflake",
+    "os",
+    "pathlib",
+    "datetime",
+    "time",
+    "random",
+    "tempfile",
+    "subprocess",
+    "socket",
+    "logging",
+]
+
+# app/ orchestrates domain through injected ports. It never touches an SDK, and it
+# never touches the terminal -- that is cli's job.
+[[tool.importlinter.contracts]]
+name = "app imports domain only -- no SDKs, no terminal"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.app"]
+forbidden_modules = [
+    "yaml",
+    "click",
+    "snowflake",
+]
+
+# Textual draws `sst ask`'s conversation; only the cli's tui package imports it, and `sst ask`
+# loads that package when it runs, so no other command pays for importing Textual.
+[[tool.importlinter.contracts]]
+name = "only the cli's tui package imports Textual"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["textual"]
+ignore_imports = ["snowflake_semantic_tools.cli.tui.** -> textual"]
+allow_indirect_imports = true
+
+# SST runs the dbt executable and reads the manifest it writes; it never imports dbt, whose
+# Python API is not a stable interface and which is only an optional extra. External imports
+# are read from source, so this holds whether or not dbt is installed.
+[[tool.importlinter.contracts]]
+name = "SST never imports dbt -- it runs the executable"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["dbt"]
+
+# msgspec decodes dbt's manifest into typed structs; only the module that declares them may import
+# it, so the decoder stays one swappable seam rather than spreading through the adapters.
+[[tool.importlinter.contracts]]
+name = "only the manifest schema imports msgspec"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["msgspec"]
+ignore_imports = ["snowflake_semantic_tools.adapters.dbt.manifest_schema -> msgspec"]
+allow_indirect_imports = true
+
+# An adapter may depend on the ports it implements and the models it returns, but
+# not on domain's renderers -- rendering is domain logic, not edge work.
+[[tool.importlinter.contracts]]
+name = "adapters use domain ports and models, not domain renderers"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.adapters"]
+forbidden_modules = ["snowflake_semantic_tools.domain.render"]
+
+# An adapter subpackage never imports another, so each stays replaceable and testable
+# alone. Top-level adapter modules outside these four may compose them.
+[[tool.importlinter.contracts]]
+name = "adapter subpackages are independent"
+type = "independence"
+modules = [
+    "snowflake_semantic_tools.adapters.yaml",
+    "snowflake_semantic_tools.adapters.dbt",
+    "snowflake_semantic_tools.adapters.snowflake",
+    "snowflake_semantic_tools.adapters.fs",
+]
+
+# Round-trip YAML editing lives in adapters.roundtrip, which the dbt and yaml adapters use to
+# write files in place. Every module is covered and the importers are an allow-list, so a new
+# module that reaches for ruamel breaks this contract wherever it sits. The dbt adapter edits
+# through roundtrip and is not on the list: an entry no import matches would let one through
+# unnoticed, and import-linter reports any such entry.
+[[tool.importlinter.contracts]]
+name = "only roundtrip and the yaml adapter import ruamel"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["ruamel"]
+ignore_imports = [
+    "snowflake_semantic_tools.adapters.roundtrip -> ruamel",
+    "snowflake_semantic_tools.adapters.yaml.** -> ruamel",
+]
+allow_indirect_imports = true
+
+# YAML is parsed at the edge that owns the file, through adapters.bounded_yaml, the
+# depth-bounded loader: adapters.yaml for SST's own files, adapters.dbt for dbt's, which also
+# import PyYAML for dumping and its error types. Every module is covered and the importers are
+# an allow-list, so a new module that imports yaml breaks this contract wherever it sits. Only
+# direct imports count -- everything else reaches yaml indirectly through those, which is the
+# point.
+[[tool.importlinter.contracts]]
+name = "only bounded_yaml and the yaml and dbt adapters import PyYAML"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools"]
+forbidden_modules = ["yaml"]
+ignore_imports = [
+    "snowflake_semantic_tools.adapters.bounded_yaml -> yaml",
+    "snowflake_semantic_tools.adapters.yaml.** -> yaml",
+    "snowflake_semantic_tools.adapters.dbt.** -> yaml",
+]
+allow_indirect_imports = true

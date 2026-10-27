@@ -1,0 +1,7 @@
+---
+# `skills.+grant_read_to`, which this release removed: SST issues no grants on
+# extensions.
+edits:
+  sst_config.yml:
+    - old: "  +certified: false\n"
+      new: "  +certified: false\n  +grant_read_to:\n    - JAFFLE_ANALYST\n"

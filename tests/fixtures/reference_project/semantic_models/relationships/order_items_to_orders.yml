@@ -1,0 +1,17 @@
+---
+# Renders ORDER_ITEMS (ORDER_ID, OCCURRED_AT) REFERENCES ORDERS (ORDER_ID,
+# ASOF ORDERED_AT): each line item matches its order as of when the item was
+# recorded.
+relationship:
+  name: order_items_to_orders
+  description: |-
+    Each line item is attributed to the order state in effect when the item was
+    recorded, rather than to the order's current state.
+  left_table: "{{ ref('order_items') }}"
+  right_table: "{{ ref('orders') }}"
+  relationship_conditions:
+    # The key equality, then the ASOF comparison. >= is the only ASOF
+    # operator SST parses, and Snowflake allows one ASOF column per
+    # relationship.
+    - "{{ ref('order_items', 'order_id') }} = {{ ref('orders', 'order_id') }}"
+    - "{{ ref('order_items', 'occurred_at') }} >= {{ ref('orders', 'ordered_at') }}"

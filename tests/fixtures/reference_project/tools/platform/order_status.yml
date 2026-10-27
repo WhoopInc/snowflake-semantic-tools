@@ -1,0 +1,26 @@
+---
+# =============================================================================
+# tools/platform/order_status.yml -- reference project
+# =============================================================================
+# A defined procedure: SST creates it from its body file. The body names the
+# tables it reads with `{{ ref() }}`, so each target's procedure reads that
+# target's relations and the manifest records the models as its inputs. Only
+# `ref()`, `source()` and `var()` calls are expanded in a body; every other
+# character, any other `{{` included, is published as written. A literal
+# three-part name of a project relation would be SST-VAL626.
+# Renders tests/golden/expected/tool/order_status.sql.
+# =============================================================================
+
+tool:
+  name: order_status
+  type: procedure
+  description: |-
+    Returns the status of one order, given its id. Answers where an order is,
+    not how many orders there were -- that is a question for the Analyst tools.
+  language: sql
+  returns: VARCHAR
+  signature:
+    - name: order_id
+      type: VARCHAR
+      description: The order's id, as the customer quotes it.
+  body: "{{ file('order_status.sql') }}"

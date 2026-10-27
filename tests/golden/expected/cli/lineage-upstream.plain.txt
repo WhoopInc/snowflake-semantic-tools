@@ -1,0 +1,23 @@
+$ sst --project-dir <project> --manifest <manifest> lineage metric:gross_margin_rate --upstream
+--- exit 0
+--- stdout
+metric:gross_margin_rate
+└── reads
+    ├── metric:gross_margin
+    │   ├── metric:total_line_item_revenue
+    │   │   ├── column:order_items.item_price
+    │   │   │   └── model:order_items
+    │   │   └── model:order_items
+    │   ├── metric:total_supply_cost
+    │   │   ├── column:supplies.supply_cost
+    │   │   │   └── model:supplies
+    │   │   └── model:supplies
+    │   ├── model:order_items
+    │   └── model:supplies
+    ├── metric:total_line_item_revenue
+    │   ├── column:order_items.item_price
+    │   │   └── model:order_items
+    │   └── model:order_items
+    └── model:order_items
+--- stderr
+✓ traced 8 nodes from metric:gross_margin_rate · <n>s

@@ -1,0 +1,7 @@
+---
+# A misspelled `+name_suffix` under coco_profiles: an unknown key is a warning, so
+# a strict run promotes it.
+edits:
+  sst_config.yml:
+    - old: "  +name_suffix: _REHEARSAL\n"
+      new: "  +name_suffix: _REHEARSAL\n  +name_sufix: _REHEARSAL\n"

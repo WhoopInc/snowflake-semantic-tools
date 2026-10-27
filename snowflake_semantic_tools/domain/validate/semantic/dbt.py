@@ -1,0 +1,457 @@
+"""Check the dbt models and columns the views use, and the descriptions views and metrics need."""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
+from snowflake_semantic_tools.domain.model.authored import ACCESS_MODIFIERS, MetricDef
+from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
+from snowflake_semantic_tools.domain.model.governance import sensitivity_reason
+from snowflake_semantic_tools.domain.model.pii_shape import first_pii_shape
+from snowflake_semantic_tools.domain.model.project import ParsedView
+from snowflake_semantic_tools.domain.validate.column_metadata import (
+    is_numeric,
+    is_sentinel,
+    is_temporal,
+    printable,
+    sample_problem,
+)
+from snowflake_semantic_tools.domain.validate.semantic.shape import synonym_diagnostics
+
+
+def dbt_column_diagnostics(
+    models: dict[str, DbtModel],
+    referenced_models: frozenset[str] | None = None,
+) -> tuple[Diagnostic, ...]:
+    """Check the metadata of every column of every dbt model, model by model in name order.
+
+    Only a model a view uses is checked for its metadata: `referenced_models` holds their
+    casefolded names, and None means every model. Sentinel sample values are reported on every
+    model, but for one SST-VAL341 reports. Per column the rules run in the order below, so its
+    diagnostics come out rule by rule: role, data type, sample values, sample values of the
+    wrong type, sensitive sample values, description, unknown meta keys, declared type,
+    sentinels, personal-data sample values. Values shaped like personal data are reported on
+    every model too.
+    """
+    diagnostics: list[Diagnostic] = []
+    for model in sorted(models.values(), key=lambda item: item.name):
+        is_referenced = referenced_models is None or model.name.casefold() in referenced_models
+        for column in model.columns:
+            typed: frozenset[str] = frozenset()
+            if is_referenced:
+                diagnostics.extend(_role_diagnostics(model, column))
+                diagnostics.extend(_data_type_diagnostics(model, column))
+                diagnostics.extend(_sample_value_diagnostics(model, column))
+                wrong_type = _sample_type_diagnostics(model, column)
+                typed = frozenset(item.context["value"] for item in wrong_type)
+                diagnostics.extend(wrong_type)
+                diagnostics.extend(_sensitive_sample_diagnostics(model, column))
+                diagnostics.extend(_column_description_diagnostics(model, column))
+                diagnostics.extend(_column_meta_diagnostics(model, column))
+                diagnostics.extend(_declared_type_diagnostics(model, column))
+            diagnostics.extend(_sentinel_diagnostics(model, column, reported=typed))
+            diagnostics.extend(_pii_shaped_sample_diagnostics(model, column))
+    return tuple(diagnostics)
+
+
+def _column_keys(model: DbtModel, column: DbtColumn) -> tuple[str, str]:
+    """Return the artifact key of the column's model and the subject key of the column."""
+    return f"dbt_model:{model.name}", f"dbt_column:{model.name}.{column.name}"
+
+
+def _role_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column that declares no role; an excluded one is in no view, so needs none.
+
+    Diagnostics:
+        SST-VAL308: when a column that is not excluded declares no `column_type`.
+    """
+    if column.column_type is not None or column.excluded:
+        return []
+    artifact, subject = _column_keys(model, column)
+    return [D("SST-VAL308", artifact=artifact, member=column.name, subject=subject)]
+
+
+def _data_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column with no data type, or with one its role cannot have.
+
+    Diagnostics:
+        SST-VAL309: when the column has no data type.
+        SST-VAL305: when a fact's data type is not numeric.
+        SST-VAL306: when a time dimension's data type is not temporal.
+    """
+    artifact, subject = _column_keys(model, column)
+    if column.data_type is None:
+        return [D("SST-VAL309", artifact=artifact, member=column.name, subject=subject)]
+    if column.column_type == "fact" and not is_numeric(column.data_type):
+        return [D("SST-VAL305", artifact=artifact, member=column.name, found=column.data_type, subject=subject)]
+    if column.column_type == "time_dimension" and not is_temporal(column.data_type):
+        return [D("SST-VAL306", artifact=artifact, member=column.name, found=column.data_type, subject=subject)]
+    return []
+
+
+def _sample_value_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report an enum without sample values, or sample values whose completeness nobody declared.
+
+    An explicit `is_enum: false` declares the values a sample, so it is not reported; nor is a
+    fact, which cannot be an enum: Snowflake takes `IS_ENUM` on a dimension only.
+
+    Diagnostics:
+        SST-VAL335: when a fact that is not excluded declares `is_enum: true`.
+        SST-VAL314: when an `is_enum` column declares no sample values.
+        SST-VAL315: when a column that is not a fact declares five or more sample values and no
+            `is_enum`.
+    """
+    artifact, subject = _column_keys(model, column)
+    if column.column_type == "fact":
+        if column.is_enum and not column.excluded:
+            return [D("SST-VAL335", artifact=artifact, member=column.name, subject=subject)]
+        return []
+    if column.is_enum and not column.sample_values:
+        return [D("SST-VAL314", artifact=artifact, member=column.name, subject=subject)]
+    if column.is_enum is None and len(column.sample_values) >= 5:
+        return [
+            D(
+                "SST-VAL315",
+                artifact=artifact,
+                member=column.name,
+                count=len(column.sample_values),
+                subject=subject,
+            )
+        ]
+    return []
+
+
+def _sample_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report each sample value Snowflake could not read as the column's data type.
+
+    Only a column that publishes its values is checked: one with a role, not excluded, and not
+    sensitive, whose values SST never renders (SST-VAL328). A value shaped like personal data is
+    never rendered either, and SST-VAL340 already refuses it.
+
+    Diagnostics:
+        SST-VAL341: once per value `sample_problem` refuses for the column's data type.
+    """
+    if column.column_type is None or column.excluded or column.sensitive or column.data_type is None:
+        return []
+    artifact, subject = _column_keys(model, column)
+    found: list[Diagnostic] = []
+    for value in dict.fromkeys(column.sample_values):
+        problem = sample_problem(value, column.data_type)
+        if problem is not None:
+            found.append(
+                D(
+                    "SST-VAL341",
+                    artifact=artifact,
+                    member=column.name,
+                    value=printable(value),
+                    type=column.data_type,
+                    reason=problem,
+                    subject=subject,
+                )
+            )
+    return found
+
+
+def _pii_shaped_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column whose committed sample values hold one shaped like personal data.
+
+    Diagnostics:
+        SST-VAL340: once per such column, naming the kind of data, never the value.
+    """
+    kind = first_pii_shape(column.sample_values, column.name)
+    if kind is None:
+        return []
+    _, subject = _column_keys(model, column)
+    return [D("SST-VAL340", model=model.name, column=column.name, kind=kind, subject=subject)]
+
+
+def _sensitive_sample_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report sample values on a column its YAML marks sensitive, written by hand or by an earlier enrich.
+
+    Such values are never published, so they only sit in the YAML, where review reads them.
+
+    Diagnostics:
+        SST-VAL328: when a column with `pii_tags` or `meta.sst.governance_tags` has sample values.
+    """
+    if not (column.sensitive and column.sample_values):
+        return []
+    _, subject = _column_keys(model, column)
+    return [
+        D(
+            "SST-VAL328",
+            model=model.name,
+            column=column.name,
+            reason=sensitivity_reason(column),
+            count=len(column.sample_values),
+            subject=subject,
+        )
+    ]
+
+
+def _column_description_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column without a description.
+
+    Diagnostics:
+        SST-VAL003: when the column has no description.
+    """
+    if column.description is not None:
+        return []
+    _, subject = _column_keys(model, column)
+    return [D("SST-VAL003", type="column", name=f"{model.name}.{column.name}", subject=subject)]
+
+
+def _column_meta_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a column's `meta.sst` keys SST does not read, and an access modifier it cannot honor.
+
+    A column renders as public, so only `public_access` is honored: a private column is
+    refused rather than published as public. A column with no `column_type`, or one excluded,
+    never renders, so its modifier publishes nothing and is not refused.
+
+    Diagnostics:
+        SST-VAL333: when a column's `access_modifier` is neither `public_access` nor
+            `private_access`.
+        SST-VAL222: when a dimension not excluded declares `access_modifier: private_access`.
+        SST-VAL334: when a fact not excluded declares `access_modifier: private_access`.
+        SST-PRS004: when a column's `meta.sst` holds a key SST does not read, once per key.
+        Every code `_read_problems` lists, for the column's own fields.
+        Every code `synonym_diagnostics` lists, for the column's synonyms.
+    """
+    artifact, subject = _column_keys(model, column)
+    modifier = column.access_modifier
+    diagnostics = _read_problems(
+        model, subject, column.wrong_types, column.unstorable, prefix=f"columns.{column.name}."
+    )
+    diagnostics.extend(synonym_diagnostics(column.synonyms, artifact=subject, subject=subject))
+    if modifier is not None and modifier not in ACCESS_MODIFIERS:
+        diagnostics.append(D("SST-VAL333", artifact=artifact, member=column.name, found=modifier, subject=subject))
+    elif modifier == "private_access" and not column.excluded:
+        if column.column_type in ("dimension", "time_dimension"):
+            # Snowflake's docs say a dimension cannot be private; the server accepts and enforces
+            # it, and SST refuses it anyway (docs/design/snowflake-behavior.md).
+            diagnostics.append(D("SST-VAL222", artifact=artifact, member=column.name, value=modifier, subject=subject))
+        elif column.column_type == "fact":
+            diagnostics.append(D("SST-VAL334", artifact=artifact, member=column.name, subject=subject))
+    diagnostics.extend(
+        D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject) for key in column.unknown_meta_keys
+    )
+    return diagnostics
+
+
+def _read_problems(
+    model: DbtModel,
+    subject: str,
+    wrong_types: tuple[tuple[str, str, str], ...],
+    unstorable: tuple[tuple[str, str], ...],
+    *,
+    prefix: str = "",
+) -> list[Diagnostic]:
+    """Report what reading a model or column's manifest entry found unusable, at the model's YAML.
+
+    Args:
+        prefix: Put before each unstorable field, naming the column it is in.
+
+    Diagnostics:
+        SST-PRS003: a `meta.sst` value has the wrong type, such as a quoted `"false"`; once per value.
+        SST-LOD022: a published text holds what Snowflake cannot store; once per text.
+    """
+    found = [
+        D("SST-PRS003", artifact=subject, field=field, expected=expected, found=kind, subject=subject)
+        for field, expected, kind in wrong_types
+    ]
+    file = model.patch_file or model.original_file_path or model.unique_id
+    found.extend(
+        D(
+            "SST-LOD022",
+            origin=Origin(file, dbt_node=model.unique_id),
+            subject=subject,
+            file=file,
+            field=f"{prefix}{field}",
+            found=problem,
+        )
+        for field, problem in unstorable
+    )
+    return found
+
+
+def _declared_type_diagnostics(model: DbtModel, column: DbtColumn) -> list[Diagnostic]:
+    """Report a `meta.sst.data_type` that disagrees with the data type dbt records.
+
+    Diagnostics:
+        SST-DBT004: when the declared data type disagrees with dbt's.
+    """
+    if column.declared_data_type is None:
+        return []
+    _, subject = _column_keys(model, column)
+    return [
+        D(
+            "SST-DBT004",
+            model=model.name,
+            column=column.name,
+            found=column.data_type,
+            expected=column.declared_data_type,
+            subject=subject,
+        )
+    ]
+
+
+def _sentinel_diagnostics(model: DbtModel, column: DbtColumn, *, reported: frozenset[str]) -> list[Diagnostic]:
+    """Report each sample value that is a missing value written as text, such as `nan`.
+
+    A value in `reported`, printed as SST-VAL341 printed it, is left to that error: on a column
+    whose type cannot hold it, the value fails the view, not just reads as junk.
+
+    Diagnostics:
+        SST-VAL316: when a sample value is `nan`, `nat`, `none`, `null` or `<na>`, in any case.
+    """
+    artifact, subject = _column_keys(model, column)
+    return [
+        D(
+            "SST-VAL316",
+            artifact=artifact,
+            member=column.name,
+            field="sample_values",
+            value=value,
+            subject=subject,
+        )
+        for value in column.sample_values
+        if is_sentinel(value) and printable(value) not in reported
+    ]
+
+
+def dbt_model_diagnostics(
+    models: dict[str, DbtModel],
+    referenced_models: frozenset[str] | None = None,
+) -> tuple[Diagnostic, ...]:
+    """Check the `meta.sst` keys and the key metadata of every dbt model, in name order.
+
+    A forbidden location key is reported on every model; the other rules run only on a model a
+    view uses: `referenced_models` holds their casefolded names, and None means every model.
+    Key columns compare casefolded.
+
+    Diagnostics:
+        SST-DBT030: when `meta.sst` holds a forbidden location key, once per key.
+        SST-DBT032: when the model writes key metadata in the 0.3 form, once per field.
+        SST-PRS004: when `meta.sst` holds a key SST does not read, once per key.
+        Every code `_read_problems` lists, for the model's own fields.
+        Every code `synonym_diagnostics` lists, for the model's synonyms.
+        SST-VAL312: when the model declares neither `primary_key` nor `unique_keys`, in either form.
+        SST-VAL310: when a declared key column is not a column of the model.
+        SST-VAL223: when a column is in both `primary_key` and `unique_keys`.
+        SST-PRS028: when `meta.sst.distinct_range` is not a mapping naming a start and an end.
+        SST-VAL219: when a `distinct_range` bound is not a column of the model.
+    """
+    diagnostics: list[Diagnostic] = []
+    for model in sorted(models.values(), key=lambda item: item.name):
+        subject = f"dbt_model:{model.name}"
+        diagnostics.extend(
+            D("SST-DBT030", model=model.name, key=key, subject=subject) for key in model.forbidden_location_keys
+        )
+        if referenced_models is not None and model.name.casefold() not in referenced_models:
+            continue
+        diagnostics.extend(
+            D("SST-DBT032", model=model.name, field=field, subject=subject) for field in model.legacy_key_fields
+        )
+        diagnostics.extend(_read_problems(model, subject, model.wrong_types, model.unstorable))
+        diagnostics.extend(synonym_diagnostics(model.synonyms, artifact=subject, subject=subject))
+        diagnostics.extend(
+            D("SST-PRS004", artifact=subject, field=f"meta.sst.{key}", subject=subject)
+            for key in model.unknown_meta_keys
+        )
+        if not model.primary_key and not model.unique_keys and not model.legacy_key_fields:
+            diagnostics.append(
+                D(
+                    "SST-VAL312",
+                    artifact=subject,
+                    name=model.name,
+                    subject=subject,
+                )
+            )
+        column_names = {column.name.casefold() for column in model.columns}
+        declared_keys = tuple(model.primary_key) + tuple(
+            column for unique_key in model.unique_keys for column in unique_key
+        )
+        for column in declared_keys:
+            if column.casefold() not in column_names:
+                diagnostics.append(
+                    D(
+                        "SST-VAL310",
+                        artifact=subject,
+                        column=column,
+                        name=model.name,
+                        subject=subject,
+                    )
+                )
+        primary = {column.casefold(): column for column in model.primary_key}
+        unique = {column.casefold(): column for unique_key in model.unique_keys for column in unique_key}
+        for folded in sorted(primary.keys() & unique.keys()):
+            diagnostics.append(
+                D(
+                    "SST-VAL223",
+                    artifact=subject,
+                    column=primary[folded],
+                    model=model.name,
+                    subject=subject,
+                )
+            )
+        diagnostics.extend(_distinct_range_diagnostics(model, subject))
+    return tuple(diagnostics)
+
+
+def _distinct_range_diagnostics(model: DbtModel, subject: str) -> list[Diagnostic]:
+    """Report a malformed `distinct_range`, else each of its bounds the model has no column for.
+
+    Diagnostics:
+        SST-PRS028: when `meta.sst.distinct_range` is not a mapping naming a start and an end.
+        SST-VAL219: when a bound is not a column of the model, once per bound.
+    """
+    if model.malformed_distinct_range:
+        detail = "meta.sst.distinct_range needs a start and an end column"
+        return [D("SST-PRS028", artifact=subject, detail=detail, subject=subject)]
+    bounds = zip(("start", "end"), model.distinct_range or (), strict=False)
+    return [
+        D(
+            "SST-VAL219",
+            artifact=subject,
+            model=model.name,
+            field=f"meta.sst.distinct_range.{bound}",
+            column=column,
+            subject=subject,
+        )
+        for bound, column in bounds
+        if model.column(column) is None
+    ]
+
+
+def description_diagnostics(
+    views: tuple[ParsedView, ...],
+    metrics: tuple[MetricDef, ...],
+) -> tuple[Diagnostic, ...]:
+    """Report each view, then each metric, that has no description.
+
+    Diagnostics:
+        SST-VAL003: when a view's `description` is absent or blank, or a metric has none.
+    """
+    diagnostics: list[Diagnostic] = []
+    for view in views:
+        if not str(view.source.get("description") or "").strip():
+            diagnostics.append(
+                D(
+                    "SST-VAL003",
+                    type="semantic_view",
+                    name=view.name,
+                    subject=view_key(view.name),
+                    origin=view.origin,
+                )
+            )
+    diagnostics.extend(
+        D(
+            "SST-VAL003",
+            type="metric",
+            name=metric.name,
+            subject=artifact_key("metric", metric.name),
+            origin=metric.origin,
+        )
+        for metric in metrics
+        if metric.description is None
+    )
+    return tuple(diagnostics)

@@ -1,0 +1,13 @@
+evaluation:
+  agent_params:
+    agent_name: "SST_REF_DEV.PROFILES.JAFFLE_CONCIERGE"
+    agent_type: "CORTEX AGENT"
+    agent_version: "DEFAULT"
+  run_params:
+    label: "concierge-routing-ci"
+  source_metadata:
+    type: "dataset"
+    dataset_name: "SST_REF_DEV.PROFILES.EVAL_JAFFLE_CONCIERGE_02D8AB4"
+metrics:
+  - name: "answer_correctness"
+    version: "v3"

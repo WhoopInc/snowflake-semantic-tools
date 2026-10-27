@@ -1,0 +1,83 @@
+---
+# order_items: one row per line item, finer than orders, which is why
+# order_items_to_orders is an ASOF relationship.
+#
+# Every column carries column_type and nothing else: no synonyms, is_enum or
+# sample_values. Each member therefore renders with only its name, expression
+# and COMMENT, which is what shows those clauses are emitted only when
+# authored. Keep this model sparse.
+
+version: 2
+
+models:
+  - name: order_items
+    description: |-
+      One row per line item on an order. Finer grain than orders, which is why the ASOF join exists.
+    config:
+      contract:
+        enforced: true
+      on_schema_change: fail
+      meta:
+        sst:
+          primary_key:
+            - order_item_id
+    columns:
+      - name: order_item_id
+        data_type: VARCHAR
+        description: |-
+          Surrogate key for the line item. An identifier, therefore a dimension.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+        data_tests:
+          - unique
+          - not_null
+
+      - name: order_id
+        data_type: VARCHAR
+        description: |-
+          The order this line item belongs to.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+        data_tests:
+          - not_null
+
+      - name: product_id
+        data_type: VARCHAR
+        description: |-
+          The product sold on this line item.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+        data_tests:
+          - not_null
+
+      # The left side of the ASOF condition occurred_at >= orders.ordered_at.
+      - name: occurred_at
+        data_type: TIMESTAMP_NTZ
+        description: |-
+          When the line item was recorded.
+        config:
+          meta:
+            sst:
+              column_type: dimension
+
+      - name: item_price
+        data_type: NUMBER(38,2)
+        description: |-
+          Price charged for this line item, in cents.
+        config:
+          meta:
+            sst:
+              column_type: fact
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - order_id
+              - order_item_id

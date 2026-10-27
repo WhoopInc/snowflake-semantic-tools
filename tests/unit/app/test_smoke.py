@@ -1,0 +1,231 @@
+"""Smoke ownership over in-memory ports: probes run only against objects SST is proven to own."""
+
+from __future__ import annotations
+
+from dataclasses import replace
+from types import MappingProxyType
+
+import pytest
+
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.manifest import manifest_for
+from snowflake_semantic_tools.app.smoke import SmokePublished
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
+from snowflake_semantic_tools.domain.state import AppliedEntry, Manifest, State
+from tests.helpers.agent_builders import compile_tools, search_member
+from tests.helpers.app_ports import InMemoryStateStore
+from tests.helpers.compile_builders import compiled
+from tests.helpers.progress_recorder import RecordedProgress
+from tests.helpers.project_inputs import EMPTY_SOURCES, dev_target
+from tests.helpers.snowflake_fake import FakeSnowflake
+
+STATE_TABLE = QualifiedName.parse("DB.SCH.SST_STATE")
+
+
+class MarkerCountingSnowflake(FakeSnowflake):
+    def __init__(self) -> None:
+        super().__init__()
+        self.described: list[str] = []
+        self.described_types: list[str] = []
+
+    def describe_marker(self, qualified_name: QualifiedName, object_type: str) -> OwnershipMarker | None:
+        self.described.append(qualified_name.sql)
+        self.described_types.append(object_type)
+        return super().describe_marker(qualified_name, object_type)
+
+
+def published(result: CompileResult) -> tuple[Manifest, MarkerCountingSnowflake]:
+    """A target where apply published every artifact of `result` from its manifest."""
+    manifest = manifest_for(result, EMPTY_SOURCES)
+    port = MarkerCountingSnowflake()
+    port.remote_state = MappingProxyType(
+        {
+            artifact.key: AppliedEntry(
+                artifact.fingerprint,
+                artifact.target.sql,
+                "now",
+                "run",
+                "applied",
+                artifact.fingerprint,
+                manifest.manifest_id,
+            )
+            for artifact in result.rendered
+        }
+    )
+    port.markers = {
+        artifact.target.sql: OwnershipMarker(manifest.manifest_id, artifact.fingerprint) for artifact in result.rendered
+    }
+    port.object_types = {artifact.target.sql: artifact.object_type for artifact in result.rendered}
+    return manifest, port
+
+
+def smoke(result: CompileResult, manifest: Manifest, port: FakeSnowflake, store: InMemoryStateStore | None = None):  # type: ignore[no-untyped-def]
+    """Run the suite against `port`; without `store`, no local state is cached, so state reads clean."""
+    cache = store or InMemoryStateStore()
+    return SmokePublished(port, cache).run(
+        result, manifest, target=dev_target(), state_table=STATE_TABLE, fail_fast=True
+    )
+
+
+def test_owned_objects_are_probed_as_apply_published_them() -> None:
+    result = compiled("MENU", "SALES")
+    manifest, port = published(result)
+
+    outcome = smoke(result, manifest, port)
+
+    assert outcome.success and outcome.diagnostics == ()
+    assert [probe.key for probe in outcome.attempted] == ["semantic_view:menu:view", "semantic_view:sales:view"]
+    assert [sql for sql, _ in port.queries] == [str(probe.sql) for probe in outcome.attempted]
+    assert port.described == ["DB.SCH.MENU", "DB.SCH.SALES"]
+
+
+@pytest.mark.parametrize(
+    ("result", "described_types"),
+    [
+        pytest.param(compiled("MENU"), ["SEMANTIC VIEW"], id="semantic-view"),
+        pytest.param(compiled("MENU", agents=("ANALYST",)), ["SEMANTIC VIEW", "AGENT"], id="agent"),
+        pytest.param(compile_tools([search_member()]), ["CORTEX SEARCH SERVICE"], id="search-service"),
+    ],
+)
+def test_each_marker_is_read_under_its_artifact_s_object_type(
+    result: CompileResult, described_types: list[str]
+) -> None:
+    manifest, port = published(result)
+
+    outcome = smoke(result, manifest, port)
+
+    assert "SST-APL012" not in [item.code for item in outcome.diagnostics]
+    assert port.described_types == described_types
+    assert len(outcome.attempted) == len(described_types)
+
+
+def test_a_changed_marker_keeps_every_probe_from_running() -> None:
+    result = compiled("MENU", "SALES")
+    manifest, port = published(result)
+    port.markers["DB.SCH.SALES"] = OwnershipMarker(manifest.manifest_id, "f" * 64)
+
+    changed = smoke(result, manifest, port)
+
+    assert [(item.code, item.context["artifact"]) for item in changed.diagnostics] == [
+        ("SST-APL012", "semantic_view:sales")
+    ]
+    assert changed.attempted == () and port.queries == []
+
+
+def test_an_object_an_earlier_manifest_published_at_the_same_fingerprint_is_probed() -> None:
+    # Only SALES changed after MENU was published, so MENU's entry and marker keep the earlier
+    # manifest; its fingerprint still proves it is what this manifest renders.
+    result = compiled("MENU", "SALES")
+    earlier = "e" * 64
+    manifest, port = published(result)
+    menu = dict(port.remote_state or {})["semantic_view:menu"]
+    port.remote_state = MappingProxyType(
+        {**dict(port.remote_state or {}), "semantic_view:menu": replace(menu, manifest_id=earlier)}
+    )
+    port.markers["DB.SCH.MENU"] = OwnershipMarker(earlier, menu.fingerprint)
+
+    outcome = smoke(result, manifest, port)
+
+    assert outcome.success and outcome.diagnostics == ()
+    assert [probe.key for probe in outcome.attempted] == ["semantic_view:menu:view", "semantic_view:sales:view"]
+
+
+def test_a_marker_naming_another_manifest_than_the_entry_keeps_the_probes_from_running() -> None:
+    result = compiled("MENU")
+    manifest, port = published(result)
+    port.markers["DB.SCH.MENU"] = OwnershipMarker("e" * 64, result.rendered[0].fingerprint)
+
+    outcome = smoke(result, manifest, port)
+
+    assert [(item.code, item.context["artifact"]) for item in outcome.diagnostics] == [
+        ("SST-APL012", "semantic_view:menu")
+    ]
+    assert port.queries == []
+
+
+def test_an_entry_that_does_not_match_is_reported_without_reading_the_live_marker() -> None:
+    result = compiled("ALPHA", "BRAVO", "CHARLIE")
+    manifest, port = published(result)
+    state = dict(port.remote_state or {})
+    alpha = state["semantic_view:alpha"]
+    state.pop("semantic_view:bravo")
+    state["semantic_view:alpha"] = AppliedEntry(
+        alpha.fingerprint, "DB.SCH.ELSEWHERE", "now", "run", "applied", alpha.fingerprint, manifest.manifest_id
+    )
+    port.remote_state = MappingProxyType(state)
+
+    outcome = smoke(result, manifest, port)
+
+    assert [item.context["artifact"] for item in outcome.diagnostics] == ["semantic_view:alpha", "semantic_view:bravo"]
+    assert port.described == ["DB.SCH.CHARLIE"]
+
+
+def test_each_unpublished_artifact_says_whether_it_was_never_published_or_published_older() -> None:
+    result = compiled("ALPHA", "BRAVO", "CHARLIE")
+    manifest, port = published(result)
+    state = dict(port.remote_state or {})
+    state.pop("semantic_view:alpha")
+    state["semantic_view:bravo"] = replace(state["semantic_view:bravo"], fingerprint="f" * 64)
+    port.remote_state = MappingProxyType(state)
+
+    outcome = smoke(result, manifest, port)
+
+    assert [(item.code, item.context["artifact"]) for item in outcome.diagnostics] == [
+        ("SST-APL036", "semantic_view:alpha"),
+        ("SST-APL038", "semantic_view:bravo"),
+    ]
+    assert (outcome.attempted, outcome.unpublished) == ((), 2)
+
+
+def test_a_target_nothing_was_applied_to_is_one_finding() -> None:
+    result = compiled("ALPHA", "BRAVO")
+    manifest, port = published(result)
+    port.remote_state = MappingProxyType({})
+
+    outcome = smoke(result, manifest, port)
+
+    assert [item.message for item in outcome.diagnostics] == [
+        "nothing `sst test` checks is published on this target (2 not published)"
+    ]
+    assert (outcome.unpublished, port.described) == (2, [])
+
+
+def test_anything_reading_state_reports_keeps_the_probes_from_running_even_a_warning() -> None:
+    result = compiled()
+    manifest, port = published(result)
+    cached = InMemoryStateStore(State.empty(dev_target()))
+
+    outcome = smoke(result, manifest, port, cached)
+
+    assert [item.code for item in outcome.diagnostics] == ["SST-MAN027"]
+    assert outcome.success and outcome.attempted == ()
+
+
+def test_unreadable_state_is_reported_alone_and_keeps_the_probes_from_running() -> None:
+    # Unreadable state proves nothing either way, so no object is called unpublished.
+    result = compiled()
+    manifest, port = published(result)
+    port.remote_state = None
+
+    outcome = smoke(result, manifest, port)
+
+    assert [item.code for item in outcome.diagnostics] == ["SST-PLN001"]
+    assert port.queries == [] and outcome.unpublished == 0
+
+
+def test_each_probe_is_a_unit_of_the_smoke_step() -> None:
+    result = compiled("MENU", "SALES")
+    manifest, port = published(result)
+    progress = RecordedProgress()
+
+    outcome = SmokePublished(port, InMemoryStateStore(), progress=progress).run(
+        result, manifest, target=dev_target(), state_table=STATE_TABLE, fail_fast=True
+    )
+
+    keys = [probe.key for probe in outcome.attempted]
+    assert progress.units() == [
+        event
+        for key in keys
+        for event in (("started", "smoke", key, "probing"), ("finished", "smoke", key, True, "answered"))
+    ]

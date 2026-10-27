@@ -1,0 +1,23 @@
+---
+# Two agents whose toolsets inherit each other's tools.
+files:
+  agents/cycle_a/agent.yml: |
+    name: cycle_a
+    config:
+      orchestration_model: claude-sonnet-4-6
+    spec:
+      tools:
+        - name: cycle_b
+          type: agent_toolset
+          agent: "{{ agent('cycle_b') }}"
+          description: The second agent's tools.
+  agents/cycle_b/agent.yml: |
+    name: cycle_b
+    config:
+      orchestration_model: claude-sonnet-4-6
+    spec:
+      tools:
+        - name: cycle_a
+          type: agent_toolset
+          agent: "{{ agent('cycle_a') }}"
+          description: The first agent's tools.

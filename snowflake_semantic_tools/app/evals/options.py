@@ -1,0 +1,42 @@
+"""How a suite names its evaluation runs and how long, and how patiently, it polls each one."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class EvalRunOptions:
+    """How a suite names and polls its runs.
+
+    Attributes:
+        git_sha: The commit the run names carry, as its first seven characters; empty or
+            `UNKNOWN_GIT_SHA` when the project is not in a git work tree.
+        timestamp: The run names' `ts` token; None uses the current UTC time.
+        poll_interval_ms: The wait between two status reads of a run, in milliseconds.
+        deadline_ms: How long a run may take to reach a terminal status, in milliseconds of
+            the clock's monotonic time from just before the START call; a slow START and slow
+            status reads count against it. Once it passes, one last read decides, given at
+            most `read_timeout_ms`; 20 minutes by default, 240 polls at the default interval.
+        max_read_failures: The status reads in a row that may fail in transit before the
+            attempt fails, after one last read; any read that succeeds resets the count.
+        read_timeout_ms: The longest one status read may take, network retries included,
+            before it times out; never longer than what is left of the deadline. A read that
+            times out is retried but does not count toward `max_read_failures`, as it most
+            often means a slow Snowflake: only the deadline ends polling through such reads.
+        heartbeat_ms: How often, at most, the suite reports the runs it is still waiting on.
+        partial_settle_ms: How long a partial status must persist before it ends the run, in
+            milliseconds of the clock's monotonic time from its first read. Snowflake reports
+            PARTIALLY_COMPLETED for up to a minute before a run it is finalizing reads
+            COMPLETED, so a partial status that changes within this window is not the result;
+            3 minutes by default. One read at the deadline still decides.
+    """
+
+    git_sha: str
+    timestamp: str | None = None
+    poll_interval_ms: int = 5_000
+    deadline_ms: int = 1_200_000
+    max_read_failures: int = 5
+    read_timeout_ms: int = 30_000
+    heartbeat_ms: int = 60_000
+    partial_settle_ms: int = 180_000

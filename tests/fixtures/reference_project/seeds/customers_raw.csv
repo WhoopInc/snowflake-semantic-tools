@@ -1,0 +1,9 @@
+customer_id,customer_name,customer_type
+cus-001,Customer Alpha,returning
+cus-002,Customer Bravo,new
+cus-003,Customer Charlie,returning
+cus-004,Customer Delta,new
+cus-005,Customer Echo,returning
+cus-006,Customer Foxtrot,new
+cus-007,Customer Golf,returning
+cus-008,Customer Hotel,new

@@ -1,0 +1,307 @@
+"""Resolve `--select` and `--exclude` selectors into the artifact types and keys they name.
+
+The grammar is closed: a name (with `*` and `?` globs), `type:<type>`, `path:<glob>`,
+`state:<state>`, or an artifact key `<type>:<name>`, each optionally inside dbt's graph
+operators, `+X`, `X+`, `2+X` or `X+3`, which add what X reads or what reads it in the lineage
+graph. Inside the operators X may also be a dbt node, such as `model:<name>`, `seed:<name>` or
+`source:<source>.<table>`, a view's member such as `metric:<name>`, or a tool member another
+team owns, `tool_ref:<name>`, each globbable; written bare, those name no artifact and are
+refused. Anything else is refused rather than read as a literal
+name, because a selector that silently matches nothing turns a prune or a rollback into a run
+that reports success having done nothing. A comma is refused outright: union is spelled with
+spaces, and intersection is not supported. Names, types, and states compare casefolded; a path
+glob compares against the project-relative POSIX paths an artifact was compiled from.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable, Collection, Iterable, Mapping
+from dataclasses import dataclass
+from fnmatch import fnmatchcase
+
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.lineage.graph import (
+    DBT_KINDS,
+    MEMBER_KINDS,
+    TOOL_REF,
+    GraphSelector,
+    GraphSource,
+    LineageGraph,
+    parse_graph_selector,
+)
+from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.plan.diff import STATES, state_classes
+
+# The selector kinds the grammar registers, in the order a refusal lists them.
+SELECTOR_KINDS = ("type", "path", "tag", "state", "model", "source")
+_GLOB = frozenset("*?[")
+
+
+@dataclass(frozen=True, slots=True)
+class Selectable:
+    """One artifact a selector can name, as the compiled manifest records it.
+
+    Attributes:
+        name: The artifact's name, casefolded.
+        source_files: The project-relative POSIX paths the artifact was compiled from.
+    """
+
+    key: str
+    type: str
+    name: str
+    fingerprint: str
+    source_files: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Selection:
+    """The types and keys a list of selectors names; None for each part they leave unnamed.
+
+    A part a selector names is a set even when it matched nothing, so a selection that names
+    nothing is told apart from no selection at all.
+    """
+
+    types: frozenset[str] | None
+    keys: frozenset[str] | None
+
+    def names(self, artifact_type: str, key: str) -> bool:
+        """Report whether the selection names an artifact, by its type or by its key."""
+        return (self.types is not None and artifact_type in self.types) or (self.keys is not None and key in self.keys)
+
+    def keys_in(self, universe: Iterable[Selectable]) -> frozenset[str]:
+        """Return the keys the selection names, each type expanded to its artifacts in `universe`."""
+        return frozenset(
+            (*(self.keys or ()), *(item.key for item in universe if self.types is not None and item.type in self.types))
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionScope:
+    """What `--select` and `--exclude` choose together: the one rule every command applies.
+
+    Attributes:
+        selected: What `--select` names; None when no selector was given, which selects every
+            artifact.
+        excluded: What `--exclude` names; None when no exclusion was given.
+    """
+
+    selected: Selection | None = None
+    excluded: Selection | None = None
+
+    def covers(self, artifact_type: str, key: str) -> bool:
+        """Report whether an artifact is chosen: selected, or nothing was, and not excluded."""
+        chosen = self.selected is None or self.selected.names(artifact_type, key)
+        return chosen and not (self.excluded is not None and self.excluded.names(artifact_type, key))
+
+    def misses(self, selectors: tuple[str, ...], universe: Iterable[Selectable]) -> tuple[Diagnostic, ...]:
+        """Say why a scope that chooses none of `universe` chose nothing.
+
+        Diagnostics:
+            SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
+            SST-DIS010: `--select` chose nothing, one per selector.
+        """
+        artifacts = tuple(universe)
+        if self.excluded is not None and any(
+            SelectionScope(self.selected).covers(item.type, item.key) for item in artifacts
+        ):
+            return (D("SST-DIS015", selector=" ".join(selectors)),)
+        return tuple(D("SST-DIS010", selector=value) for value in selectors)
+
+    def reaches(self, subject: str | None, *, artifact_types: Collection[str]) -> bool:
+        """Report whether a diagnostic about `subject` belongs to the run this scope chooses.
+
+        Only a subject that is an artifact key, `<type>:<name>` of a registered type, can be
+        left out, and only when the scope does not choose that artifact. Any other subject --
+        the configuration, a referenced tool member, a semantic view member, none -- cannot be pinned to
+        the artifacts it would change, as `--partial` cannot pin it, so it concerns every run.
+
+        Args:
+            artifact_types: Every registered artifact type.
+        """
+        kind = subject.partition(":")[0] if subject and ":" in subject else None
+        if kind is None or kind not in artifact_types:
+            return True
+        return self.covers(kind, str(subject))
+
+
+def resolve_selectors(
+    values: Iterable[str],
+    *,
+    artifact_types: Iterable[str],
+    universe: Iterable[Selectable] = (),
+    previous: Mapping[str, str] | None = None,
+    graph: GraphSource | None = None,
+) -> Selection | Diagnostic:
+    """Resolve selectors against the artifacts there are, or return the refusal of the first that fails.
+
+    A bare name without a glob names the semantic view of that name when no compiled artifact
+    carries it, so an orphan whose source was deleted can still be selected for a prune.
+
+    Args:
+        artifact_types: Every registered artifact type, which `type:` and `<type>:<name>` name.
+        universe: The compiled artifacts, which names, paths, and states are resolved against.
+        previous: Each artifact key's fingerprint in the previous run's manifest, from
+            `--state`; None when no state was given.
+        graph: Builds the lineage graph a selector with graph operators walks, called only when
+            one is given; None where lineage cannot be read.
+
+    Diagnostics:
+        SST-PRT101: a selector contains a comma.
+        SST-PRT102: a selector's prefix is not a registered kind.
+        SST-PRT113: a selector globs after a kind that takes an exact value.
+        SST-PRT103: a `state:` selector was given without `--state`.
+        SST-PRT100: a selector is empty; a registered kind names an unknown type or state, or is
+            not supported here;
+            a graph operator is misplaced, or given where lineage cannot be read; or a dbt node
+            or a member is named without one.
+    """
+    known_types = frozenset(artifact_types)
+    artifacts = tuple(universe)
+    named: dict[str, set[str]] = {}
+    built: list[LineageGraph] = []
+
+    def lineage() -> LineageGraph | None:
+        if graph is None:
+            return None
+        if not built:
+            built.append(graph())
+        return built[0]
+
+    for value in values:
+        resolved = _resolve_graph(value, known_types, artifacts, previous, lineage)
+        if isinstance(resolved, Diagnostic):
+            return resolved
+        kind, names = resolved
+        named.setdefault(kind, set()).update(names)
+    types, keys = named.get("type"), named.get("key")
+    return Selection(frozenset(types) if types is not None else None, frozenset(keys) if keys is not None else None)
+
+
+def _resolve_graph(
+    value: str,
+    known_types: frozenset[str],
+    artifacts: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None,
+    lineage: Callable[[], LineageGraph | None],
+) -> tuple[str, frozenset[str]] | Diagnostic:
+    """Resolve one selector, walking the lineage graph when it writes graph operators."""
+    if "," in value:
+        return D("SST-PRT101", subject="cli", value=value)
+    if not value.strip():
+        return _unsupported(value, "is empty; name an artifact, or write type:<type> or path:<glob>")
+    try:
+        operators = parse_graph_selector(value)
+    except ValueError as exc:
+        return _unsupported(value, str(exc))
+    if operators is None:
+        return _resolve_one(value, known_types, artifacts, previous)
+    graph = lineage()
+    if graph is None:
+        return _unsupported(value, "graph operators need the lineage the compiled manifest records")
+    start = _graph_start(operators, known_types, artifacts, previous, graph)
+    if isinstance(start, Diagnostic):
+        return start
+    walked = graph.walk(start, operators)
+    return "key", frozenset(key for key in walked if graph.nodes[key].kind in known_types)
+
+
+def _graph_start(
+    operators: GraphSelector,
+    known_types: frozenset[str],
+    artifacts: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None,
+    graph: LineageGraph,
+) -> frozenset[str] | Diagnostic:
+    """Return the nodes a graph selector's walk starts from: what its core selector names."""
+    core = operators.core
+    prefix, separator, rest = core.partition(":")
+    kind = prefix.casefold()
+    if separator and kind in (*DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
+        pattern = f"{kind}:{rest.casefold()}"
+        return frozenset(key for key in graph.nodes if fnmatchcase(key, pattern))
+    resolved = _resolve_one(core, known_types, artifacts, previous)
+    if isinstance(resolved, Diagnostic):
+        return resolved
+    found, names = resolved
+    if found == "type":
+        return frozenset(key for key, node in graph.nodes.items() if node.kind in names)
+    return names
+
+
+def _resolve_one(
+    value: str,
+    known_types: frozenset[str],
+    artifacts: tuple[Selectable, ...],
+    previous: Mapping[str, str] | None,
+) -> tuple[str, frozenset[str]] | Diagnostic:
+    """Resolve one selector to `("type", types)` or `("key", keys)`, or return its refusal."""
+    prefix, separator, rest = value.partition(":")
+    if not separator:
+        return "key", _names(value.casefold(), artifacts)
+    kind = prefix.casefold()
+    if kind in known_types and _GLOB & set(rest):
+        # Only a bare name takes a glob; `tool:*` is `type:tool`.
+        return _globbed(value, prefix, f"or the bare glob '{rest}', which matches a name of every type")
+    if kind in known_types:
+        if not rest:
+            return _unsupported(value, f"{prefix}: names no artifact")
+        return "key", frozenset((artifact_key(kind, rest.casefold()),))
+    if kind in (*DBT_KINDS, *MEMBER_KINDS, TOOL_REF):
+        what = (
+            "a dbt node"
+            if kind in DBT_KINDS
+            else "a tool another team owns"
+            if kind == TOOL_REF
+            else "a member of a view"
+        )
+        return _unsupported(value, f"{prefix}: names {what}, not an artifact; write {value}+ for what reads it")
+    if kind not in SELECTOR_KINDS:
+        return D("SST-PRT102", subject="cli", value=value, expected=f"one of {', '.join(SELECTOR_KINDS)}")
+    if kind in ("type", "state") and _GLOB & set(rest):
+        return _globbed(value, prefix, "since only a bare name or a path: selector takes a glob")
+    if kind == "type":
+        if rest.casefold() not in known_types:
+            return _unsupported(value, f"unknown artifact type '{rest}'; one of {', '.join(sorted(known_types))}")
+        return "type", frozenset((rest.casefold(),))
+    if kind == "path":
+        return "key", frozenset(
+            item.key for item in artifacts if any(fnmatchcase(path, rest) for path in item.source_files)
+        )
+    if kind == "state":
+        return _state(value, rest.casefold(), artifacts, previous)
+    return _unsupported(value, f"{kind}: selectors are not supported by this command")
+
+
+def _names(pattern: str, artifacts: tuple[Selectable, ...]) -> frozenset[str]:
+    """Return the keys of every artifact whose name matches; a plain name falls back to a view's key."""
+    matched = frozenset(item.key for item in artifacts if fnmatchcase(item.name, pattern))
+    if matched or _GLOB & set(pattern):
+        return matched
+    return frozenset((artifact_key("semantic_view", pattern),))
+
+
+def _state(
+    value: str, state: str, artifacts: tuple[Selectable, ...], previous: Mapping[str, str] | None
+) -> tuple[str, frozenset[str]] | Diagnostic:
+    """Resolve `state:<state>` by comparing the compiled artifacts with the previous run's."""
+    if previous is None:
+        return D("SST-PRT103", subject="cli", value=value)
+    if state not in STATES:
+        return _unsupported(value, f"unknown state '{state}'; one of {', '.join(STATES)}")
+    current = {item.key: item.fingerprint for item in artifacts}
+    return "key", state_classes(current, previous)[state]
+
+
+def _unsupported(value: str, detail: str) -> Diagnostic:
+    return D("SST-PRT100", subject="cli", detail=f"selector '{value}': {detail}")
+
+
+def _globbed(value: str, prefix: str, alternative: str) -> Diagnostic:
+    """Refuse a glob after a kind that takes an exact value, saying what to write instead."""
+    return D(
+        "SST-PRT113",
+        subject="cli",
+        value=value,
+        kind=prefix,
+        expected=f"an exact value after '{prefix}:', {alternative}",
+    )

@@ -1,0 +1,8 @@
+---
+# Only a derived metric may reference the non-additive total_supply_cost
+# (SST-VAL107).
+metric:
+  name: gross_margin
+  description: |-
+    Line-item revenue less the cost of supplying what was sold, in cents.
+  expr: "{{ metric('total_line_item_revenue') }} - {{ metric('total_supply_cost') }}"

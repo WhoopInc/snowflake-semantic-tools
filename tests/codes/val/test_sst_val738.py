@@ -1,0 +1,26 @@
+"""SST-VAL738: custom metric declares no explicit judge model.
+
+Fires when a custom metric's judge model is auto; the nearest legitimate input stays quiet.
+"""
+
+from __future__ import annotations
+
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.eval_inputs import judge, sales_eval, validate
+
+
+def test_sst_val738_fires() -> None:
+    diagnostic = only(validate(sales_eval(metrics=(judge(model="auto"),))), "SST-VAL738")
+    assert diagnostic.severity is Severity.ERROR
+    assert diagnostic.message == "eval metric 'grounding' names no judge model (model: auto)"
+    assert diagnostic.subject == "eval_metric:grounding"
+
+
+def test_sst_val738_names_an_absent_model_as_unset() -> None:
+    diagnostic = only(validate(sales_eval(metrics=(judge(model=None),))), "SST-VAL738")
+    assert diagnostic.message == "eval metric 'grounding' names no judge model (model: unset)"
+
+
+def test_sst_val738_silent() -> None:
+    assert "SST-VAL738" not in codes(validate())

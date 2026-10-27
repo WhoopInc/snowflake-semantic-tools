@@ -1,0 +1,196 @@
+"""The connector's preflight reads: what each SHOW or query it sends returns to plan."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+
+import pytest
+
+from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName, SchemaScope
+from snowflake_semantic_tools.domain.model.lifecycle import QueryResult
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.sql import Sql
+
+SCOPE = SchemaScope(Identifier.parse("DB"), Identifier.parse("SCH"))
+
+
+class ScriptedConnector(SnowflakeConnector):
+    """A connector answering each statement from the rows scripted for its prefix, recording what it sent."""
+
+    def __init__(
+        self,
+        rows: Mapping[str, tuple[Mapping[str, object], ...]] | None = None,
+        results: Mapping[str, QueryResult] | None = None,
+    ) -> None:
+        self._rows = {prefix: tuple(dict(row) for row in found) for prefix, found in (rows or {}).items()}
+        self._results = dict(results or {})
+        self.sent: list[tuple[str, object]] = []
+
+    def _dict_rows(self, sql: Sql) -> tuple[dict[str, object], ...]:
+        self.sent.append((str(sql), None))
+        return next((rows for prefix, rows in self._rows.items() if str(sql).startswith(prefix)), ())
+
+    def query(self, sql: Sql, params: Sequence[object] | Mapping[str, object] | None = None) -> QueryResult:
+        self.sent.append((str(sql), params))
+        return next(
+            (result for prefix, result in self._results.items() if str(sql).startswith(prefix)), QueryResult((), ())
+        )
+
+    def object_exists(self, object_type: str, qualified_name: QualifiedName) -> bool:
+        self.sent.append((object_type, qualified_name.sql))
+        return qualified_name.name.folded == "ORDERS"
+
+
+def test_containers_and_warehouses_exist_only_when_show_lists_their_exact_name() -> None:
+    connector = ScriptedConnector(
+        {
+            "SHOW DATABASES": ({"name": "DB"}, {"name": "DB_OLD"}),
+            "SHOW SCHEMAS": ({"name": "SCH"},),
+            "SHOW WAREHOUSES": ({"name": "WH_2"},),
+        }
+    )
+    assert connector.database_exists(Identifier.parse("db"))
+    assert not connector.database_exists(Identifier.parse("other"))
+    assert connector.schema_exists(SCOPE)
+    assert not connector.warehouse_exists(Identifier.parse("WH"))
+    assert connector.sent[0] == ("SHOW DATABASES LIKE 'DB'", None)
+    assert connector.sent[2] == ("SHOW SCHEMAS LIKE 'SCH' IN DATABASE DB", None)
+
+
+def test_a_relation_is_a_table_or_a_view() -> None:
+    connector = ScriptedConnector()
+    assert connector.relation_exists(QualifiedName.parse("DB.SCH.ORDERS"))
+    assert connector.sent == [("TABLE OR VIEW", "DB.SCH.ORDERS")]
+
+
+def test_a_privilege_is_held_by_a_role_in_the_session_that_is_granted_it_or_owns_the_schema() -> None:
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "CREATE SEMANTIC VIEW", "granted_to": "ROLE", "grantee_name": "BUILDER"},
+        {"privilege": "OWNERSHIP", "granted_to": "ROLE", "grantee_name": "OWNER"},
+        {"privilege": "CREATE AGENT", "granted_to": "DATABASE_ROLE", "grantee_name": "DB.AGENTS"},
+    )
+    connector = ScriptedConnector(
+        {"SHOW GRANTS ON SCHEMA": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((False,),))}
+    )
+    privileges = ("CREATE SEMANTIC VIEW", "CREATE AGENT")
+    assert connector.missing_privileges(SCOPE, privileges) == privileges
+    role_checks = [params for statement, params in connector.sent if statement.startswith("SELECT IS_ROLE")]
+    assert role_checks == [("BUILDER",), ("OWNER",)]
+
+    owner = ScriptedConnector(
+        {"SHOW GRANTS ON SCHEMA": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))}
+    )
+    assert owner.missing_privileges(SCOPE, privileges) == ()
+
+
+def test_a_stage_privilege_is_held_by_a_role_in_the_session_that_is_granted_it_or_owns_the_stage() -> None:
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "READ", "granted_to": "ROLE", "grantee_name": "READER"},
+        {"privilege": "OWNERSHIP", "granted_to": "ROLE", "grantee_name": "OWNER"},
+    )
+    stage = QualifiedName.parse("DB.SCH.AGENT_SPECS")
+    connector = ScriptedConnector(
+        {"SHOW GRANTS ON STAGE": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((False,),))}
+    )
+    assert connector.missing_stage_privileges(stage, ("READ", "WRITE")) == ("READ", "WRITE")
+    assert connector.sent[0] == ("SHOW GRANTS ON STAGE DB.SCH.AGENT_SPECS", None)
+    owner = ScriptedConnector(
+        {"SHOW GRANTS ON STAGE": grants}, {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))}
+    )
+    assert owner.missing_stage_privileges(stage, ("READ", "WRITE")) == ()
+
+
+def test_a_stage_privilege_held_through_a_database_role_counts_for_the_session() -> None:
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "READ", "granted_to": "DATABASE_ROLE", "grantee_name": "DB.WRITER"},
+        {"privilege": "WRITE", "granted_to": "DATABASE_ROLE", "grantee_name": "WRITER"},
+    )
+    connector = ScriptedConnector(
+        {
+            "SHOW GRANTS ON STAGE": grants,
+            "SHOW GRANTS OF DATABASE ROLE": ({"granted_to": "ROLE", "grantee_name": "R"},),
+        },
+        {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))},
+    )
+    stage = QualifiedName.parse("DB.SCH.AGENT_SPECS")
+    assert connector.missing_stage_privileges(stage, ("READ", "WRITE")) == ()
+    assert ("SHOW GRANTS OF DATABASE ROLE DB.WRITER", None) in connector.sent
+    assert [params for statement, params in connector.sent if statement.startswith("SELECT IS_ROLE")] == [("R",)]
+
+
+def test_attaching_to_cowork_needs_modify_or_ownership_held_by_an_account_role_in_the_session() -> None:
+    # Snowflake private preview (PrPr): CoWork profiles. USAGE does not attach, and a database
+    # role holds nothing on the account-level CoWork object.
+    grants: tuple[dict[str, object], ...] = (
+        {"privilege": "USAGE", "granted_to": "ROLE", "grantee_name": "PUBLIC"},
+        {"privilege": "MODIFY", "granted_to": "ROLE", "grantee_name": "PUBLISHER"},
+        {"privilege": "OWNERSHIP", "granted_to": "ROLE", "grantee_name": "ACCOUNTADMIN"},
+        {"privilege": "MODIFY", "granted_to": "DATABASE_ROLE", "grantee_name": "DB.WRITER"},
+    )
+    outside = ScriptedConnector(
+        {"SHOW GRANTS ON SNOWFLAKE INTELLIGENCE": grants},
+        {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((False,),))},
+    )
+    assert outside.missing_cowork_privileges("SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", ("MODIFY",)) == ("MODIFY",)
+    assert outside.sent[0] == ("SHOW GRANTS ON SNOWFLAKE INTELLIGENCE SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", None)
+    asked = [params for statement, params in outside.sent if statement.startswith("SELECT IS_ROLE")]
+    assert asked == [("ACCOUNTADMIN",), ("PUBLISHER",)]
+    inside = ScriptedConnector(
+        {"SHOW GRANTS ON SNOWFLAKE INTELLIGENCE": grants[2:3]},
+        {"SELECT IS_ROLE_IN_SESSION": QueryResult(("IN",), ((True,),))},
+    )
+    assert inside.missing_cowork_privileges("SNOWFLAKE_INTELLIGENCE_OBJECT_DEFAULT", ("MODIFY",)) == ()
+
+
+def test_locked_objects_are_those_held_in_the_schema() -> None:
+    locks: tuple[dict[str, object], ...] = (
+        {"resource": "DB.SCH.SALES", "status": "HOLDING"},
+        {"resource": "DB.SCH.SALES", "status": "HOLDING"},
+        {"resource": "DB.SCH.MENU", "status": "WAITING"},
+        {"resource": "DB.OTHER.X", "status": "HOLDING"},
+        {"resource": "not a name", "status": "HOLDING"},
+    )
+    connector = ScriptedConnector({"SHOW LOCKS IN ACCOUNT": locks})
+    assert connector.locked_objects(SCOPE) == (QualifiedName.parse("DB.SCH.SALES"),)
+
+
+def test_external_references_come_from_the_dependency_record_once_each() -> None:
+    rows = (("BI", "DASH", "REVENUE"), ("BI", "DASH", "REVENUE"), ("bi", "Dash", "lower"))
+    connector = ScriptedConnector(results={"SELECT REFERENCING_DATABASE": QueryResult(("D", "S", "N"), rows)})
+    found = connector.external_references(QualifiedName.parse("DB.SCH.SALES"))
+    assert [item.sql for item in found] == ["BI.DASH.REVENUE", '"bi"."Dash"."lower"']
+    assert connector.sent[0][1] == ("DB", "SCH", "SALES")
+
+
+def _version_row(version: str) -> dict[str, object]:
+    """A row as SHOW VERSIONS IN DATASET lists it: the version's name is `version`."""
+    return {
+        "created_on": "2026-01-01",
+        "version": version,
+        "comment": None,
+        "database_name": "DB",
+        "schema_name": "SCH",
+        "dataset_name": "DS",
+        "metadata": "{}",
+    }
+
+
+def test_a_dataset_lists_its_versions_by_name_in_show_order() -> None:
+    connector = ScriptedConnector(
+        {"SHOW VERSIONS IN DATASET": (_version_row("SST_ABC"), _version_row(""), _version_row("V2"))}
+    )
+    assert connector.dataset_versions(QualifiedName.parse("DB.SCH.DS")) == ("SST_ABC", "V2")
+    assert connector.sent == [("SHOW VERSIONS IN DATASET DB.SCH.DS", None)]
+
+
+def test_a_dataset_version_is_read_from_the_version_column_not_name() -> None:
+    connector = ScriptedConnector({"SHOW VERSIONS IN DATASET": ({"name": "WRONG", "version": "SST_ABC"},)})
+    assert connector.dataset_versions(QualifiedName.parse("DB.SCH.DS")) == ("SST_ABC",)
+
+
+def test_grants_on_a_dataset_are_refused_without_sending_a_statement() -> None:
+    connector = ScriptedConnector({})
+    with pytest.raises(SnowflakePortError, match="no grants on a dataset"):
+        connector.show_grants("dataset", QualifiedName.parse("DB.SCH.DS"))
+    assert connector.sent == []

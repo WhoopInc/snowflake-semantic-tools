@@ -1,8 +1,8 @@
 # Snowflake Semantic Tools (SST)
 
-SST is a CLI tool that transforms dbt models into Snowflake Semantic Views for Cortex Analyst, Cortex Agents, and BI tools.
+SST is a command-line compiler and publisher for a Snowflake semantic layer kept as code in a dbt project: semantic views, agent tools, Cortex Agents, CoWork profiles, evals, skills, plugins, and Cortex Code profiles. It validates offline, saves a reviewable plan, and applies exactly that plan.
 
-**Key commands**: `sst validate`, `sst extract`, `sst deploy`, `sst enrich`, `sst generate`
+**Commands**: `sst init`, `debug`, `migrate refs|split`, `enrich`, `format`, `compile`, `validate`, `baseline add|prune|renew|show`, `list`, `plan`, `apply`, `diff`, `test`, `eval`, `ask`, `explain`, `lineage`, `docs [--check]`, `state recover|convert|unlock`, `agent-kit install|upgrade|status|remove`, `clean`, `drop`. The CLI is the only interface; there is no Python API. Options and exit codes are in `docs/reference/cli.md` (generated).
 
 ## Critical Rules
 
@@ -13,7 +13,8 @@ SST is a CLI tool that transforms dbt models into Snowflake Semantic Views for C
   ```
   Preferred format: `[SST-<issue#>] <description>`
 - **Each PR addresses exactly one GitHub issue.** The PR body MUST contain `Closes #<number>`.
-- **Feature branches off `main`**: `fix/<description>` or `feature/<description>`
+- **Branch from the line you are changing**: 1.0 work from the 1.0 development branch; a 0.3.x fix from the maintenance branch cut from tag `v0.3.1`, never merged into 1.0 (see `CONTRIBUTING.md`). Name branches `fix/<description>` or `feature/<description>`.
+- **Connect to Snowflake only when the user asks**, and then only to a non-production scratch schema. These connect: `plan` unless `--use-cached-state`, `apply`, `enrich`, `drop`, `state recover`, `state convert`, `state unlock`, `baseline add --target` for a code only a connection finds (its precheck is not `local`) or with `--all-warnings`, `baseline prune --target` when an entry records that target and only a connection finds its code, `test` whenever a suite runs (`smoke` and `evals` both run against the account), `ask` (it runs the agent), `diff` whenever either side is a dbt target (`--to` defaults to one), `debug` unless `--no-connect` or `--snowflake-signatures`, and `validate` with `--verify-schema` or with syntax checks on, as `sst init` writes them (`validation.snowflake_syntax_check: true`; the key must be stated, `SST-CFG031`); `sst validate --no-snowflake-syntax-check` stays offline. Everything else, including the whole offline test suite, opens no session of its own. With `dbt.command: compile`, though, any command that runs dbt (everything that loads the project, unless `--manifest` or `dbt.invoke: false`) also makes dbt connect to the warehouse.
 - **When addressing PR review comments**: reply to the comment explaining the fix, then resolve the thread:
   ```bash
   # Reply to the comment
@@ -22,14 +23,54 @@ SST is a CLI tool that transforms dbt models into Snowflake Semantic Views for C
   gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<THREAD_NODE_ID>"}) { thread { isResolved } } }'
   ```
 
-## Code Style
+## Layout
 
-- **Formatter**: `black snowflake_semantic_tools/` (line length 120)
-- **Import sorting**: `isort snowflake_semantic_tools/` (black profile)
-- **Type checking**: `mypy snowflake_semantic_tools/`
-- **Tests**: `python -m pytest tests/unit/ -v`
-- **Package manager**: Poetry (NOT uv)
-- **Error messages**: Must be actionable — tell the user what's wrong AND how to fix it
+`snowflake_semantic_tools/` holds `__init__.py`, `_version.py`, and four rings, nothing else:
+
+| Ring | Holds | Import rules |
+|------|-------|--------------|
+| `cli/` | click commands; the composition root | may import every ring |
+| `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs and split) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
+| `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py` and `yaml` import `ruamel` (`dbt` edits through `roundtrip.py`) |
+| `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
+
+No module in any ring imports `dbt`: SST runs the dbt executable and reads its manifest.
+
+`poetry run lint-imports` enforces these as the nine contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+
+## Gates
+
+What `.github/workflows/test-and-lint.yml` runs, in short; the exact commands, coverage included, are under "Running the Gates" in `CONTRIBUTING.md`.
+
+```bash
+poetry check --lock
+poetry run pytest tests/unit/cli/test_exit_codes.py
+poetry run sst --project-dir tests/fixtures/reference_project format --check
+poetry run pytest tests/ -n auto  # with coverage, then the per-layer ratchet; serial floors: domain 100%, app 95%, cli 90%; adapters 90%
+poetry run mypy snowflake_semantic_tools tests   # strict
+poetry run ruff format --check snowflake_semantic_tools/ tests/
+poetry run ruff check snowflake_semantic_tools/ tests/
+poetry run lint-imports
+poetry run sst docs --check
+poetry run bandit -r snowflake_semantic_tools -ll
+poetry run pip-audit --skip-editable --progress-spinner off
+semgrep scan --config .semgrep/ --error --metrics off --disable-version-check snowflake_semantic_tools  # separate job
+```
+
+## Conventions
+
+- **Package manager**: Poetry (NOT uv). Python 3.11–3.13.
+- **Style**: ruff formats, sorts imports, and lints, line length 120; mypy runs in strict mode over the package and the tests.
+- **Imports**: absolute, by full dotted path (`from snowflake_semantic_tools.domain.model.dbt import DbtCatalog`, never `from .dbt import ...`); tests share code only through `tests.helpers`. `tests/unit/test_import_style.py` enforces both.
+- **Docstrings and size**: follow "Docstrings and comments" in `CONTRIBUTING.md`; `tests/unit/test_docstrings.py` and `tests/unit/test_structure.py` enforce it with no exceptions.
+- **Diagnostics**: every problem is registered in `snowflake_semantic_tools/domain/diagnostics/specs/` (one module per code area) with a stable `SST-XXXnnn` code and an actionable suggestion (what is wrong AND how to fix it). Codes are never reused. The registry entry is the code's whole contract, rendered into `docs/reference/error-codes.md`; `tests/codes/` requires each code to be emitted and tested both ways (`test_<code>_fires` / `test_<code>_silent`); its allowlists only shrink (`tests/codes/README.md`). The steps are under "Adding a diagnostic code" in `CONTRIBUTING.md`.
+- **CLI options** are declared without `help=`; the description goes in `cli/help_text.py` (`_OPTION_HELP`, or `_COMMAND_OPTION_HELP` for one command's narrower meaning). See "Adding a CLI option" in `CONTRIBUTING.md`.
+- **SQL** is built only through `snowflake_semantic_tools.domain.sql`: `sql()` with a constant template and `Sql` parts from its quoting constructors. `Sql` cannot be constructed elsewhere, and `tests/unit/security/test_sql_construction.py` refuses SQL built from strings.
+- **Config keys** are declared in `snowflake_semantic_tools/domain/model/config_schema/keys.py`.
+- **Generated pages**: after changing diagnostics, the config schema, CLI options, or the artifact registry, run `poetry run sst docs` and commit `docs/reference/*.md`. Never edit those pages by hand.
+- **Version**: `snowflake_semantic_tools/_version.py` must equal the version in `pyproject.toml` (a test asserts it).
+- **Tests** never connect to Snowflake; fixtures and goldens are described in `tests/README.md`.
+- **Hygiene**: no planning identifiers (one capital letter followed by three digits), environment-specific names, or home-directory paths in committed files.
 
 ## Skills
 
@@ -37,9 +78,9 @@ Load the appropriate skill for each task. Do not duplicate skill logic in ad-hoc
 
 | Skill | When to Use |
 |-------|-------------|
-| `sst-test` | Running unit tests, checking coverage, verifying fixes |
-| `sst-validate` | Running `sst validate` against a dbt project, interpreting results |
-| `sst-e2e-test` | End-to-end pipeline testing against sst-jaffle-shop (QA before release) |
+| `sst-test` | Running the test suite and the CI gates, checking coverage floors, verifying fixes |
+| `sst-validate` | Running `sst validate` / `sst compile --emit-ddl` against a project, interpreting diagnostics |
+| `sst-e2e-test` | QA before a release or PR: the reference project offline (compile, the golden tests, codemod); plan/apply against a scratch schema only on request |
 | `sst-pr-review` | Reviewing pull requests — process checks, code review, test verification |
 | `opening-sst-pr` | Creating a new PR — enforces commit regex, single-issue rule, PR template |
 | `sst-create-issue` | Filing GitHub issues — uses repo issue templates for bugs, features, docs |

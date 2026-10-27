@@ -1,0 +1,643 @@
+"""Observe live state and compute a deterministic, non-writing ChangeSet.
+
+`PreparePlan` is the plan and apply commands' use case around `app.plan_artifacts`: it
+decides what a plan covers, validates it, reads authoritative state, renders what publishes,
+and builds the composite artifacts' lifecycle handlers, returning `PlanReady` or
+`PlanRefused`. `PreparePlan.run` reads the live target; `PreparePlan.run_recorded` plans
+from what an earlier plan recorded of it instead, and reads nothing.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
+from types import MappingProxyType
+
+from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.base import CompiledArtifact
+from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile, for_coco_publication
+from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile, for_cowork_publication
+from snowflake_semantic_tools.app.compile.evals import CompiledEval
+from snowflake_semantic_tools.app.compile.skills import CompiledExtension
+from snowflake_semantic_tools.app.compile.staged_agent import agent_spec_stage
+from snowflake_semantic_tools.app.fanout import Fanout
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleConfig, EvalLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
+from snowflake_semantic_tools.app.manifest import manifest_for, stale_manifest, target_mismatch
+from snowflake_semantic_tools.app.observation_age import seconds_between
+from snowflake_semantic_tools.app.observe import DEFAULT_OBSERVE_OPTIONS, ObserveOptions
+from snowflake_semantic_tools.app.partial import partial_changeset, partial_refusal, partial_split
+from snowflake_semantic_tools.app.plan_artifacts import (
+    PlanArtifacts,
+    PlanReadPort,
+    TargetReading,
+    plan_changes,
+    targets_by_kind,
+    unrecorded_composites,
+)
+from snowflake_semantic_tools.app.plan_diff import compiled_fingerprints, diff_updates, from_state
+from snowflake_semantic_tools.app.plan_values import (
+    OBSERVATION_TTL_MS,
+    CachedObservation,
+    PlanCandidates,
+    PlanReady,
+    PlanRefused,
+    PlanScope,
+)
+from snowflake_semantic_tools.app.policy import strict_reach
+from snowflake_semantic_tools.app.state import change_summary, read_state
+from snowflake_semantic_tools.app.validate import ValidateArtifacts
+from snowflake_semantic_tools.app.validate_models import ModelCheck, model_check
+from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
+from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline
+from snowflake_semantic_tools.domain.diagnostics.policy import SeverityPolicy, apply_overrides, apply_policy
+from snowflake_semantic_tools.domain.model.config_schema import config_block, config_bool
+from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.lifecycle import ChangeSet, CompositePlan, RenderedArtifact
+from snowflake_semantic_tools.domain.plan.impact import impact_scope
+from snowflake_semantic_tools.domain.plan.recorded import RecordedObservation
+from snowflake_semantic_tools.domain.plan.summary import plan_notices
+from snowflake_semantic_tools.domain.ports.clock import ClockPort
+from snowflake_semantic_tools.domain.ports.lifecycle import CompositeLifecycleHandler
+from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.snowflake import SnowflakePort
+from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import CortexModelsPort
+from snowflake_semantic_tools.domain.ports.snowflake.preflight import PreflightPort
+from snowflake_semantic_tools.domain.ports.state import StateStore
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
+from snowflake_semantic_tools.domain.state import Manifest, State
+from snowflake_semantic_tools.domain.state.lock import STANDARD_TABLES, lock_table_for
+from snowflake_semantic_tools.domain.validate.config import severity_overrides
+
+
+class PreparePlan:
+    """Decide what a plan covers, then validate it, read state, and observe Snowflake for it.
+
+    Two steps, because the caller opens the connection between them: `select` decides
+    offline whether anything can be planned, and `run` plans over the open connection. The
+    connection belongs to the caller, which closes it. Neither step writes to Snowflake.
+
+    Args:
+        baseline: The run's baseline. A validation error it holds -- a warning `--strict`
+            promoted -- does not refuse the plan, as it does not fail `sst validate`.
+        phases: Times `validate`, `state_read`, `composites` (the composite artifacts' own
+            reads), `observe`, and `classify`.
+    """
+
+    def __init__(
+        self,
+        inputs: ProjectInputs,
+        clock: ClockPort,
+        *,
+        baseline: Baseline | None = None,
+        phases: PhaseTimer = NO_PHASES,
+    ) -> None:
+        self._inputs = inputs
+        self._clock = clock
+        self._baseline = baseline
+        self._phases = phases
+
+    def select(
+        self,
+        full: CompileResult,
+        compiled_manifest: Manifest,
+        scope: PlanScope,
+        *,
+        partial: bool,
+        strict: bool | None,
+        connected: bool | None,
+        project: str,
+        previous_manifest: Manifest | None = None,
+    ) -> PlanCandidates | PlanRefused:
+        """Decide what may publish and whether the compile it comes from is current.
+
+        Steps, in order:
+
+        1. With `--partial` and a failed compile, split off what can still publish.
+        2. Narrow that to the scope, and with `state:modified` to what changed since
+           `previous_manifest`; refuse when selectors matched nothing and nothing prunes,
+           unless every selector is a `state:` one.
+        3. Refuse on a compile error the split did not set aside, adding SST-PLN033 with
+           `--partial` when the error names no artifact.
+        4. Read the `validation:` defaults, and build the manifest of what may publish;
+           `state:modified` builds it first, to compare it with `previous_manifest`.
+        5. Refuse when it is not the manifest `sst compile` wrote, naming the targets when
+           `sst compile` wrote it for another one.
+
+        Args:
+            compiled_manifest: The manifest `sst compile` wrote.
+            strict, connected: The `--strict` and `--snowflake-syntax-check` flags; None
+                defers to `validation:`.
+            project: How the refusal for selectors that matched nothing names the project.
+            previous_manifest: The manifest `state:modified` compares with; None when there
+                is none.
+
+        Diagnostics:
+            SST-PLN006: `state:modified` was asked for without a previous manifest, so the
+                plan covers everything.
+            SST-PLN033: with `--partial`, a compile error names no artifact, so nothing can
+                be split off.
+            SST-MAN006: the compiled manifest was written for another target.
+            SST-MAN009: the compiled manifest is stale.
+            SST-DIS010: the selectors matched nothing and nothing prunes, one per selector.
+            SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
+        """
+        split = partial_split(full) if partial and not full.success else None
+        source = split.healthy if split is not None else full
+        # Only `state:modified` needs the manifest before the refusals; otherwise it is
+        # built once something can be planned.
+        manifest = manifest_for(source, self._inputs.manifest_sources()) if scope.impact else None
+        impact, notice = impact_scope(previous_manifest, manifest) if manifest is not None else (None, None)
+        selected = replace(
+            source,
+            compiled=tuple(
+                item
+                for item in source.compiled
+                if scope.covers(item) and (impact is None or item.artifact_key in impact)
+            ),
+        )
+        # Nothing new, or nothing orphaned, is a plan with nothing to change, not a selector that missed.
+        if (
+            scope.selected
+            and not (scope.impact or scope.by_state)
+            and not selected.compiled
+            and not scope.include_prune
+        ):
+            return PlanRefused(
+                DiagnosticBag(_missed(scope, source.compiled)),
+                reason=f"selectors {scope.selected!r} matched no artifact in {project}",
+            )
+        if not selected.success and split is None:
+            refusal = partial_refusal(full) if partial else None
+            return PlanRefused(DiagnosticBag((*selected.diagnostics, *((refusal,) if refusal else ()))))
+        effective_strict, effective_connected = self._inputs.validation_defaults().resolve(strict, connected)
+        manifest = manifest or manifest_for(source, self._inputs.manifest_sources())
+        mismatch = target_mismatch(compiled_manifest, manifest)
+        if mismatch is not None:
+            return PlanRefused(DiagnosticBag((mismatch,)))
+        stale = stale_manifest(compiled_manifest, manifest, before="plan or apply")
+        if stale is not None:
+            return PlanRefused(DiagnosticBag((stale,)), reason=stale.message)
+        return PlanCandidates(
+            full,
+            source,
+            selected,
+            split,
+            manifest,
+            scope,
+            partial,
+            effective_strict,
+            effective_connected,
+            notices=(notice,) if notice is not None else (),
+            covers_all=impact is None,
+        )
+
+    def run(
+        self,
+        candidates: PlanCandidates,
+        port: SnowflakePort,
+        state_store: StateStore,
+        *,
+        target: TargetIdentity,
+        state_table: QualifiedName,
+        state_table_kind: str = STANDARD_TABLES,
+        temporary: bool = False,
+        preflight: PreflightPort | None = None,
+        readers: Fanout[PlanReadPort] | None = None,
+        observe_options: ObserveOptions = DEFAULT_OBSERVE_OPTIONS,
+        validate: bool = True,
+        models: Fanout[CortexModelsPort] | None = None,
+    ) -> PlanReady | PlanRefused:
+        """Validate the candidates, read authoritative state, and plan against what Snowflake shows now.
+
+        Steps, in order:
+
+        1. Validate the selection, with connected checks when the settings ask for them, and
+           each extension an agent consumes looked up whenever plan is connected; without
+           `validate`, take the compile's diagnostics as they are.
+        2. With `--partial`, split again on what validation reported, narrow the selection to what
+           is still healthy, and build the manifest of what is; otherwise refuse on an error.
+        3. Read authoritative state, as `read_state` does.
+        4. Render what publishes for the manifest, each agent staged under `apply.agent_spec_stage`.
+        5. Build the lifecycle handlers of the composite artifact types.
+        6. Observe, preflight (the state and lock tables too, held to `state_table_kind`) when given `preflight`,
+           and plan, as `PlanArtifacts` does, in the schemas of every artifact and object state records.
+        7. Report what selecting reported first, and the plan's notices last, each held to the
+           project's severity overrides and, under strict mode, every warning the selection
+           reaches promoted, as validation's are; apply refuses on what that makes an error.
+
+        Args:
+            target: The live target, with the account and role the connection reported.
+            temporary: Render each agent as a session-scoped temporary agent, as
+                `apply --temporary` publishes it.
+            preflight: The port the preflight checks read the target through; None skips them.
+            readers: Sessions, opened from `port`, to run the connected validation checks, the composite plans, the
+                observation, and the preflight reads on concurrently, as `ValidateArtifacts` and `PlanArtifacts` do;
+                None runs them on `port`, one at a time. Either way the plan and its diagnostics are the same.
+            observe_options: Which per-object reads the observation makes, as `ObserveOptions` says.
+            validate: False skips validation, as `--no-validate` asks once `sst validate` ran on
+                the same tree: no cycle check, no connected check, and no strict promotion of what
+                compile reported. The project's severity overrides still apply, the compile's own
+                errors still refuse the plan, or with `--partial` split it, and strict mode still
+                promotes the warnings planning itself reports, which `sst validate` never sees.
+            models: Sessions to probe each model `snowflake.orchestration_models` allows; None skips it.
+
+        Diagnostics:
+            SST-PLN018: observing and planning took longer than the observation stays current.
+            SST-PLN032: with `--partial`, an artifact with errors, or one the plan blocked, is left out.
+            SST-PLN033: with `--partial`, a validation error names no artifact.
+            Those of validation, of `read_state`, and of `PlanArtifacts`, then the plan's
+            `change_summary` and `plan_notices`.
+        """
+        validated = self._validated_selection(candidates, port, target, readers, validate, models)
+        if isinstance(validated, PlanRefused):
+            return validated
+        result, manifest, promoted = validated
+        held = _Held(self._policy(candidates), promoted)
+        with self._phases.phase("state_read"):
+            state, state_diagnostics = read_state(state_store, port, state_table=state_table, target=target)
+        apply_config = config_block(self._inputs.config().tree.get("apply"))
+        handlers = _lifecycle_handlers(port, candidates.full, apply_config)
+        uncommitted = self._inputs.git_dirty()
+        rendered = self._publication(result, manifest, apply_config, target, temporary, bool(uncommitted))
+        fetched_at = self._clock.now_iso()
+        started = self._clock.monotonic_ms()
+        planner = PlanArtifacts(
+            port, lifecycle_handlers=handlers, preflight=preflight, readers=readers, observe_options=observe_options
+        )
+        composite_plans, reading = planner.read_target(
+            rendered,
+            manifest,
+            state,
+            target,
+            fetched_at=fetched_at,
+            phases=self._phases,
+            include_prune=candidates.scope.include_prune,
+            prune_types=candidates.scope.prune_types,
+            observation_targets=_observation_targets(candidates.full, state),
+            kind_targets=targets_by_kind(candidates.full.rendered, state),
+            state_tables=(state_table, lock_table_for(state_table)),
+            state_table_kind=state_table_kind,
+            create_schemas=config_bool(apply_config.get("create_schemas")) is not False,
+        )
+        with self._phases.phase("classify"):
+            changeset = _decided(candidates, rendered, reading, manifest, state, target, handlers, composite_plans)
+        changeset, unread = self._diffed(changeset, result, port, readers, observe_options, state)
+        stale = stale_observation(target, self._clock.monotonic_ms() - started)
+        # A reading with a refused read is incomplete, so no later plan may reuse it. An advisory
+        # read the role may not make (SST-VAL020) is as complete as the role can ever read it.
+        recorded = RecordedObservation(target, reading.observation, state, reading.preflight, "", reading.attachment)
+        leading = (*state_diagnostics, *((stale,) if stale else ()))
+        trailing = tuple(unread)
+        ready = _ready(candidates, result, manifest, state, changeset, handlers, held, leading, trailing, uncommitted)
+        return replace(ready, recorded=None if reading.failures.has_errors else recorded)
+
+    def _diffed(
+        self,
+        changeset: ChangeSet,
+        result: CompileResult,
+        port: SnowflakePort,
+        readers: Fanout[PlanReadPort] | None,
+        observe_options: ObserveOptions,
+        state: State,
+    ) -> tuple[ChangeSet, tuple[Diagnostic, ...]]:
+        """Return the plan with each update's member diff, unless `--no-diff`, and the reads refused.
+
+        An update left without one names the members it changes from what state recorded.
+        """
+        if not observe_options.diff:
+            return replace(changeset, changes=from_state(changeset.changes, state.applied)), ()
+        with self._phases.phase("diff"):
+            compiled = {item.artifact_key: item for item in result.compiled}
+            diff_readers: Fanout[SnowflakePort] = Fanout(port)
+            if readers is not None:
+                diff_readers = readers
+            changes, unread = diff_updates(changeset.changes, compiled, diff_readers, state.applied)
+        return replace(changeset, changes=from_state(changes, state.applied)), unread
+
+    def run_recorded(
+        self,
+        candidates: PlanCandidates,
+        recorded: RecordedObservation,
+        *,
+        temporary: bool = False,
+        validate: bool = True,
+    ) -> PlanReady | PlanRefused:
+        """Plan the candidates from what an earlier plan recorded of the target, reading nothing.
+
+        The steps are `run`'s, with the record in place of every read: validation runs without
+        its connected checks, the record's state stands for the authoritative state, and its
+        observation and preflight facts for the target's. Composite artifacts, whose handlers
+        observe them live and so are never recorded, are blocked; nothing reports their prunes.
+        The plan says what the target held when the record was taken, so its age is reported
+        first, however old it is.
+
+        Diagnostics:
+            SST-PLN016: when the recorded observation was taken, and how old it is.
+            SST-PLN001: a composite artifact, which the record cannot decide.
+            SST-PLN032: with `--partial`, a change the plan blocked is left out of it.
+            Those of validation, then the plan's `change_summary` and `plan_notices`.
+        """
+        offline = replace(candidates, connected=False)
+        validated = self._validated_selection(offline, None, recorded.target, None, validate)
+        if isinstance(validated, PlanRefused):
+            return validated
+        result, manifest, promoted = validated
+        held = _Held(self._policy(candidates), promoted)
+        target, state = recorded.target, recorded.state
+        apply_config = config_block(self._inputs.config().tree.get("apply"))
+        uncommitted = self._inputs.git_dirty()
+        rendered = self._publication(result, manifest, apply_config, target, temporary, bool(uncommitted))
+        reading = TargetReading(recorded.observation, recorded.preflight, attachment=recorded.attachment)
+        composites = unrecorded_composites(rendered)
+        changeset = _decided(candidates, rendered, reading, manifest, state, target, {}, composites)
+        cached = CachedObservation(recorded.fetched_at, seconds_between(recorded.fetched_at, self._clock.now_iso()))
+        age = D("SST-PLN016", value=f"planned from the observation recorded at {cached.fetched_at}, {cached.age} old")
+        ready = _ready(candidates, result, manifest, state, changeset, {}, held, (age,), (), uncommitted)
+        return replace(ready, cached=cached)
+
+    def _policy(self, candidates: PlanCandidates) -> SeverityPolicy:
+        """Return the policy the plan's own diagnostics are held to: the overrides, and strict mode."""
+        tree = self._inputs.config().tree
+        return SeverityPolicy(severity_overrides(tree), candidates.strict, strict_reach(candidates.scope.selection))
+
+    def _validated_selection(
+        self,
+        candidates: PlanCandidates,
+        port: SnowflakePort | None,
+        target: TargetIdentity,
+        readers: Fanout[PlanReadPort] | None,
+        validate: bool,
+        models: Fanout[CortexModelsPort] | None = None,
+    ) -> tuple[CompileResult, Manifest, int] | PlanRefused:
+        """Validate the selection as `run` says; return it, what publishes, and how many warnings it promoted."""
+        tree = self._inputs.config().tree
+        overrides = severity_overrides(tree)
+        check = model_check(tree, models, target) if models is not None else None
+        with self._phases.phase("validate"):
+            diagnostics, promoted = (
+                _validation(candidates, port, target, readers, overrides, check)
+                if validate
+                else (apply_overrides(candidates.selected.diagnostics, overrides), 0)
+            )
+        held = held_by_baseline(diagnostics, self._baseline, clock=self._clock)
+        validated = _validated(candidates, diagnostics, held)
+        if isinstance(validated, PlanRefused):
+            return replace(validated, promoted=promoted)
+        result, healthy = validated
+        manifest = candidates.manifest if healthy is None else manifest_for(healthy, self._inputs.manifest_sources())
+        return result, manifest, promoted
+
+    def _publication(
+        self,
+        result: CompileResult,
+        manifest: Manifest,
+        apply_config: Mapping[str, object],
+        target: TargetIdentity,
+        temporary: bool = False,
+        dirty: bool = False,
+    ) -> dict[str, RenderedArtifact]:
+        """Render each selected artifact as apply publishes it, by key, agents staged for publication.
+
+        Each agent is staged under `apply.agent_spec_stage`, in the target's database and
+        schema unless the block names others, beneath a folder for the project's commit, and
+        each CoWork profile and Cortex Code profile under its own folder of that stage; each eval's dataset version
+        records that commit. The upload names the stage, so the preflight checks it and apply
+        creates it when it is absent. Each carries its members' fingerprints, which apply
+        records in state. With `dirty`, each version names its commit `<sha>-dirty`. A profile
+        is never temporary: `apply --temporary` leaves it out (`temporary_profiles`).
+        """
+        stage = agent_spec_stage(apply_config, target)
+        git_sha = self._inputs.git_sha()
+        compiled = tuple(
+            (
+                for_publication(item, stage=stage, git_sha=git_sha, temporary=temporary, dirty=dirty)
+                if isinstance(item, CompiledAgent)
+                # Snowflake private preview (PrPr): CoWork profiles
+                else for_cowork_publication(item, stage=stage, git_sha=git_sha, dirty=dirty)
+                if isinstance(item, CompiledCoworkProfile)
+                # Snowflake private preview (PrPr): Cortex Code agent profiles
+                else for_coco_publication(item, stage=stage, git_sha=git_sha, dirty=dirty)
+                if isinstance(item, CompiledCocoProfile)
+                # A dataset version records the commit in its METADATA.
+                else replace(item, git_sha=git_sha)
+                if isinstance(item, CompiledEval)
+                else item
+            )
+            for item in result.compiled
+        )
+        # Hashed from the artifacts as compiled, so state records what the manifest does.
+        fingerprints = {item.artifact_key: compiled_fingerprints(item) for item in result.compiled}
+        return {
+            artifact.key: replace(artifact, member_fingerprints=fingerprints.get(artifact.key, ()))
+            for artifact in replace(result, compiled=compiled).rendered_for_publish(manifest.manifest_id)
+        }
+
+
+def _decided(
+    candidates: PlanCandidates,
+    rendered: Mapping[str, RenderedArtifact],
+    reading: TargetReading,
+    manifest: Manifest,
+    state: State,
+    target: TargetIdentity,
+    handlers: Mapping[str, CompositeLifecycleHandler],
+    composite_plans: Mapping[str, CompositePlan],
+) -> ChangeSet:
+    """Decide the candidates' change set from a reading, within their scope."""
+    scope = candidates.scope
+    return plan_changes(
+        rendered,
+        reading,
+        manifest,
+        state,
+        target,
+        lifecycle_handlers=handlers,
+        composite_plans=composite_plans,
+        include_prune=scope.include_prune,
+        full=candidates.covers_all,
+        prune_types=scope.prune_types,
+        prune_keys=scope.prune_keys,
+        overwrite=scope.overwrite,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _Held:
+    """The policy a plan's own diagnostics are held to, and how many warnings validation promoted."""
+
+    policy: SeverityPolicy
+    promoted: int
+
+
+def _ready(
+    candidates: PlanCandidates,
+    result: CompileResult,
+    manifest: Manifest,
+    state: State,
+    changeset: ChangeSet,
+    handlers: Mapping[str, CompositeLifecycleHandler],
+    held: _Held,
+    leading: tuple[Diagnostic, ...],
+    trailing: tuple[Diagnostic, ...],
+    uncommitted: tuple[str, ...],
+) -> PlanReady:
+    """Return the ready plan: what selecting reported and `leading` first, the plan's notices last.
+
+    A partial plan leaves out every change it blocked, as `partial_changeset` does: what that
+    reported joins what the run left out, in the result, so plan, apply, and a saved plan's id
+    all see the same plan. What the plan reports is then held to `held.policy` in one pass, as
+    validation's diagnostics already were; holding them twice changes nothing more, so a plan
+    and the apply that re-plans it decide the same severities.
+    """
+    moved_promoted = 0
+    if candidates.partial:
+        changeset, left_out = partial_changeset(changeset)
+        moved, moved_promoted = apply_policy(DiagnosticBag(left_out), held.policy)
+        result = replace(result, diagnostics=DiagnosticBag((*result.diagnostics, *moved)))
+    first = (*candidates.notices, *leading)
+    last = (*trailing, *change_summary(changeset), *plan_notices(changeset, uncommitted))
+    reported, promoted = apply_policy(DiagnosticBag((*first, *changeset.diagnostics, *last)), held.policy)
+    changeset = replace(changeset, diagnostics=reported)
+    total = held.promoted + moved_promoted + promoted
+    return PlanReady(result, manifest, state, changeset, MappingProxyType(dict(handlers)), promoted=total)
+
+
+def _validation(
+    candidates: PlanCandidates,
+    port: SnowflakePort | None,
+    target: TargetIdentity,
+    readers: Fanout[PlanReadPort] | None,
+    overrides: Mapping[str, Severity],
+    models: ModelCheck | None = None,
+) -> tuple[DiagnosticBag, int]:
+    """Validate the selection, connected when the settings ask; return its report and how many it promoted.
+
+    With a port and the connected checks off, each extension an agent consumes is still looked up:
+    Snowflake accepts an agent whose reference dangles, so plan is where it is caught.
+    """
+    live = port if candidates.connected else None
+    validated = ValidateArtifacts(
+        live,
+        catalog=port,
+        target=target.name,
+        readers=readers if candidates.connected else None,
+        models=models if candidates.connected else None,
+    ).run(
+        candidates.selected,
+        strict=candidates.strict,
+        connected=candidates.connected,
+        references=True,
+        overrides=overrides,
+        reaches=strict_reach(candidates.scope.selection),
+    )
+    return validated.diagnostics, validated.promoted
+
+
+def _validated(
+    candidates: PlanCandidates, diagnostics: DiagnosticBag, held: frozenset[str] = frozenset()
+) -> tuple[CompileResult, CompileResult | None] | PlanRefused:
+    """Apply validation's findings: narrow a partial plan to what stays healthy, else refuse on an error.
+
+    An error whose stable fingerprint `held` names is one the run's baseline holds, which
+    refuses nothing; a partial plan still splits on every error.
+
+    The split walks the whole healthy set, so a selection cannot hide a dependency; its
+    result is then narrowed back to what was selected.
+
+    Returns:
+        The selection as validated, and with `--partial` the healthy part of the source
+        that the plan's manifest is built from when validation left out more than compile
+        did; otherwise None, and the candidates' manifest stands.
+    """
+    selected = candidates.selected
+    validated = partial_split(replace(candidates.source, diagnostics=diagnostics)) if candidates.partial else None
+    if validated is not None:
+        # Strict promotion or a connected check can exclude more; the notices name
+        # everything left out, including what the compile split already excluded.
+        compile_excluded = candidates.split.excluded if candidates.split is not None else ()
+        left_out = dict.fromkeys((*compile_excluded, *validated.excluded))
+        notices = tuple(D("SST-PLN032", subject=key, artifact=key) for key in left_out)
+        still_healthy = {item.artifact_key for item in validated.healthy.compiled}
+        narrowed = replace(
+            selected,
+            compiled=tuple(item for item in selected.compiled if item.artifact_key in still_healthy),
+            diagnostics=DiagnosticBag((*diagnostics, *notices)),
+        )
+        source = candidates.source
+        healthy_source = replace(
+            source, compiled=tuple(item for item in source.compiled if item.artifact_key in still_healthy)
+        )
+        return narrowed, (healthy_source if len(healthy_source.compiled) != len(source.compiled) else None)
+    if blocking(diagnostics, held):
+        refusal = partial_refusal(replace(selected, diagnostics=diagnostics)) if candidates.partial else None
+        return PlanRefused(DiagnosticBag((*diagnostics, *((refusal,) if refusal else ()))))
+    return selected, None
+
+
+def stale_observation(target: TargetIdentity, elapsed_ms: int) -> Diagnostic | None:
+    """Report an observation that went stale while plan used it; None while it is current.
+
+    Diagnostics:
+        SST-PLN018: observing and planning took longer than `OBSERVATION_TTL_MS`.
+    """
+    if elapsed_ms <= OBSERVATION_TTL_MS:
+        return None
+    return D(
+        "SST-PLN018",
+        value=f"target '{target.name}'",
+        detail=f"{elapsed_ms // 1000}s old, past the {OBSERVATION_TTL_MS // 1000}s it stays current",
+    )
+
+
+def _lifecycle_handlers(
+    port: CatalogPublicationPort, full: CompileResult, apply_config: Mapping[str, object]
+) -> dict[str, CompositeLifecycleHandler]:
+    """Build each composite artifact type's handler over everything that compiled, by type."""
+    eval_stage_config = config_block(apply_config.get("eval_config_stage"))
+    releases = {item.artifact_key: item.release for item in full.compiled if isinstance(item, CompiledExtension)}
+    return {
+        "eval": EvalLifecycleHandler(
+            port, EvalLifecycleConfig(str(eval_stage_config.get("stage") or DEFAULT_EVAL_CONFIG_STAGE))
+        ),
+        "skill": ExtensionLifecycleHandler(port, releases, "skill"),
+        "plugin": ExtensionLifecycleHandler(port, releases, "plugin"),
+    }
+
+
+def _observation_targets(full: CompileResult, state: State) -> tuple[QualifiedName, ...]:
+    """Return every object a plan observes the schema of: each compiled target, then each state records.
+
+    State's objects are observed too, so an object whose source was deleted is still seen.
+    """
+    return tuple(
+        dict.fromkeys(
+            (
+                *(artifact.target for artifact in full.rendered),
+                *(
+                    QualifiedName.parse(entry.qualified_name)
+                    for entry in state.applied.values()
+                    if entry.qualified_name
+                ),
+            )
+        )
+    )
+
+
+def _missed(scope: PlanScope, compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic, ...]:
+    """Say why the selectors chose nothing: `--exclude` removed what they chose, or they chose nothing.
+
+    Diagnostics:
+        SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
+        SST-DIS010: the selectors matched nothing, one per selector.
+    """
+    chosen = replace(scope.selection, excluded=None)
+    if scope.selection.excluded is not None and any(
+        chosen.covers(item.artifact_type, item.artifact_key) for item in compiled
+    ):
+        return (D("SST-DIS015", selector=" ".join(scope.selected)),)
+    return tuple(D("SST-DIS010", selector=value) for value in scope.selected)

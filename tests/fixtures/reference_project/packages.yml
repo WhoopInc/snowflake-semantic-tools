@@ -1,0 +1,14 @@
+# =============================================================================
+# packages.yml -- the reference-impl fixture
+# =============================================================================
+# Declares `dbt_utils`, which the composite-key tests on `orders`, `order_items`,
+# `pricing_periods` and `supplies` call (`unique_combination_of_columns`).
+# Without it those tests fail to compile, and dbt skips every node downstream.
+#
+# The version is a range, not a pin, so it does not fight `require-dbt-version`
+# in `dbt_project.yml` on every core bump; the macro signature is stable across it.
+# =============================================================================
+
+packages:
+  - package: dbt-labs/dbt_utils
+    version: [">=1.3.0", "<2.0.0"]

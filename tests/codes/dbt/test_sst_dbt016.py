@@ -1,0 +1,27 @@
+"""SST-DBT016: one model feeds more than one built artifact, so its blast radius is wide."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from snowflake_semantic_tools.domain.diagnostics import Severity
+from tests.helpers.diagnostic_filters import coded
+from tests.helpers.seam_projects import SmallProject
+
+OTHER = (
+    "semantic_views:\n  - name: other\n"
+    "    description: Use this view for other questions about products.\n"
+    "    tables:\n      - \"{{ ref('products') }}\"\n"
+)
+
+
+def test_sst_dbt016_fires(tmp_path: Path) -> None:
+    project = SmallProject(tmp_path, files={"semantic_models/semantic_views/other.yml": OTHER}).load()
+    [diagnostic] = coded(project.diagnostics, "SST-DBT016")
+    assert diagnostic.severity is Severity.INFO
+    assert diagnostic.message == "model 'products' feeds 2 artifacts"
+    assert diagnostic.subject == "dbt_model:products"
+
+
+def test_sst_dbt016_silent(tmp_path: Path) -> None:
+    assert coded(SmallProject(tmp_path).load().diagnostics, "SST-DBT016") == []

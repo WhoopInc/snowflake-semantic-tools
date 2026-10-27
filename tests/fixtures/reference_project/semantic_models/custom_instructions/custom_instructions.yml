@@ -1,0 +1,68 @@
+---
+# =============================================================================
+# semantic_models/custom_instructions/custom_instructions.yml
+# =============================================================================
+# THREE INSTRUCTION BLOCKS ACROSS BOTH CHANNELS. The dialect has exactly two
+# channels and they do different jobs, which is why a block never carries both:
+#
+#   ai_sql_generation         HOW to shape SQL. Conventions, guards, idioms.
+#   ai_question_categorization  WHETHER a question is in scope for this view.
+#
+# Mixing them is the failure this split exists to prevent: a scope rule written
+# into the SQL channel is read while generating a query rather than while deciding
+# whether to answer, so an out-of-scope question gets a confidently wrong answer
+# instead of a refusal.
+#
+# THE THIRD BLOCK EXISTS BECAUSE jaffle_menu NEEDS DIFFERENT GUIDANCE FROM
+# jaffle_sales. `jaffle_margin_guidance` is attached to the menu view only, which
+# is what makes the per-view attachment observable: two views sharing one block and
+# a third block on one view proves attachment is per-view rather than global.
+#
+# EVERY BODY IS MULTI-LINE ON PURPOSE. The marts file keeps every column
+# description to one line so the golden stays one-member-per-line; the instruction
+# bodies are where the multi-line case is covered instead, because prose is what
+# they are.
+#
+# The enum literals referenced below are the closed sets the dbt
+# models declare, and each is referred to through its filter rather than written as
+# a literal where a filter exists.
+#
+# This file keeps the list form for the two blocks both views share;
+# jaffle_margin_guidance is a single-item `custom_instruction:` file beside it.
+# =============================================================================
+
+snowflake_custom_instructions:
+  - name: jaffle_sql_conventions
+    description: |-
+      How to shape SQL against the jaffle views. Conventions only -- nothing here
+      decides whether a question is in scope.
+    ai_sql_generation: |-
+      Round every monetary amount to two decimal places.
+      Monetary columns are stored in cents, so divide by one hundred before
+      presenting a currency figure.
+      Express a share or a rate as a decimal between zero and one, not as a
+      percentage.
+      When dividing, guard the denominator with DIV0 so an empty population
+      returns zero rather than an error.
+      Treat an order as complete using the is_completed_order filter rather than
+      comparing state by hand, and treat a return using is_returned_order.
+      Interpret a pricing period as half-open: the start is inclusive and the end
+      is exclusive.
+
+  - name: jaffle_question_scope
+    description: |-
+      What these views do and do not answer. Scope gating only -- nothing here
+      shapes SQL.
+    ai_question_categorization: |-
+      These views answer questions about orders, the customers who placed them,
+      the store locations they were placed at, the menu items sold, and the cost
+      of supplying those items.
+      A question about order volume, order value, tax collected, product mix or
+      margin is in scope.
+      A question about an individual named customer is OUT OF SCOPE. These views
+      are for aggregate analysis and carry no person-level narrative.
+      A question about staffing, payroll, supplier contracts or delivery logistics
+      is OUT OF SCOPE -- no table here carries any of it.
+      A question that needs both customer attributes and product detail spans two
+      views and cannot be answered from either alone; say so rather than answering
+      from whichever view is to hand.

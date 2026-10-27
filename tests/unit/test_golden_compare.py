@@ -1,0 +1,224 @@
+"""Comparing and rewriting goldens over an in-memory `GoldenStore`: routes, comparisons, normalization, and refusals."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import pytest
+
+from snowflake_semantic_tools.app.compile import CompileResult
+from snowflake_semantic_tools.app.compile.project import CompileProject
+from snowflake_semantic_tools.domain.model.coco_profile import CocoProfileCatalog, owned_entries
+from snowflake_semantic_tools.domain.model.eval import EvalCatalog
+from snowflake_semantic_tools.domain.model.project import SemanticViewProject
+from snowflake_semantic_tools.domain.model.skill import SkillCatalog
+from tests.helpers.compile_builders import CHANNELS, agent, plugin, skill, view
+from tests.helpers.cowork_profiles import compile_profiles, compiled_profiles, cowork_profile, described_agent
+from tests.helpers.eval_builders import resolved_eval
+from tests.helpers.golden_store import InMemoryGoldenStore
+from tests.helpers.goldens import CompareGoldens, GoldenPath, UpdateGoldens, golden_payloads
+from tests.helpers.project_inputs import InMemoryProjectInputs
+from tests.helpers.skill_inputs import profile as profile_model
+
+
+def project() -> CompileResult:
+    profile = profile_model("analyst", skills=owned_entries("skill", ("solo",)) + owned_entries("plugin", ("kit",)))
+    inputs = InMemoryProjectInputs(
+        tree=dict(CHANNELS),
+        views=SemanticViewProject((view("SALES"),)),
+        skills=SkillCatalog((skill("solo"),), (plugin("kit", "solo"),)),
+        profiles=CocoProfileCatalog((profile,), None),
+        agent_models=(agent("sales_agent"),),
+        evals=EvalCatalog((resolved_eval(),), ()),
+    )
+    return CompileProject(inputs).run()
+
+
+def committed(result: CompileResult) -> InMemoryGoldenStore:
+    """Every required golden, committed exactly as compiled."""
+    store = InMemoryGoldenStore()
+    for item in result.compiled:
+        for payload in golden_payloads(item, store):
+            store.goldens[payload.golden] = payload.content
+    return store
+
+
+def compare(store: InMemoryGoldenStore, result: CompileResult, sha: str = "WORKTREE") -> tuple[str, ...]:
+    return CompareGoldens(store, lambda: sha).run(result).failures
+
+
+def test_each_artifact_type_routes_to_its_own_golden() -> None:
+    result = project()
+    routes = {payload.golden for item in result.compiled for payload in golden_payloads(item, InMemoryGoldenStore())}
+
+    assert routes == {
+        GoldenPath(None, ("sales.sql",)),
+        GoldenPath("skill", ("solo.bundle.json",)),
+        GoldenPath("plugin", ("kit.bundle.json",)),
+        GoldenPath("coco_profile", ("analyst.json",)),
+        GoldenPath("agent", ("sales_agent.json",)),
+        GoldenPath("eval", ("sales_agent_repeat.yaml",)),
+        GoldenPath("eval", ("sales_source.sql",)),
+    }
+    assert sum(1 for item in result.compiled) == 6
+
+
+def test_a_cowork_profile_routes_to_its_own_golden() -> None:
+    # CoWork profiles are a Snowflake private preview; a profile's spec is pinned as an agent's is.
+    [profile] = compiled_profiles(compile_profiles(cowork_profile(), agents=(described_agent(),)))
+    [payload] = golden_payloads(profile, InMemoryGoldenStore())
+    assert (payload.golden, payload.content, payload.ddl) == (
+        GoldenPath("cowork_profile", ("everyone.json",)),
+        profile.rendered_artifact.content,
+        False,
+    )
+
+
+def test_committed_goldens_pass_and_a_missing_one_is_named() -> None:
+    result = project()
+    store = committed(result)
+    report = CompareGoldens(store, lambda: "WORKTREE").run(result)
+    assert report.passed and report.failures == ()
+
+    del store.goldens[GoldenPath("agent", ("sales_agent.json",))]
+
+    assert compare(store, result) == ("missing golden golden/agent/sales_agent.json",)
+
+
+def test_a_differing_golden_is_reported_as_a_diff_ddl_goldens_skipping_leading_comments() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    store.goldens[ddl] = "-- generated\n\n" + store.goldens[ddl] + "\n\n"
+    agent_golden = GoldenPath("agent", ("sales_agent.json",))
+    store.goldens[agent_golden] = store.goldens[agent_golden].replace('"', "'", 1)
+
+    [failure] = compare(store, result)
+
+    assert failure.startswith("--- golden/agent/sales_agent.json\n+++ compiled/sales_agent.json")
+
+
+def test_a_ddl_golden_without_a_statement_is_refused() -> None:
+    result = project()
+    store = committed(result)
+    store.goldens[GoldenPath(None, ("sales.sql",))] = "-- only a comment\n\n"
+
+    with pytest.raises(ValueError, match="golden golden/ddl/sales.sql contains no DDL"):
+        compare(store, result)
+
+
+def test_optional_goldens_are_compared_only_when_committed() -> None:
+    result = project()
+    store = committed(result)
+    skill_md = GoldenPath("skill", ("solo-SKILL.md",))
+    manifest = GoldenPath("plugin", ("kit.plugin.json",))
+    store.goldens.update({skill_md: "stale\n", manifest: "stale\n"})
+
+    failures = compare(store, result)
+
+    assert [failure.splitlines()[0] for failure in failures] == [
+        "--- golden/skill/solo-SKILL.md",
+        "--- golden/plugin/kit.plugin.json",
+    ]
+
+
+@dataclass(frozen=True)
+class Rendered:
+    content: str
+
+
+@dataclass(frozen=True)
+class Payload:
+    """A compiled artifact of a routed type, reduced to what routing reads."""
+
+    name: str
+    artifact_type: str
+    rendered_artifact: Rendered
+
+
+def test_the_commit_is_normalized_and_asked_for_once_per_golden_that_exists() -> None:
+    asked: list[str] = []
+
+    def sha() -> str:
+        asked.append("asked")
+        return "abc1234"
+
+    staged = Payload("helper", "agent", Rendered('{"stage": "@S/helper/GIT_abc1234"}'))
+    absent = Payload("absent", "agent", Rendered("{}"))
+    store = InMemoryGoldenStore({GoldenPath("agent", ("helper.json",)): '{"stage": "@S/helper/GIT_0000000"}\n'})
+
+    failures = CompareGoldens(store, sha).run(CompileResult((staged, absent)))  # type: ignore[arg-type]
+
+    assert failures.failures == ("missing golden golden/agent/absent.json",)
+    assert asked == ["asked"]
+    # Outside a git work tree the payload keeps its commit, so it differs.
+    assert len(compare(store, CompileResult((staged,)))) == 1  # type: ignore[arg-type]
+
+
+def test_a_tool_routes_beside_the_ddl_directory_and_compares_as_ddl() -> None:
+    tool = Payload("menu_search", "tool", Rendered("CREATE CORTEX SEARCH SERVICE X"))
+    [payload] = golden_payloads(tool, InMemoryGoldenStore())  # type: ignore[arg-type]
+    assert (payload.golden, payload.compiled_path, payload.ddl) == (
+        GoldenPath("tool", ("menu_search.sql",)),
+        "compiled/menu_search.sql",
+        True,
+    )
+    store = InMemoryGoldenStore({payload.golden: "-- golden\nCREATE CORTEX SEARCH SERVICE X\n"})
+    assert compare(store, CompileResult((tool,))) == ()  # type: ignore[arg-type]
+
+
+def test_an_artifact_type_without_a_route_is_refused() -> None:
+    class Unknown:
+        name = "x"
+        artifact_type = "dashboard"
+        rendered_artifact = None
+
+    with pytest.raises(ValueError, match="no golden route for artifact type 'dashboard'"):
+        golden_payloads(Unknown(), InMemoryGoldenStore())  # type: ignore[arg-type]
+
+
+def test_a_missing_golden_is_reported_apart_from_a_differing_one() -> None:
+    result = project()
+    store = committed(result)
+    del store.goldens[GoldenPath("agent", ("sales_agent.json",))]
+    store.goldens[GoldenPath(None, ("sales.sql",))] += "-- drift\nSELECT 1"
+    report = CompareGoldens(store, lambda: "WORKTREE").run(result)
+    assert report.missing == ("golden/agent/sales_agent.json",)
+    assert len(report.failures) == 2
+
+
+def test_update_writes_only_what_differs_and_keeps_a_ddl_header() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    compiled_ddl = store.goldens[ddl]
+    store.goldens[ddl] = "-- generated, do not edit\n\nSELECT 'stale'\n"
+    eval_source = GoldenPath("eval", ("sales_source.sql",))
+    store.goldens[eval_source] = "-- a comment the payload does not carry\n" + store.goldens[eval_source]
+    del store.goldens[GoldenPath("agent", ("sales_agent.json",))]
+
+    written = UpdateGoldens(store, lambda: "WORKTREE").run(result)
+
+    assert written == ("golden/ddl/sales.sql", "golden/agent/sales_agent.json", "golden/eval/sales_source.sql")
+    assert store.goldens[ddl] == "-- generated, do not edit\n\n" + compiled_ddl.rstrip() + "\n"
+    assert not store.goldens[eval_source].startswith("--")
+    assert CompareGoldens(store, lambda: "WORKTREE").run(result).passed
+    assert UpdateGoldens(store, lambda: "WORKTREE").run(result) == ()
+
+
+def test_update_writes_the_commit_as_zeros() -> None:
+    staged = Payload("helper", "agent", Rendered('{"stage": "@S/helper/GIT_abc1234"}'))
+    store = InMemoryGoldenStore()
+    assert UpdateGoldens(store, lambda: "abc1234").run(CompileResult((staged,))) == (  # type: ignore[arg-type]
+        "golden/agent/helper.json",
+    )
+    assert store.goldens[GoldenPath("agent", ("helper.json",))] == '{"stage": "@S/helper/GIT_0000000"}\n'
+
+
+def test_update_creates_a_missing_ddl_golden_without_a_header() -> None:
+    result = project()
+    store = committed(result)
+    ddl = GoldenPath(None, ("sales.sql",))
+    compiled_ddl = store.goldens.pop(ddl)
+    assert UpdateGoldens(store, lambda: "WORKTREE").run(result) == ("golden/ddl/sales.sql",)
+    assert store.goldens[ddl] == compiled_ddl.rstrip() + "\n"

@@ -1,0 +1,6 @@
+relationship:
+  name: orders_to_locations
+  left_table: "{{ ref('orders') }}"
+  right_table: "{{ ref('locations') }}"
+  relationship_conditions:
+    - "{{ ref('orders', 'location_id') }} = {{ ref('locations', 'location_id') }}"

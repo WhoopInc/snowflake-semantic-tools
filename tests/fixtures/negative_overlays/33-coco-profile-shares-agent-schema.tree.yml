@@ -1,0 +1,7 @@
+---
+# Cortex Code profiles routed to the agents' schema, where observation could not
+# tell the two kinds of AGENT apart.
+edits:
+  sst_config.yml:
+    - old: "  +schema: COCO_PROFILES\n"
+      new: "  +schema: JAFFLE\n"

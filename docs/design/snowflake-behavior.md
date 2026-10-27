@@ -1,0 +1,1842 @@
+# Snowflake behavior SST depends on
+
+SST renders and publishes Snowflake objects, so its code encodes how the
+Snowflake server behaves. In several places that behavior contradicts
+Snowflake's published documentation, or the documentation says nothing about
+it. Code written against the server can therefore look wrong to someone reading
+the docs. A maintainer who "fixes" it to match the docs reintroduces a defect the
+code was written to avoid.
+
+This page records each such behavior: what the docs say, what the server does,
+how strongly SST's own tests hold the dependency in place, where the code relies
+on it, and how to check it again. The working rule is **docs for the grammar,
+probe for whether the server agrees**. The documentation is the cheapest source
+of a statement to try. Only running it shows whether the server accepts it, keeps
+it, and answers queries over it.
+
+## How to read an entry
+
+Each behavior is a `###` heading with four fields:
+
+- **Docs say**: the claim in Snowflake's published documentation, or the fact
+  that it says nothing.
+- **Server does**: what Snowflake does when the statement runs.
+- **Evidence**: one of two grades.
+  - `Enforced`: a code site and an offline test pin SST's side of the
+    dependency, so changing the code to follow the docs fails a test. Both are
+    linked. The test runs offline: it proves SST still depends on the behavior,
+    not that the server still has it.
+  - `Observed`: the code relies on the behavior, but no automated check would
+    fail if the code were changed. The entry gives a probe to run instead.
+- **SST depends on it at**: the code, tests, and user docs that rely on it.
+
+Probe sketches use placeholder names. Run them only in a disposable scratch
+schema, as [Re-checking a behavior](#re-checking-a-behavior) describes.
+
+## Semantic views
+
+### MAX_STALENESS comes after the AI clauses
+
+**Docs say**: the `CREATE SEMANTIC VIEW` grammar orders the trailing clauses
+`COMMENT`, `MAX_STALENESS`, `AI_SQL_GENERATION`, `AI_QUESTION_CATEGORIZATION`,
+`AI_VERIFIED_QUERIES`, `WITH TAG`, `COPY GRANTS`.
+
+**Server does**: it rejects that order for a view that carries both
+`MAX_STALENESS` and an AI clause, reporting `unexpected 'AI_SQL_GENERATION'`.
+It accepts `COMMENT`, `AI_SQL_GENERATION`, `AI_QUESTION_CATEGORIZATION`,
+`AI_VERIFIED_QUERIES`, `MAX_STALENESS`, `WITH TAG`, `COPY GRANTS`.
+Two statements that differ only in where the `MAX_STALENESS` line sits show it.
+
+**Evidence**: `Enforced`.
+`test_every_clause_appears_in_the_verified_order` in
+[test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
+pins the order. The `jaffle_sales` golden, the only one carrying
+`MAX_STALENESS`, has been created in Snowflake, and
+[test_golden_ddl.py](../../tests/unit/test_golden_ddl.py) compares the
+renderer's output with it byte for byte.
+
+**SST depends on it at**: `_trailing_clauses` and the module docstring in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+[jaffle_sales.sql](../../tests/golden/expected/ddl/jaffle_sales.sql); the clause
+list in [the semantic views guide](../guides/semantic-views.md#checking-the-rendered-view).
+
+### MAX_STALENESS takes a quoted number of seconds
+
+**Docs say**: `MAX_STALENESS = <integer>`, minimum 120.
+
+**Server does**: it accepts `MAX_STALENESS = '300 seconds'`, the form SST
+renders. The documented minimum holds: SST-CFG023 refuses less than 120, as a
+view's `config.max_staleness` or as `semantic_views.+max_staleness`. Whether
+the server also accepts a bare integer is not recorded here.
+
+**Evidence**: `Enforced`. The `jaffle_sales` golden carries
+`MAX_STALENESS = '300 seconds'` and was created in Snowflake;
+[test_golden_ddl.py](../../tests/unit/test_golden_ddl.py) compares it.
+[test_sst_cfg023.py](../../tests/codes/cfg/test_sst_cfg023.py) covers the minimum.
+
+**SST depends on it at**: `_build_view` in
+[build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
+turns the resolved integer into `'<n> seconds'`; `_trailing_clauses` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+SST-CFG023 in
+[cfg.py](../../snowflake_semantic_tools/domain/diagnostics/specs/cfg.py), raised by
+`value_problem` in [config.py](../../snowflake_semantic_tools/domain/validate/config.py).
+
+### A variable's COMMENT needs `=`; the AI clauses take none
+
+**Docs say**: the variable production ends `[ COMMENT '<description>' ]`, with
+no `=`. The view-level `AI_SQL_GENERATION '<text>'` and
+`AI_QUESTION_CATEGORIZATION '<text>'` also take none, and there the docs are
+right.
+
+**Server does**: `COMMENT '<text>'` on a variable is a syntax error, reported at
+the string literal rather than at `COMMENT`, so it reads as a bad string.
+`COMMENT = '<text>'` is accepted. An `=` after either AI clause is a syntax
+error. The rule is per clause and does not generalize in either direction.
+
+**Evidence**: `Enforced`. `test_variable_default_is_rendered_verbatim` in
+[test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
+asserts `COMMENT = 'c'` on a variable, and the `jaffle_sales` golden pins both
+AI clauses without `=`.
+
+**SST depends on it at**: `render_variable` and `_trailing_clauses` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py).
+
+### Filters, verified queries and custom instructions are not clauses
+
+**Docs say**: the grammar has no `FILTERS (...)`, `VERIFIED QUERIES (...)` or
+`CUSTOM INSTRUCTIONS (...)` clause. Here the docs and the server agree. The entry
+exists because SST's YAML keys `filters`, `verified_queries` and
+`custom_instructions` make those clause names look natural.
+
+**Server does**: it rejects all three at parse time. A filter is a dimension
+with `LABELS = (FILTER)` before `AS`. Verified queries are `AI_VERIFIED_QUERIES`.
+Custom instructions become the `AI_SQL_GENERATION` and
+`AI_QUESTION_CATEGORIZATION` text.
+
+**Evidence**: `Enforced`. `test_golden_has_no_ungrammatical_clause_heads` in
+[test_golden_ddl.py](../../tests/unit/test_golden_ddl.py);
+`test_filter_label_precedes_AS` and
+`test_filters_render_inside_DIMENSIONS_not_their_own_clause` in
+[test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py).
+
+**SST depends on it at**: the module docstring and `render_column` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py).
+
+### SAMPLE_VALUES and IS_ENUM are native member clauses
+
+**Docs say**: nothing. Neither clause appears in the dimension or fact
+productions.
+
+**Server does**: it accepts both, keeps them, and returns them from `GET_DDL`.
+The spelling is bare, `SAMPLE_VALUES ('a', 'b')` and `IS_ENUM`, with no `WITH`
+and no `=`. `SAMPLE_VALUES` must come before `IS_ENUM`. `SAMPLE_VALUES` is
+accepted on dimensions and facts. `IS_ENUM` is accepted on dimensions only: on a
+fact it fails with `Only dimensions can specify the is_enum property`.
+
+**Evidence**: `Enforced` for the spelling and order. `test_full_modifier_order`
+in [test_render_semantic_view.py](../../tests/unit/test_render_semantic_view.py)
+pins them, and the `jaffle_sales` golden carries both on dimensions and
+`SAMPLE_VALUES` on facts. The dimensions-only rule is `Observed`. `enrich` never
+writes `is_enum` on a fact, and a hand-authored `is_enum: true` on a fact column
+is refused before it renders (SST-VAL335).
+[test_sst_val335.py](../../tests/codes/val/test_sst_val335.py). Probe:
+
+```sql
+CREATE SEMANTIC VIEW <db>.<schema>.probe_view
+  TABLES (T AS <db>.<schema>.probe_t PRIMARY KEY (ID))
+  FACTS (T.AMOUNT AS T.AMOUNT SAMPLE_VALUES ('1', '2') IS_ENUM)
+  METRICS (T.TOTAL AS SUM(T.AMOUNT));
+-- Expect: refused, naming is_enum. Remove IS_ENUM and it is accepted.
+```
+
+**SST depends on it at**: `render_column` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+[build.py](../../snowflake_semantic_tools/adapters/yaml/semantic/build.py), which
+passes `is_enum` through for any column kind; `_sample_value_diagnostics` in
+[validate/semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py).
+
+### Sample values are cast to the member's type, as TRY_CAST casts them
+
+**Docs say**: nothing, since `SAMPLE_VALUES` itself is undocumented.
+
+**Server does**: when it creates the view, it casts each `SAMPLE_VALUES` entry
+to its member's type, and refuses the whole view with `010913 (42601)`
+`Sample Values validation failed: Invalid sample values for calculations
+'T.MEMBER': ['<value>']`. Facts are checked as well as dimensions. A text
+member takes any value. The rule was probed on 2026-10-25, one view per value,
+and matched `TRY_CAST` on every case:
+
+- Accepted: `nan`, `inf`, `-inf`, `Infinity`, `1e3` and ` 12 ` on FLOAT;
+  `1.5`, `1e3` and `+7` on `NUMBER(38,0)`; `1700000000`, `1/2/2024` and ISO
+  forms on TIMESTAMP_NTZ and DATE; `yes`, `on`, `1` and `T` on BOOLEAN;
+  `NaT` and `nan` on VARCHAR.
+- Refused: `NaT`, `''` and `0,2` on FLOAT; `nan` and `0,2` on NUMBER;
+  `NaT`, `nan`, `''` and `2024-13-45` on TIMESTAMP_NTZ; `NaT` on DATE and TIME;
+  `maybe` on BOOLEAN.
+
+`TRY_CAST` is lenient elsewhere too: NUMBER reads `e`, `e3` and `.` as 0, and
+FLOAT reads `0x1F`. Date and time parsing follows the session's input formats.
+
+A bounded text member is checked the same way: `unknown` is refused as a sample value of a
+`VARCHAR(3)` column. Snowflake sizes a column a `CASE` of short literals produces to its
+longest literal, so a value the model no longer emits can exceed it (observed in analytics-dbt
+on 2026-10-25: `unknown` on `VARCHAR(3)`, `worse than` on `VARCHAR(5)`). An unbounded text
+column (`VARCHAR(16777216)`) takes any sample value.
+
+**Evidence**: `Observed` for the server's rule. SST's side is `Enforced`:
+- [test_sst_val341.py](../../tests/codes/val/test_sst_val341.py) pins the offline
+  rule, which refuses only what no reading of the type accepts, and its silence
+  on each accepted case above.
+- [test_sst_val419.py](../../tests/codes/val/test_sst_val419.py) pins the
+  connected cast.
+- [test_sst_sno036.py](../../tests/codes/sno/test_sst_sno036.py) pins the
+  refusal's message.
+
+Probe:
+
+```sql
+CREATE TABLE <db>.<schema>.probe_t (TS TIMESTAMP_NTZ, F FLOAT);
+CREATE SEMANTIC VIEW <db>.<schema>.probe_view
+  TABLES (T AS <db>.<schema>.probe_t)
+  DIMENSIONS (T.D_TS AS T.TS SAMPLE_VALUES ('NaT'));
+-- Expect: refused, Sample Values validation failed. With ('2024-01-01') it is
+-- accepted; with T.F SAMPLE_VALUES ('nan') it is accepted.
+```
+
+**SST depends on it at**:
+- `sample_problem` in
+  [column_metadata.py](../../snowflake_semantic_tools/domain/validate/column_metadata.py),
+  which validate and enrich share.
+- [sample_casts.py](../../snowflake_semantic_tools/app/sample_casts.py), whose
+  cast is `TRY_CAST`.
+- The `SST-SNO036` signature in
+  [signatures.py](../../snowflake_semantic_tools/domain/diagnostics/signatures.py).
+
+### GET_DDL output does not re-execute
+
+**Docs say**: `GET_DDL` returns "the text of the DDL statement that created the
+object". Its optional third argument, `use_fully_qualified_names_for_recreated_objects`,
+defaults to `FALSE`, so the name comes back unqualified unless asked otherwise.
+Nothing says the statement is rewritten.
+
+**Server does**: for a semantic view it returns a canonical form, not the
+authored statement. Keywords are lowercased. `WITH SYNONYMS ('a', 'b')` returns
+as `with synonyms=('a','b')`, while `SAMPLE_VALUES` keeps its spacing and gains
+no `=`. `COPY GRANTS` is dropped. The trailing clauses come back in the
+documented order, with `MAX_STALENESS` before the AI clauses, which the parser
+rejects (see [above](#max_staleness-comes-after-the-ai-clauses)). So for a view
+carrying both, `GET_DDL`'s own output does not parse. With the default name
+form, it also fails in a session that has no current database.
+
+**Evidence**: `Observed`. No test reads `GET_DDL` from a real account, and none
+runs what it returns. Probe:
+
+```sql
+CREATE SEMANTIC VIEW <db>.<schema>.probe_view
+  TABLES (T AS <db>.<schema>.probe_t PRIMARY KEY (ID))
+  METRICS (T.N AS COUNT(T.ID))
+  COMMENT = 'probe'
+  AI_SQL_GENERATION 'probe'
+  MAX_STALENESS = '300 seconds';
+SELECT GET_DDL('SEMANTIC_VIEW', '<db>.<schema>.probe_view');
+-- Then run the returned text in a fresh session with no current database.
+-- Expect: it fails, first on the unqualified name and, once qualified, on
+-- the clause order.
+```
+
+**SST depends on it at**: `get_ddl` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py),
+which passes `TRUE` as the third argument so names come back fully qualified, and
+`restorable_semantic_view` in [prior.py](../../snowflake_semantic_tools/app/prior.py),
+which `plan --capture-prior` runs on a semantic view's text: it moves the trailing
+clauses into the order the renderer uses (`TRAILING_CLAUSES` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py))
+and appends `COPY GRANTS`. Text of another shape is kept as returned, under a
+comment saying what to fix by hand. The
+[CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces) says to run
+the recorded text as it is only for a semantic view, and only for that form; since
+this behavior is `Observed`, so is that advice. Nothing here records whether
+`GET_DDL`'s text for a search service, procedure or function re-executes, so the
+guide says to review those before running them. The
+[golden README](../../tests/golden/README.md) warns that a golden and a `GET_DDL`
+read-back must not be compared raw.
+
+### The derived-metric restrictions are not enforced by the server
+
+**Docs say**: a derived metric's expression cannot use aggregations of metrics,
+window functions, references to physical columns, or unaggregated facts or
+dimensions. A derived metric can be used only by another derived metric.
+
+**Server does**: for a window function in a derived metric, it accepts the view
+at `validate_only` and at `CREATE`, then fails the first query with
+`SQL execution internal error`, not a clean compile error. A created view is not
+a working view. The boundary matters as much as the failure. A window function
+in a table-scoped metric is legal and works. A window over a raw fact, rather
+than over a metric or an aggregate, is refused at `CREATE` with a precise
+message. So the server does enforce some window rules early. SST's note on
+SST-VAL123 says the server enforces none of the derived-metric restrictions.
+Only the window-function case has been probed to query time.
+
+**Evidence**: `Enforced`. The checks are SST-VAL102, SST-VAL103, and SST-VAL105 to SST-VAL107 (SST-VAL104 is retired), none of them
+demotable, and SST-VAL123 re-checks the compiled view.
+[test_sst_val102.py](../../tests/codes/val/test_sst_val102.py) and
+[test_sst_val123.py](../../tests/codes/val/test_sst_val123.py).
+SST-VAL126 is the table-scoped counterpart, refusing a window whose argument is
+neither a metric nor an aggregate:
+[test_sst_val126.py](../../tests/codes/val/test_sst_val126.py).
+
+**SST depends on it at**: `CRITICAL_METRIC_CODES` and `restriction_diagnostics`
+in
+[validate/semantic_view.py](../../snowflake_semantic_tools/domain/validate/semantic_view.py);
+[val_metric.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_metric.py);
+[the error-code reference](../reference/error-codes.md#sst-val123).
+
+### Overlapping distinct ranges are accepted and double-count
+
+**Docs say**: in the table that holds the ranges of a range join, "no two
+ranges can overlap", declared with `CONSTRAINT ... DISTINCT RANGE`.
+
+**Server does**: a probe created views over target rows whose ranges overlap,
+with and without `UNIQUE` on the range pair. `CREATE` succeeded every time, and
+an event inside two ranges was counted against both in a dimensioned query, with
+no error. The metric-only total stayed right, so a spot check on the total
+passes. `UNIQUE (start, end)` is no substitute: three distinct pairs can each
+overlap a neighbour.
+
+**Evidence**: `Enforced` for SST's own check. SST-VAL218 reads the target's rows
+for one overlapping pair, but only when `validate` connects; offline it is
+skipped and reported as skipped (SST-VAL020).
+[test_sst_val218.py](../../tests/codes/val/test_sst_val218.py). The server's
+acceptance is `Observed`. Probe:
+
+```sql
+CREATE TABLE <db>.<schema>.probe_ranges (ID INT, S DATE, E DATE);
+INSERT INTO <db>.<schema>.probe_ranges
+  SELECT 1, CURRENT_DATE, CURRENT_DATE + 2
+  UNION ALL SELECT 2, CURRENT_DATE + 1, CURRENT_DATE + 3;
+-- Create a view whose events table joins probe_ranges with
+-- REFERENCES R (BETWEEN S AND E EXCLUSIVE), and R carrying
+-- CONSTRAINT R_DISTINCT_RANGE DISTINCT RANGE BETWEEN S AND E EXCLUSIVE.
+-- Query one event dated CURRENT_DATE + 1 by R.ID.
+-- Expect: CREATE succeeds and the event appears under both IDs.
+```
+
+**SST depends on it at**: `_spot_checks` and `_overlap_query` in
+[validate.py](../../snowflake_semantic_tools/app/validate.py). A range
+relationship renders the range alone (`render_relationship` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py)),
+so SST-VAL202 refuses any condition beside it, and SST-VAL206 requires the target
+to declare `distinct_range`.
+
+### relationship_type and join_type are kept but not read
+
+**Docs say**: semantic views do not require `join_type` or `relationship_type`.
+The relationship type is inferred from the data and the primary-key definitions.
+
+**Server does**: it accepts both fields and returns them unchanged on read-back,
+while still inferring cardinality from the keys. A stale `many_to_one` beside a
+key that says otherwise survives a round trip and reads as authoritative.
+
+**Evidence**: `Enforced`. SST never renders either field. Declaring one is
+SST-VAL211, and the removed `generation.emit_relationship_type` key is
+SST-CFG043. [test_sst_val211.py](../../tests/codes/val/test_sst_val211.py),
+[test_sst_cfg043.py](../../tests/codes/cfg/test_sst_cfg043.py).
+
+**SST depends on it at**:
+[val_relationship.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_relationship.py);
+[keys.py](../../snowflake_semantic_tools/domain/model/config_schema/keys.py);
+[the migration guide](../guides/migrating-from-0.3.md).
+
+### A PRIVATE dimension works, although the docs deny it
+
+**Docs say**: "You cannot mark a dimension as private. Dimensions are always
+public."
+
+**Server does**: it accepts a `PRIVATE` dimension, stores it, and enforces it:
+a query that names it fails with `invalid identifier`, as for a private fact or
+metric. The same query against a public dimension succeeds.
+
+**Evidence**: `Enforced`, in the other direction. SST refuses a private dimension
+(SST-VAL222), and the reason is now a house rule rather than the grammar. It
+would depend on behavior the vendor's docs deny, which could be removed without
+notice. Do not loosen SST-VAL222 on the strength of the server.
+[test_sst_val222.py](../../tests/codes/val/test_sst_val222.py).
+
+**SST depends on it at**: `_column_meta_diagnostics` in
+[validate/semantic/dbt.py](../../snowflake_semantic_tools/domain/validate/semantic/dbt.py).
+
+### Replacing a view without WITH TAG removes its tags
+
+**Docs say**: the reference documents `WITH TAG` as a clause of
+`CREATE SEMANTIC VIEW`. It says nothing about what a replace does to tags set
+earlier with `ALTER SEMANTIC VIEW ... SET TAG`.
+
+**Server does**: `CREATE OR REPLACE SEMANTIC VIEW` without `WITH TAG` removes
+every tag on the view, silently. With `WITH TAG` inline, the replace carries the
+tags in one statement.
+
+**Evidence**: `Observed`. The clause-order test above pins that SST renders tags
+inline in the `CREATE`, and
+`test_key_summaries_describe_what_the_renderer_and_the_publishing_blocks_do` in
+[test_config_schema.py](../../tests/unit/domain/test_config_schema.py) holds the
+`tags` key's summary to that. No test
+proves that the replace drops tags set outside it. The consequence for users is
+that every apply leaves a view with exactly the tags the project declares, and a
+governance tag applied by hand is gone after the next apply. Plan reads the
+tags on each view it will replace, once it has decided the update, and warns of
+each one the project does not declare (`SST-PLN039`). A read that fails is a
+warning, `SST-PLN040`, and the plan goes on. Probe:
+
+```sql
+-- Create probe_view, then:
+ALTER SEMANTIC VIEW <db>.<schema>.probe_view SET TAG <db>.<schema>.probe_tag = 'x';
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
+  '<db>.<schema>.probe_view', 'TABLE'));
+-- Expect: a row for probe_tag. If not, see the next entry.
+-- Re-run the same CREATE OR REPLACE without WITH TAG, then the same SELECT.
+-- Expect: no row for probe_tag.
+```
+
+**SST depends on it at**: `_trailing_clauses` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/render/semantic_view.py);
+`observe_replaced_tags` in [observe.py](../../snowflake_semantic_tools/app/observe.py);
+`_removed_tags` in [classify.py](../../snowflake_semantic_tools/domain/plan/classify.py);
+the `tags:` key in [the semantic views guide](../guides/semantic-views.md).
+
+### TAG_REFERENCES lists no domain for a semantic view
+
+**Docs say**: the `TAG_REFERENCES` table function takes an object name and an
+`object_domain`. The documented domains have no semantic-view entry. They say
+`'TABLE'` is for all table-like objects, such as views, materialized views, and
+external tables.
+
+**Server does**: not probed. No recorded session shows `TAG_REFERENCES`
+answering for a semantic view under any domain, so which domain lists its tags
+is unknown. SST sends `'TABLE'`, as the docs direct for a table-like object.
+An earlier probe sketch named `'SEMANTIC_VIEW'`, but nothing records that it ran.
+
+**Evidence**: `Observed`. The connector test pins the statement SST sends, not
+that the server answers it. If the domain is wrong, plan either reads no tags,
+and `SST-PLN039` stays silent about a hand-applied tag a replace removes, or the
+read fails and plan warns that it skipped the check (`SST-PLN040`). The release
+probe must settle it:
+
+```sql
+-- With probe_view tagged as in the entry above:
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
+  '<db>.<schema>.probe_view', 'TABLE'));
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES(
+  '<db>.<schema>.probe_view', 'SEMANTIC_VIEW'));
+-- Expect: the domain SST sends lists probe_tag. If only the other does, change
+-- _SEMANTIC_VIEW_TAG_DOMAIN and its test.
+```
+
+**SST depends on it at**: `_SEMANTIC_VIEW_TAG_DOMAIN` and `tag_references` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+`test_tag_references_name_each_tag_set_on_a_view_and_leave_out_inherited_ones`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
+
+### SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW reports what DESCRIBE does not, as YAML 1.2
+
+**Docs say**: the function returns a semantic view's definition as a semantic model YAML
+document. They do not list which of the view's clauses the document carries, nor the YAML
+version it is written in.
+
+**Server does**: it returns every clause SST renders except `WITH TAG`. That includes what
+`DESCRIBE SEMANTIC VIEW` has not been seen to report:
+
+- the variables, each with its `data_type` spelled with its precision (`NUMBER(38,0)` for
+  `NUMBER`) and its `default_value` as text;
+- `max_staleness`;
+- a window metric's `expr` with its `OVER (...)` clause, as written;
+- a metric's `using_relationships`;
+- an ASOF relationship column as `type: asof`, and a range one as `type: range` with its
+  `right_range`.
+
+It writes YAML 1.2. A plain `2016-09-01 00:00:00.000` or `no` is text there; a YAML 1.1 loader
+reads them as a datetime and a boolean.
+
+**Evidence**: `Enforced`. The connector reads it with the core-schema loader, and a test pins
+that a timestamp and `no` stay text. The definition tests pin each document shape above, taken
+from a probe view that used every one of those clauses. On every view jaffle publishes, the
+compiled definition, the YAML read and the DESCRIBE read agree member for member.
+
+**SST depends on it at**: `read_semantic_view_yaml` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py) and
+`safe_load_core` in [bounded_yaml.py](../../snowflake_semantic_tools/adapters/bounded_yaml.py);
+`live_view_from_yaml` in
+[semantic_view.py](../../snowflake_semantic_tools/domain/plan/definitions/semantic_view.py);
+[test_plan_definitions_semantic_view_yaml.py](../../tests/unit/domain/test_plan_definitions_semantic_view_yaml.py)
+and `test_read_semantic_view_yaml_reads_plain_scalars_as_snowflake_wrote_them` in
+[test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
+
+## Column tags
+
+### TAG_REFERENCES_ALL_COLUMNS lists inherited tags on every column
+
+**Docs say**: not compared for this entry. What follows was measured, and SST
+relies on the measurement, not on the documentation's description.
+
+**Server does**: measured on a live account, on a table:
+
+```sql
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS(
+  '<db>.<schema>.<table>', 'table'));
+```
+
+answers with the columns `TAG_DATABASE`, `TAG_SCHEMA`, `TAG_NAME`, `TAG_VALUE`,
+`LEVEL`, `OBJECT_DATABASE`, `OBJECT_SCHEMA`, `OBJECT_NAME`, `DOMAIN`,
+`COLUMN_NAME`, `APPLY_METHOD`. A tag set on one column is one row for that column,
+with `LEVEL = COLUMN` and `APPLY_METHOD = MANUAL`. A tag set on the schema is one
+row on every column of the table, with `LEVEL = SCHEMA` and
+`APPLY_METHOD = INHERITED`. The same read under the account's `PUBLIC` role
+answered the same rows. A table that does not exist fails the read with errno
+2003, "does not exist or not authorized".
+
+Not measured: what a role is answered for a tag it is not allowed to see (no row,
+or an error); the read on a view rather than a table; and the `PROPAGATED` and
+`CLASSIFIED` apply methods, which SST counts as it counts the others.
+
+**Evidence**: `Enforced` for SST's side. `parse_column_tags` in
+[governance.py](../../snowflake_semantic_tools/domain/enrich/governance.py) keeps
+every row whatever its `LEVEL` and `APPLY_METHOD`, so a tag inherited from the
+schema marks every column; `column_tags` in
+[profiler.py](../../snowflake_semantic_tools/adapters/snowflake/connector/profiler.py)
+lets a failed read escape, where `relation_columns` reads the same errno as "no
+relation", so `sst enrich` fails the model (`SST-SNO031`) rather than sampling a
+column it could not check. `test_every_level_and_apply_method_counts_and_each_tag_is_kept_once_per_column`
+in [test_governance.py](../../tests/unit/domain/test_governance.py), and
+`test_column_tags_keep_every_level_and_apply_method_by_casefolded_column` and
+`test_a_tag_read_that_fails_or_answers_another_shape_raises` in
+[test_enrich_port.py](../../tests/contract/test_enrich_port.py), pin it. The read
+fails closed only on an error: if Snowflake answers a role that may not see a tag
+with no row for it, the column reads as untagged, and only its YAML's `pii_tags`
+or `meta.sst.governance_tags` keeps its values unread. Probe:
+
+```sql
+-- In a scratch schema, as a role that may set tags:
+CREATE TAG <db>.<schema>.probe_tag;
+CREATE TABLE <db>.<schema>.probe_t (a TEXT, b TEXT);
+ALTER TABLE <db>.<schema>.probe_t MODIFY COLUMN a SET TAG <db>.<schema>.probe_tag = 'x';
+ALTER SCHEMA <db>.<schema> SET TAG <db>.<schema>.probe_tag = 'y';
+SELECT * FROM TABLE(<db>.INFORMATION_SCHEMA.TAG_REFERENCES_ALL_COLUMNS(
+  '<db>.<schema>.probe_t', 'table'));
+-- Expect: a COLUMN/MANUAL row on A, and a SCHEMA/INHERITED row on A and on B.
+-- Repeat as a role with SELECT on probe_t and no privilege on the tag, and record
+-- whether it sees the rows, sees none, or fails; then over a view on probe_t.
+```
+
+**SST depends on it at**: `column_tags_sql` and `parse_column_tags` in
+[governance.py](../../snowflake_semantic_tools/domain/enrich/governance.py);
+`column_tags` in
+[profiler.py](../../snowflake_semantic_tools/adapters/snowflake/connector/profiler.py);
+`read_tags` in [validate_tags.py](../../snowflake_semantic_tools/app/validate_tags.py);
+[Governance tags](../guides/enrich.md#governance-tags) in the enrich guide.
+
+## Agents
+
+### CREATE OR REPLACE AGENT destroys versions and aliases
+
+**Docs say**: `COPY GRANTS` keeps an agent's grants across `CREATE OR REPLACE`.
+The reference says nothing about its versions.
+
+**Server does**: a replaced agent comes back with only `VERSION$1`. Every
+committed version and every alias a caller pins is gone, and the statement
+reports success.
+
+**Evidence**: `Enforced`. SST never replaces a permanent agent: a new agent is
+`CREATE AGENT`, and an update adds a version.
+`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`
+and `test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags` in
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) pin the
+exact statements. `CREATE OR REPLACE TEMPORARY AGENT`, for `--temporary`, is a
+different object and is not affected.
+
+**SST depends on it at**: `agent_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py); the
+agent case in [prior.py](../../snowflake_semantic_tools/app/prior.py), which
+captures a version rather than `GET_DDL`; the restore advice in
+[the CI/CD guide](../guides/ci-cd.md#recording-what-an-update-replaces).
+
+### ADD VERSION fails beside a live version, and COMMIT is not idempotent
+
+**Docs say**: `CREATE AGENT` commits `VERSION$1` and also opens a live version
+with the same spec. `ADD VERSION FROM @<stage>/<path>` creates a named version.
+The docs do not say that the second fails while the first is open.
+
+**Server does**: `ADD VERSION` beside a live version fails:
+`There is already a live version. Please commit it first.` `COMMIT` with nothing
+live fails: `Live version is not found.` So a deployer cannot emit `COMMIT`
+unconditionally, and must read before it writes. A fresh agent's `COMMIT` is
+always `VERSION$2`. The live version shows only in `SHOW VERSIONS IN AGENT`, as
+the row whose `name` is null; `DESCRIBE AGENT`'s version list omits it.
+
+An agent needs its live version all the same. Snowsight's agent page shows the
+live version (as DRAFT), and `DESCRIBE AGENT`'s `agent_spec` is the live
+version's spec, empty when there is none. A request that names no version is
+served the live version while the agent has one committed version. Measured on
+an agent with only `VERSION$1` and no live version: Snowsight showed no
+instructions, tools or skills; an unversioned `DATA_AGENT_RUN` ran without the
+agent's tools or skills; the same request naming `!VERSION$1` or `!DEFAULT` was
+served the full spec. `ALTER AGENT ... ADD LIVE VERSION FROM LAST` opens a live
+version holding `LAST`'s spec. `LAST` is the only source it takes: `FROM
+VERSION$1`, `FROM "VERSION$1"` and `FROM VERSION VERSION$1` are syntax errors
+(001003), so a live version can be reopened only from the newest committed
+version. `SET DEFAULT_VERSION` takes the version, or a shortcut, only as a
+string literal (`'VERSION$3'`, `'LAST'`): an identifier is a syntax error, and
+so is an unquoted `LAST`, although Snowflake's versioning guide shows one. A
+default set to `'LAST'` follows every version committed afterwards: measured, an
+agent whose default was reset to `'LAST'` served each new version as its default
+without another statement, while one whose default was set to `'VERSION$3'`
+kept serving `VERSION$3` after `VERSION$4` was committed. `SHOW VERSIONS IN
+AGENT` marks only which version is the default (`is_default`), not which of the
+two was set, so a default pinned by name to the newest version reads the same as
+one that follows `LAST`.
+
+**Evidence**: `Enforced`. On create, SST keeps the live copy `CREATE AGENT`
+opens. On update, an agent with a live version gets the spec written into it
+and committed, instead of an `ADD VERSION`; one without gets an `ADD VERSION`.
+Either way the agent has no live version after that, so `ADD LIVE VERSION FROM
+LAST` opens one holding what was just committed. Every version-adding update's
+program ends with the default following `'LAST'`, which serves the version it
+committed, and apply then pins the default to that version by name; a repair of
+a moved default pins it by name to the version holding the spec (see
+[a default pinned by name stays where it is](#a-default-pinned-by-name-stays-where-it-is)).
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py)
+(`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`,
+`test_permanent_agent_update_adds_exactly_one_version_and_a_live_copy_then_alias_and_tags`,
+and
+`test_permanent_agent_update_writes_a_live_version_and_commits_it_as_the_one_new_version`);
+`test_agent_versions_report_the_live_row_and_every_shown_alias` in
+[test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
+
+**SST depends on it at**: `agent_programs`
+in [staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`observe_agent_versions` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+`AgentVersions.has_live_version` in
+[ports/snowflake/catalog.py](../../snowflake_semantic_tools/domain/ports/snowflake/catalog.py);
+[the agents guide](../guides/agents.md#publishing).
+
+### An unversioned caller is served the live version, even past a pinned default
+
+**Docs say**: the default version is the version the agent uses when no version
+is specified in an API call, and `DATA_AGENT_RUN` without a `!<version>` suffix
+uses the `DEFAULT` version.
+
+**Server does**: while the agent has a live version, every caller that names no
+version is served the live version: `DATA_AGENT_RUN` without `!<version>`, the
+REST `:run` endpoint without a version, and a CoWork profile routing to the
+agent as a subagent. That holds even when the default is set explicitly to a
+version by name; only a caller that names one, such as `!DEFAULT` or an alias
+like `!RELEASED`, is served the default then. An agent with no live version
+serves its default to every unversioned caller and to a profile's routing.
+
+**Evidence**: `Enforced`. The live version is what users are served, so SST
+only ever opens it on the release: every update program opens it `FROM LAST`
+straight after committing the release, and the properties-only update, which
+also opens one `FROM LAST` for an agent without one, is never taken when the
+newest committed version is an eval-model version, since that would open the
+live version on a candidate's spec; such an agent gets a new release instead.
+An eval's `committed` selector is rendered as `DEFAULT`, never as the agent's
+unversioned name.
+`test_an_agent_with_no_live_version_and_an_eval_model_version_last_commits_a_new_release`
+in [test_plan_agent_versions.py](../../tests/unit/domain/test_plan_agent_versions.py);
+`test_repeat_run_yaml_has_closed_schema_and_inlines_custom_metric` in
+[test_render_evals.py](../../tests/unit/domain/test_render_evals.py).
+
+**SST depends on it at**: `RenderedArtifact.for_action` in
+[rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py);
+`agent_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`_agent_version` in
+[render/eval.py](../../snowflake_semantic_tools/domain/render/eval.py).
+
+### A default pinned by name stays where it is
+
+**Docs say**: `SET DEFAULT_VERSION` takes a version, such as `'VERSION$3'`, or a
+shortcut such as `FIRST` or `LAST`; unless it is set, the default is the latest
+committed version. The docs say nothing about an alias, or about what a later
+commit does to a default set either way.
+
+**Server does**: `ALTER AGENT ... SET DEFAULT_VERSION = 'VERSION$<n>'` pins the
+default by name, and it stays on that version when later versions are
+committed. `SET DEFAULT_VERSION = 'LAST'` makes it follow the newest committed
+version, whatever commits it. `DEFAULT_VERSION` never accepts an alias. Pinning
+`'VERSION$1'` straight after `CREATE AGENT ... FROM @<stage>` works.
+
+**Evidence**: `Enforced`. Only `sst apply` moves the default, because SST pins it
+by name: the create program ends with `SET DEFAULT_VERSION = 'VERSION$1'`; a
+version-adding update ends with `'LAST'`, since its version is named only once
+Snowflake commits it, and apply then reads the version it committed and pins it
+(`SST-APL107` when it cannot); the properties-only update pins the version
+holding the spec, and an agent published before this, whose default follows
+`LAST`, is planned once to pin it (`SST-PLN107`). Nothing SST pins is an alias.
+`test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags` in
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py);
+[test_agent_default_pin.py](../../tests/unit/app/test_agent_default_pin.py);
+`test_a_properties_update_pins_a_default_that_follows_last_to_the_published_version`
+and `test_a_default_only_a_system_name_can_pin_is_left_alone` in
+[test_plan_agent_versions.py](../../tests/unit/domain/test_plan_agent_versions.py);
+[test_sst_pln107.py](../../tests/codes/pln/test_sst_pln107.py),
+[test_sst_apl107.py](../../tests/codes/apl/test_sst_apl107.py).
+
+**SST depends on it at**: `_version_programs` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`pinned_default`, `unpinned_default` and `_pointing` in
+[rendered.py](../../snowflake_semantic_tools/domain/model/lifecycle/rendered.py);
+`ChangeApplier._pin_default` in
+[apply/one.py](../../snowflake_semantic_tools/app/apply/one.py);
+[the agents guide](../guides/agents.md#publishing).
+
+### DESCRIBE AGENT says whether the default is pinned
+
+**Docs say**: nothing about the columns `DESCRIBE AGENT` returns for a versioned
+agent.
+
+**Server does**: `DESCRIBE AGENT` answers one row. Its `default_version_name`
+reads `'LAST'` when the default follows `LAST`, which is also what an agent
+whose default was never set reads, and the version's name, such as
+`'VERSION$1'`, when the default was pinned by name. Its `aliases` is a JSON
+object from each alias and shortcut to the version it names, such as
+`{"DEFAULT":"VERSION$3","FIRST":"VERSION$1","LAST":"VERSION$3","RELEASED":"VERSION$3"}`,
+and `versions` a JSON array of the committed versions. `SHOW VERSIONS IN AGENT`
+marks the default with `is_default`, but cannot tell a pin from `LAST`.
+
+**Evidence**: `Enforced`. Plan reads the setting with one `DESCRIBE AGENT` after
+`SHOW VERSIONS`, its columns compared casefolded, and a read that fails leaves it
+unread, which plans nothing; `committed` resolves through the `DEFAULT` entry of
+`aliases`.
+`test_agent_versions_read_the_default_setting_from_one_describe_agent`,
+`test_a_describe_agent_that_fails_leaves_the_default_unread_and_the_versions_read`
+and `test_an_agent_version_selector_resolves_through_describe_agent_s_aliases_column`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py);
+`test_the_default_reads_pinned_only_when_set_by_a_system_name` in
+[test_eval_model_versions.py](../../tests/unit/domain/test_eval_model_versions.py).
+
+**SST depends on it at**: `observe_agent_versions`, `_default_setting` and
+`resolve_agent_version` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+`AgentVersions.default_pinned` in
+[ports/snowflake/catalog.py](../../snowflake_semantic_tools/domain/ports/snowflake/catalog.py).
+
+### A comparison's versions never reach a caller that names no version
+
+**Docs say**: `COMMIT` commits the live version, `ADD VERSION ... FROM` commits a
+version from a stage, `MODIFY VERSION ... SET ALIAS` names a version, and `ADD
+LIVE VERSION` opens a live version. They say nothing about which version an
+unversioned caller is served between these statements, nor whether an alias
+may name two versions.
+
+**Server does**: with the live version holding the released specification and
+the default pinned by name to the release, this sequence leaves an unversioned
+caller on the release throughout: `COMMIT` commits a copy of the live version
+and leaves no live version, so the caller is served the default; `ADD VERSION
+FROM @<stage>/<dir>/` then succeeds, as it does not beside a live version, once
+per candidate; `ADD LIVE VERSION FROM LAST` after an `ADD VERSION` of the
+released specification opens the live version on it again. `DEFAULT` and the
+release's alias never move. An alias names one version of an agent: `SET ALIAS`
+of an alias another version carries fails, so it is unset there first. An
+evaluation naming `!EVAL_<MODEL>` as its agent version runs that version, and
+Snowsight's Evaluations tab lists the run under it.
+
+**Evidence**: `Enforced`. `CompareLifecycle.commit` runs the hold, then each
+candidate's ADD VERSION, alias unset and alias set, then the restore in a
+`finally`, and sends no `SET DEFAULT_VERSION` and no statement naming the
+release's alias.
+`test_a_comparison_holds_commits_each_candidate_and_restores_leaving_the_release_alone`,
+`test_a_hold_that_failed_but_committed_is_still_restored` and
+`test_an_interrupt_mid_candidate_still_restores_before_it_propagates` in
+[test_eval_compare_lifecycle.py](../../tests/unit/app/test_eval_compare_lifecycle.py);
+[test_sst_apl110.py](../../tests/codes/apl/test_sst_apl110.py).
+
+**SST depends on it at**: `CompareLifecycle` in
+[compare_lifecycle.py](../../snowflake_semantic_tools/app/evals/compare_lifecycle.py);
+[render/compare.py](../../snowflake_semantic_tools/domain/render/compare.py).
+
+### LAST must be quoted, and an alias cannot be a reserved word
+
+**Docs say**: `LIVE`, `FIRST`, `LAST` and `DEFAULT` are version shortcuts "in
+the API endpoint and in stage URIs". The examples of `MODIFY VERSION` name
+`VERSION$<n>`.
+
+**Server does**: `MODIFY VERSION LAST SET ALIAS = <alias>` is a syntax error.
+`MODIFY VERSION "LAST"` and `MODIFY VERSION VERSION$<n>` are accepted; bare
+`DEFAULT` and `FIRST` are refused too. An alias that is a reserved word, such as
+`current`, is a syntax error unquoted. Quoted, it is stored case-sensitively, and
+every later reference must quote it too. A version carries one alias, and
+setting another replaces it silently.
+
+**Evidence**: `Enforced`. SST renders `MODIFY VERSION "LAST"`, and refuses a
+shortcut or a reserved word as an alias (SST-PRS025) rather than quote it.
+[test_agent_publish.py](../../tests/unit/app/test_agent_publish.py),
+[test_agent_alias_names.py](../../tests/unit/security/test_agent_alias_names.py),
+[test_sst_prs025.py](../../tests/codes/prs/test_sst_prs025.py).
+
+**SST depends on it at**: `agent_programs` and `_alias` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+`RESERVED_AGENT_ALIASES` in
+[model/agent.py](../../snowflake_semantic_tools/domain/model/agent.py);
+`reserved_alias` in
+[validate/agent.py](../../snowflake_semantic_tools/domain/validate/agent.py).
+
+### A staged spec must be agent_spec.yaml, and may hold JSON
+
+**Docs say**: `agent_spec.yaml` appears only when reading a version back
+(`GET snow://agent/<name>/versions/<version>/agent_spec.yaml`). The docs show
+`CREATE AGENT ... FROM @<stage>/<path>` and `ADD VERSION FROM` a stage
+directory without naming the file they read.
+
+**Server does**: it reads the spec from `agent_spec.yaml` in that directory. A
+JSON document in that file is accepted.
+
+**Evidence**: `Enforced`. `test_permanent_agent_create_keeps_the_live_version_then_alias_and_tags`
+in [test_agent_publish.py](../../tests/unit/app/test_agent_publish.py) asserts
+the upload path, and the agent goldens are JSON
+([test_golden_agents.py](../../tests/unit/test_golden_agents.py)).
+
+**SST depends on it at**: the `Upload` in `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py), which
+agents and CoWork profiles share.
+
+### A profile over 1,000 bytes is refused, and only once the agent exists
+
+**Docs say**: `ALTER AGENT ... SET PROFILE` takes a JSON object of
+`display_name`, `avatar`, and `color`. The docs give no size limit.
+
+**Server does**: a profile over 1,000 bytes of JSON is refused:
+`Cortex agent profile JSON exceeds maximum size limit of 1000 bytes. Actual
+size: <n> bytes.` `CREATE AGENT` and every version statement before it have
+already run, so the publish stops part way.
+
+**Evidence**: `Enforced`. Validation refuses such a profile (SST-VAL558), and
+publishing writes the marked comment before anything else, so a publish that
+stops part way is finished by the next apply.
+[test_sst_val558.py](../../tests/codes/val/test_sst_val558.py),
+`test_a_set_profile_refused_after_the_create_reports_snowflakes_error_and_a_partial_write`
+in [test_apply.py](../../tests/unit/app/test_apply.py).
+
+**SST depends on it at**: `PROFILE_LIMIT_BYTES` in
+[validate/agent.py](../../snowflake_semantic_tools/domain/validate/agent.py).
+
+### An mcp tool is accepted, and every run of the agent fails
+
+**Docs say**: an MCP server is attached to an agent with the spec's top-level
+`mcp_servers:` key, `mcp_servers: [{server_spec: {name: <server>}}]`.
+
+**Server does**: `CREATE AGENT` accepts a `tools` entry of `type: mcp`, as it
+accepts any tool type, and then every run of the agent fails before
+orchestration with `Tool type mcp is not valid` (399504), whatever the question.
+The same server under `mcp_servers:` is called, its tools named
+`<server>_<tool>`.
+
+**Evidence**: `Enforced`. SST refuses `type: mcp` (SST-VAL559);
+`spec.passthrough` renders `mcp_servers:`.
+[test_sst_val559.py](../../tests/codes/val/test_sst_val559.py).
+
+**SST depends on it at**: `resolve_tool` in
+[resolve_tools.py](../../snowflake_semantic_tools/app/compile/agents/resolve_tools.py).
+
+### Agent references are not checked by the server
+
+**Docs say**: the `CREATE AGENT` reference does not describe a skills block, so
+says nothing about whether a skill reference is checked.
+
+**Server does**: it accepts a skill whose extension, version alias, or skill
+name does not exist, and a version that is empty. `DESCRIBE`, `SHOW` and
+`COMMIT` all pass on a dangling reference, so nothing at publish time reports it.
+A `generic` tool's `tool_resources` are not checked either.
+
+**Evidence**: `Enforced`. For what SST publishes, publish order is the only
+control. Skills and plugins publish before agents (`ddl_position` 250 and 260,
+before 300, in
+[registry.py](../../snowflake_semantic_tools/domain/model/registry.py)), and a
+plan that publishes an agent must include every skill it pins (SST-PLN030). An
+extension another project publishes is looked up instead: a connected `sst plan`
+reads it and the version the agent pins, even with the connected checks off, and
+one that is absent or hidden is an error (SST-VAL531). A skill name inside a
+consumed extension is still not checked. SST-RND013 warns on rendered generic
+tool resources.
+[test_sst_pln030.py](../../tests/codes/pln/test_sst_pln030.py),
+[test_sst_val531.py](../../tests/codes/val/test_sst_val531.py),
+[test_sst_rnd013.py](../../tests/codes/rnd/test_sst_rnd013.py).
+
+**SST depends on it at**:
+[plan/prune.py](../../snowflake_semantic_tools/domain/plan/prune.py);
+`references` in
+[agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
+[the agents guide](../guides/agents.md#skills).
+
+### The orchestration model is checked only when the agent runs
+
+**Docs say**: `models.orchestration` names the orchestration model, for example
+`auto`, which lets Snowflake choose. The Cortex Agents page lists the supported
+models by cross-region scope.
+
+**Server does**: `CREATE AGENT` accepts any string there, including an embedding
+model, a retired model and a name that is no model at all, and `DESCRIBE AGENT`
+returns it unchanged. A bad model fails only when the agent runs:
+`DATA_AGENT_RUN` returns code `399504`, with "<model> is not an allowed model
+for Agent requests" for a real model agents never accept (`llama3.1-8b`), and
+"<model> is not authorized or not available in your region" for one the account
+cannot reach. Each message lists the models available under a "Diagnostics"
+heading, in a format no document fixes. `SHOW CORTEX BASE MODELS` lists every
+Cortex model with its `lifecycle_status` (`GA`, `PUPR`, `PRPR`, `LEGACY`, `EOL`,
+`INTERNAL`) and marks none as agent-capable, so it cannot stand in for a run.
+Neither matches the docs' table: an account can be offered models the table
+omits, some of them `INTERNAL` or absent from SHOW, and not offered models it
+lists. ACCOUNTADMIN reaches every model, so a run as it proves nothing for
+other roles. `AI_COMPLETE` refuses an embedding model, a retired model and a
+misspelt name alike, with `400 'unknown model "<model>"'`, and a legacy model
+an account never used with "has been in legacy state" (`mistral-large2`, SST's
+former synonym default, from October 2026); `EXPLAIN` accepts all of
+them, so only a call shows a model answers.
+
+**Evidence**: `Enforced`. Offline, `snowflake.orchestration_models`, default
+`[auto]`, is the guard, and SST-VAL543 refuses a model outside it. Connected,
+each model in it, `auto` aside, runs once in a TEMPORARY probe agent with no
+tools: SST-VAL551 when the run refuses it, SST-VAL552 to SST-VAL555 for its
+lifecycle, SST-VAL556 when nothing could be learned. Observed on an AWS US
+account in October 2026.
+[test_sst_val543.py](../../tests/codes/val/test_sst_val543.py),
+[test_sst_val551.py](../../tests/codes/val/test_sst_val551.py),
+[test_cortex_models_port.py](../../tests/contract/test_cortex_models_port.py).
+
+**SST depends on it at**:
+[val_agent.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_agent.py);
+[validate_models.py](../../snowflake_semantic_tools/app/validate_models.py);
+[cortex_models.py](../../snowflake_semantic_tools/adapters/snowflake/connector/cortex_models.py);
+[the configuration reference](../reference/config.md).
+
+## CoWork profiles (private preview)
+
+CoWork profiles are a Snowflake private preview[^preview] (PrPr), documented in
+[About profiles in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles) and
+[Set up profile routing in Snowflake CoWork](https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing). Each entry below was
+measured on an account enrolled in the preview, routing through
+`SNOWFLAKE.CORTEX.DATA_AGENT_RUN` and reading the `agent_router` tool use it
+returns. A preview may change before general availability, so re-check these
+first when profiles misbehave.
+
+### An incomplete subagent entry still routes
+
+**Docs say**: every `subagents` entry needs `name`, `display_name`,
+`description`, and `source`; an entry with only a `name`, or one with no
+`source`, makes the profile drop its whole list and answer that it has no agent
+to route to.
+
+**Server does**: an entry with only `name`, one with no `description`, and one
+with no `source` each route to the named agent and answer. CoWork Admin itself
+writes name-only entries. Nothing checks that the name exists: a profile naming
+a dropped agent is created, and fails only when a question reaches it, with an
+authorization error and no warning.
+
+**Evidence**: `Enforced`. SST renders all four fields for every entry, as the
+guide asks, and resolves each agent at compile time (SST-REF012, SST-VAL872).
+`test_a_bare_profile_renders_its_model_router_and_subagents_only` in
+[test_render_cowork_profile.py](../../tests/unit/domain/test_render_cowork_profile.py) pins the entry.
+
+**SST depends on it at**: `render_cowork_profile_spec` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/render/cowork_profile.py);
+`resolve_subagents` in
+[subagents.py](../../snowflake_semantic_tools/app/compile/cowork_profiles/subagents.py).
+
+### A profile with no subagent list fails every run
+
+**Docs say**: a profile whose specification has no `tool_resources` routes over
+every agent attached to the CoWork object; the guide's own `CREATE AGENT`
+example has none. An empty `subagents` list is not the same.
+
+**Server does**: `CREATE AGENT` accepts the profile, and every run of it fails
+with `agent_router tool 'router' is missing a corresponding entry in
+tool_resources` (code 399518), also with a data agent attached. A
+`tool_resources` key that is not the router tool's name fails the same way. An
+empty list routes to no agent: the profile answers that no data is connected.
+
+**Evidence**: `Enforced`. A profile with no subagents is SST-VAL871, and SST
+always writes the router's resources under the router's own name.
+[test_sst_val871.py](../../tests/codes/val/test_sst_val871.py).
+
+**SST depends on it at**: `cowork_profile_diagnostics` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/validate/cowork_profile.py);
+`ROUTER_NAME` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/model/cowork_profile.py).
+
+### Routing follows `source.fqn`, not `name`
+
+**Docs say**: set `name` and `source.fqn` to the same qualified name.
+
+**Server does**: when they differ, the question runs on the agent `source.fqn`
+names, and the router's tool use reports `name` as the subagent it chose. The
+`display_name` the router reports is the subagent's own profile display name,
+not the entry's.
+
+**Evidence**: `Enforced`. SST writes the agent's qualified name to both.
+`test_a_subagent_takes_its_agents_display_name_comment_and_sample_questions`
+in [test_cowork_profile_compile.py](../../tests/unit/app/test_cowork_profile_compile.py).
+
+**SST depends on it at**: `render_cowork_profile_spec` in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/render/cowork_profile.py).
+
+### A router agent works outside SNOWFLAKE_INTELLIGENCE.PROFILES
+
+**Docs say**: an agent in `SNOWFLAKE_INTELLIGENCE.PROFILES` is a profile, and an
+agent anywhere else is a regular agent.
+
+**Server does**: an agent with an `agent_router` tool in any schema is created,
+routes when run, and can be attached to the CoWork object. Only CoWork's own
+listing reads the schema.
+
+**Evidence**: `Observed`. Probe: create the same router agent in a scratch
+schema, run it with `DATA_AGENT_RUN`, and attach it with `ALTER SNOWFLAKE
+INTELLIGENCE ... ADD AGENT`; then detach and drop it.
+
+**SST depends on it at**: SST-VAL878 and SST-VAL880 in
+[cowork_profile.py](../../snowflake_semantic_tools/domain/validate/cowork_profile.py),
+and the rehearsal targets in [the CoWork profiles guide](../guides/cowork-profiles.md#where-it-publishes).
+
+### A profile takes the staged agent lifecycle
+
+**Docs say**: the guides create a profile only with an inline
+`CREATE AGENT ... FROM SPECIFICATION $$...$$`.
+
+**Server does**: a profile in `SNOWFLAKE_INTELLIGENCE.PROFILES` takes every
+statement SST publishes an agent with: `CREATE AGENT ... FROM @<stage>/<dir>/`
+from a server-side encrypted stage, `MODIFY VERSION VERSION$1 SET COMMENT`,
+`ADD VERSION FROM`, `ADD LIVE VERSION FROM LAST`, `MODIFY LIVE VERSION SET
+SPECIFICATION`, `COMMIT`, and `SET PROFILE`, and each version routes. A `$$`
+in a staged specification survives; in an inline one it is a syntax error.
+
+**Evidence**: `Enforced` for SST's side:
+`test_publication_stages_the_spec_under_the_cowork_profiles_folder_with_the_agent_programs`
+in [test_cowork_profile_compile.py](../../tests/unit/app/test_cowork_profile_compile.py) pins the statements. Whether a TEMPORARY router agent works is not
+measured, so `apply --temporary` leaves profiles out (SST-APL106).
+
+**SST depends on it at**: `agent_programs` and `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py).
+
+### Attaching, DEFAULT_AGENT, and dropping
+
+**Docs say**: attach a profile with `ALTER SNOWFLAKE INTELLIGENCE ... ADD
+AGENT`, which needs MODIFY on the CoWork object or its ownership; setting
+`DEFAULT_AGENT` to an agent that names its own subagents fails.
+
+**Server does**: `SHOW SNOWFLAKE INTELLIGENCES` lists the account's one CoWork
+object, `SHOW AGENTS IN SNOWFLAKE INTELLIGENCE <object>` lists what is attached
+with `database_name`, `schema_name` and `name`, and `SHOW GRANTS ON SNOWFLAKE
+INTELLIGENCE <object>` lists its OWNERSHIP and USAGE grants. Attaching an agent
+already attached fails ("already present"), and detaching one that is not fails
+("was not found"); dropping an attached agent detaches it. The object's owner
+attaches; MODIFY alone is not measured. `DEFAULT_AGENT` must have an
+`agent_router` tool ("is not a routing agent") and must not be attached; a
+detached profile that names its own subagents is accepted as the default.
+
+**Evidence**: `Enforced` for SST's side of attaching:
+`test_an_update_ends_with_the_attachment_only_when_the_profile_is_not_attached`
+and `test_an_unchanged_profile_that_was_detached_is_updated_to_attach_it_alone`
+in [test_plan_attach.py](../../tests/unit/domain/test_plan_attach.py) pin that
+an ADD is planned only for a profile the listing does not show, and
+`test_dropping_a_profile_detaches_it_so_a_prune_needs_no_statement_of_its_own`
+in [test_cowork_attach_apply.py](../../tests/unit/app/test_cowork_attach_apply.py)
+that a drop needs no detach; the three reads are pinned in
+[test_snowflake_cowork_attach.py](../../tests/unit/adapters/test_snowflake_cowork_attach.py)
+and [test_snowflake_preflight.py](../../tests/unit/adapters/test_snowflake_preflight.py).
+`DEFAULT_AGENT` is `Observed` only: SST never sets it.
+
+**SST depends on it at**: `attach_changes` in
+[attach.py](../../snowflake_semantic_tools/domain/plan/attach.py);
+`read_attachments` in [observe.py](../../snowflake_semantic_tools/app/observe.py);
+`cowork_object`, `attached_agents` and `missing_cowork_privileges` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py)
+and [preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py).
+[The CoWork profiles guide](../guides/cowork-profiles.md#attaching-to-cowork)
+leaves `DEFAULT_AGENT` and detaching to CoWork Admin.
+
+The four entries below were measured by running `EXECUTE_AI_EVALUATION` on a
+dev rehearsal of a profile, and reading `GET_AI_EVALUATION_DATA`,
+`GET_AI_RECORD_TRACE` and `SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` for the run.
+
+### An evaluation runs on a profile
+
+**Docs say**: Cortex Agent evaluations take a Cortex Agent; the profile guides
+say nothing of evaluating a profile.
+
+**Server does**: `EXECUTE_AI_EVALUATION` accepts a profile as a `CORTEX AGENT`,
+passes through the usual statuses to a terminal one, and scores every metric on
+every record. `GET_AI_EVALUATION_DATA` returns the usual columns.
+`answer_correctness`, `logical_consistency` and custom judges score the
+profile's answers as an agent's; a ground-truth key Snowflake does not know is
+passed to custom judges in `{{ground_truth}}`.
+
+**Evidence**: `Enforced` for SST's side:
+`test_a_profile_run_merges_its_routing_into_each_question` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) runs a
+profile's eval through the agent's start, status and results reads, and
+[test_sst_val886.py](../../tests/codes/val/test_sst_val886.py) pins that it
+compiles only for a rehearsal.
+
+**SST depends on it at**: `RunEvalSuite._attempt` in
+[run.py](../../snowflake_semantic_tools/app/evals/run.py);
+`cowork_listed_placement` in
+[eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py);
+[Evaluating CoWork profiles](../guides/evals.md#evaluating-cowork-profiles).
+
+### Tool selection and tool execution accuracy do not see router calls
+
+**Docs say**: tool selection and tool execution accuracy compare the tools an
+agent invoked with the ones its ground truth expects.
+
+**Server does**: on a profile, both report no tool invoked on every record,
+whether the ground truth names the router, the subagent's qualified name, or a
+tool of the subagent; the subagent's own calls are not in the profile's trace
+either. With an empty expectation both score 1.0 whatever the router did, so
+neither catches even a wrong decline.
+
+**Evidence**: `Enforced`. A profile's config that names either is SST-VAL882,
+and one that inherits either from `evals.+metrics` runs without it
+(SST-VAL887): [test_sst_val882.py](../../tests/codes/val/test_sst_val882.py),
+[test_sst_val887.py](../../tests/codes/val/test_sst_val887.py), and
+`test_a_profile_eval_inheriting_the_root_metrics_runs_without_the_blind_ones`
+in [test_yaml_profile_evals.py](../../tests/unit/adapters/test_yaml_profile_evals.py).
+
+**SST depends on it at**: `ROUTER_BLIND_METRICS` in
+[model.py](../../snowflake_semantic_tools/domain/model/eval/model.py);
+`_profile_config` in
+[eval_subject.py](../../snowflake_semantic_tools/domain/validate/eval_subject.py);
+`_with_system_defaults` in
+[catalog.py](../../snowflake_semantic_tools/adapters/yaml/evals/catalog.py).
+
+### Router spans name the subagent chosen, and a decline leaves none
+
+**Docs say**: nothing. The span attributes are undocumented.
+
+**Server does**: each record of a profile's run has one span in
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` whose `ai.observability.span_type` is
+`record_root`, and each routing call adds a span whose
+`snow.ai.observability.agent.tool.agent_router.subagent_name` holds the chosen
+subagent's qualified name, uppercase and unquoted. A declined question has the
+root span alone. `ai.observability.record_id` equals `GET_AI_EVALUATION_DATA`'s
+`RECORD_ID`, and `snow.ai.observability.run.name`, `.database.name`,
+`.schema.name` and `.object.name` name the run and the profile, as uppercase
+identifiers. One query filtered on those returns every root and route of the
+run. Whether a span can land after the run's terminal status, and what a role
+other than ACCOUNTADMIN reads of the table, is not measured.
+
+**Evidence**: `Enforced` for SST's side:
+`test_one_query_reads_the_runs_roots_and_routes_for_the_profile` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) pins the query
+and how its rows are read, and
+`test_an_untraced_record_is_read_again_the_poll_interval_apart_until_it_is_traced`
+and `test_a_record_still_untraced_after_the_last_read_fails_closed_with_a_warning`
+pin that a record with no root span is never read as a decline.
+
+**SST depends on it at**: `_ROUTES_QUERY`, `read_routes` and `score_routing` in
+[routes.py](../../snowflake_semantic_tools/app/evals/routes.py);
+`routing_score` in
+[routing.py](../../snowflake_semantic_tools/domain/evaluate/routing.py).
+
+### A run's spans survive its DELETE
+
+**Docs say**: `EXECUTE_AI_EVALUATION('DELETE', ...)` deletes a run.
+
+**Server does**: the run's spans stay in `SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS`
+after the run is deleted, so a later run given the same name would read the
+earlier run's records with its own.
+
+**Evidence**: `Enforced` for SST's side: the span query filters on the run's
+name and the profile both, as
+`test_one_query_reads_the_runs_roots_and_routes_for_the_profile` in
+[test_eval_routes.py](../../tests/unit/app/test_eval_routes.py) pins, and each
+attempt's run name carries its timestamp and attempt number, as
+`test_eval_runner_polls_retrieves_scores_and_costs` and
+`test_eval_runner_reports_every_retry_and_partial_status` in
+[test_eval_run.py](../../tests/unit/app/test_eval_run.py) pin.
+
+**SST depends on it at**: `_ROUTES_QUERY` in
+[routes.py](../../snowflake_semantic_tools/app/evals/routes.py); `_run_name` in
+[run.py](../../snowflake_semantic_tools/app/evals/run.py).
+
+## Cortex Code profiles (private preview)
+
+Cortex Code agent profiles are a Snowflake private preview[^preview] (PrPr): an
+AGENT in `CORTEX_CODE.CONFIG` that the Cortex Code CLI, Desktop, and Snowsight
+apply for the roles with USAGE on it. Each entry below was measured on
+2026-10-26 in a sandbox account enrolled in the preview. A preview may change
+before general availability, so re-check these first when Cortex Code profiles
+misbehave.
+
+### A skill's version may be an extension version alias
+
+**Docs say**: the preview's notes show a skill entry as `source.type:
+CORTEX_EXTENSION` and `source.path`, and say nothing of `source.version`.
+
+**Server does**: `CREATE AGENT ... FROM SPECIFICATION` in `CORTEX_CODE.CONFIG`
+accepts a skill whose `source.version` is an SST extension version alias (such
+as `SST_DA1593FC54C6`), a system version name (`VERSION$3`), or no version at
+all. `LIST 'snow://cortex_extension/<fqn>/versions/<alias>/'` resolves an alias
+to its version's files, so an alias names exactly the bytes SST published.
+
+**Evidence**: `Enforced` for SST's side: every Cortex Code profile pins each
+skill to the alias its extension published, as an agent does, and one with no
+version to pin is SST-VAL856. The goldens under
+[tests/golden/expected/coco_profile/](../../tests/golden/expected/coco_profile/),
+compared by [test_goldens.py](../../tests/unit/test_goldens.py), pin the
+rendered `source.version`. Whether the server still accepts an alias is
+`Observed`; probe: create a scratch AGENT whose one skill names an alias, then
+`DESCRIBE AGENT` it and `LIST` the alias's path.
+
+**SST depends on it at**: `render_coco_profile_spec` in
+[coco_profile.py](../../snowflake_semantic_tools/domain/render/coco_profile.py);
+[the plugins and Cortex Code profiles guide](../guides/plugins-and-coco-profiles.md#cortex-code-profiles).
+
+### The specification refuses some unknown keys, and SST writes only three
+
+**Docs say**: a Cortex Code profile's specification holds
+`models.orchestration`, `instructions.response`, and `skills`.
+
+**Server does**: an unknown top-level key `budget` is refused with `agent spec
+is invalid: unrecognized field budget`, but a `tools` key is accepted, so the
+server does not hold a profile to the three keys. An `instructions.response` of
+40 KB is accepted.
+
+**Evidence**: `Enforced` for SST's side: SST itself limits the specification to
+`models`, `instructions`, and `skills`, and refuses `hooks`, `mcp_servers`,
+`commands`, `owner_team`, and `allowed_roles` (SST-VAL851). The goldens under
+[tests/golden/expected/coco_profile/](../../tests/golden/expected/coco_profile/)
+pin the rendered keys. Whether the server still accepts `tools` is not relied
+on.
+
+**SST depends on it at**: `render_coco_profile_spec` and
+`assemble_instructions` in
+[coco_profile.py](../../snowflake_semantic_tools/domain/render/coco_profile.py).
+
+### A Cortex Code profile takes the agent version statements
+
+**Docs say**: nothing specific to Cortex Code profiles; they are AGENT objects.
+
+**Server does**: `DESCRIBE AGENT` returns `agent_spec` as JSON and the versions
+`["VERSION$1"]` plus a live version. `ALTER AGENT ... MODIFY LIVE VERSION SET
+SPECIFICATION`, `COMMIT`, and `ADD LIVE VERSION FROM LAST` behave as they do for
+any agent (see [Agents](#agents)).
+
+**Evidence**: `Observed`. SST publishes a Cortex Code profile with the same
+staged-agent programs as an agent, from `coco-profiles/<profile>/<git sha>/`
+under `apply.agent_spec_stage`. Probe: create a scratch AGENT in a schema of its
+own, change its live version's specification, commit, and `DESCRIBE AGENT` it;
+then drop it.
+
+**SST depends on it at**: `agent_programs` and `render_agent_object` in
+[staged_agent.py](../../snowflake_semantic_tools/app/compile/staged_agent.py);
+[coco_profiles.py](../../snowflake_semantic_tools/app/compile/coco_profiles.py).
+
+## Cortex extensions and stages
+
+### The extension grammar is undocumented
+
+**Docs say**: nothing. The published SQL reference has no
+`CREATE CORTEX EXTENSION` or `ALTER CORTEX EXTENSION` page, and `GET_DDL` reads
+no extension. Every behavior in this section comes from probing.
+
+**Server does**: `CREATE CORTEX EXTENSION ... FROM <location> VERSION <alias>`
+must put `FROM` and `VERSION` before `TYPE`. The name given to `ADD VERSION`
+becomes the version's alias. The version itself is `VERSION$<n>`, and its files
+list only under `versions/version$<n>/`: the alias path lists nothing.
+
+**Evidence**: `Enforced`. `test_first_publish_then_noop_then_revert_points_the_default_back`
+in [test_extension_lifecycle.py](../../tests/unit/app/test_extension_lifecycle.py)
+pins the exact `CREATE`. `test_list_location_returns_paths_relative_to_a_prefix_or_version`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py)
+pins version listing by system name.
+
+**SST depends on it at**: `_create_sql` and `_version` in
+[extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py);
+`_EXTENSION_URI` in
+[stage.py](../../snowflake_semantic_tools/adapters/snowflake/connector/stage.py).
+
+### An extension created without a source starts with an empty version
+
+**Docs say**: nothing (see above).
+
+**Server does**: `CREATE CORTEX EXTENSION` without `FROM ... VERSION` leaves an
+empty, unaliased `VERSION$1`. No statement can drop or alias it, and the catalog
+serves it until a version is added.
+
+**Evidence**: `Enforced`. SST creates a skill's extension from its bundle, so the
+first version is the bundle; the create test above asserts no `ADD VERSION`
+follows. Only a plugin has a fallback: when the bundled create is refused it is
+created bare and a version added, and when that is refused too a live version is
+built from empty:
+`test_plugin_falls_back_to_a_live_version_built_from_empty`.
+
+**SST depends on it at**: `_create_extension` in
+[extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py);
+step 3 of publishing in [the skills guide](../guides/skills.md#publishing).
+
+### A default version is named by its system name, and stays where it is set
+
+**Docs say**: nothing (see above).
+
+**Server does**: measured on a live account, `ALTER CORTEX EXTENSION ... SET
+DEFAULT_VERSION = <v>` accepts a version's system name unquoted (`VERSION$2`),
+double-quoted (`"VERSION$2"`) or as a string literal (`'VERSION$2'`), and `LAST`
+quoted or not. A version's alias is refused: `099103 (22023): Invalid default`.
+`UNSET DEFAULT_VERSION` works, and the default then follows the newest version.
+A default set by name stays where it is when `ADD VERSION` adds a version.
+`SHOW VERSIONS IN CORTEX EXTENSION` marks each version's `is_default`, and
+`SHOW CORTEX EXTENSIONS` reports the `effective_version` the catalog serves and
+the `latest_certified_version`.
+
+**Evidence**: `Enforced`. After every publish SST sets the default to the
+version holding the declared alias, by its system name as a string literal,
+unless a certified version outranks it, and reads the default back. The
+offline fake refuses an alias and keeps a default set by name where it is, as
+the server does:
+`test_first_publish_then_noop_then_revert_points_the_default_back` in
+[test_extension_lifecycle.py](../../tests/unit/app/test_extension_lifecycle.py);
+`test_every_publish_after_a_pinned_default_becomes_the_default` and
+`test_the_fake_takes_a_default_as_snowflake_does` in
+[test_extension_default.py](../../tests/unit/app/test_extension_default.py).
+
+**SST depends on it at**: `_point_default` in
+[extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py);
+`default_elsewhere` in
+[extension_versions.py](../../snowflake_semantic_tools/app/lifecycle/extension_versions.py);
+step 5 of publishing in [the skills guide](../guides/skills.md#publishing).
+
+### ADD VERSION from a path that holds nothing succeeds
+
+**Docs say**: nothing (see above).
+
+**Server does**: `ADD VERSION <alias> FROM @<stage>/<path>/` succeeds when the
+path matches no file, reports `Version <alias>successfully created.`, and
+produces an empty version. An agent that pins it then behaves as though the
+skill had no content, with no error anywhere.
+
+**Evidence**: `Enforced`. After every create or add, SST lists the version and
+requires exactly the bundle's files (SST-APL016, SST-APL019).
+`test_empty_version_and_upload_failures_are_partial_writes` in
+[test_extension_lifecycle.py](../../tests/unit/app/test_extension_lifecycle.py)
+reproduces the empty version;
+[test_sst_apl016.py](../../tests/codes/apl/test_sst_apl016.py).
+
+**SST depends on it at**: `_check_version` in
+[extensions.py](../../snowflake_semantic_tools/app/lifecycle/extensions.py).
+
+### A skill version holds skills/ with exactly one skill
+
+**Docs say**: nothing (see above).
+
+**Server does**: for `TYPE = 'SKILL'`, a version root must contain only a
+`skills/` directory, and `skills/` must contain exactly one subdirectory. Both
+are enforced only by error message. A version whose `SKILL.md` sits at the root
+is rejected.
+
+**Evidence**: `Enforced`. Each skill is its own extension, and its bundle puts
+every file under `skills/<name>/`. The skill goldens in
+[tests/golden/expected/skill](../../tests/golden/expected/skill) pin that layout,
+and [test_goldens.py](../../tests/unit/test_goldens.py) compares them
+(`test_every_compiled_payload_equals_its_golden`).
+
+**SST depends on it at**:
+[skill_bundle.py](../../snowflake_semantic_tools/domain/render/skill_bundle.py);
+[the skills guide](../guides/skills.md).
+
+### LIST names a stage file with the stage's own name first
+
+**Docs say**: `LIST`'s `name` column is the "Name of the staged file".
+
+**Server does**: on an internal stage, `name` starts with the stage's own name,
+unqualified and lower-cased, so it is not a path into the stage. Fed back into
+`ADD VERSION ... FROM`, it names a path that holds nothing, which the previous
+entry shows succeeds silently.
+
+**Evidence**: `Enforced`. SST compares names after the first `/`, and accepts
+the stage-name prefix only for the exact path it asked for.
+`test_list_location_returns_paths_relative_to_a_prefix_or_version` and
+`test_staged_file_observation_accepts_internal_stage_name_shape_only_for_exact_path`
+in [test_snowflake_connector.py](../../tests/unit/adapters/test_snowflake_connector.py).
+
+**SST depends on it at**: `list_location` and `_staged_file_name_matches` in
+[stage.py](../../snowflake_semantic_tools/adapters/snowflake/connector/stage.py).
+
+## Evaluations
+
+### EXECUTE_AI_EVALUATION needs a current database and schema
+
+**Docs say**: "With SQL, agent evaluations are run on the session's database and
+schema." Here the docs agree with the server. The entry exists because of the
+error.
+
+**Server does**: called unqualified in a session with no current database, the
+`START` fails with `Cannot perform DROP. This session does not have a current
+database.` That names an operation the caller never asked for, although every
+argument is fully qualified. A session that inherited a schema from earlier
+statements succeeds by accident, so the failure shows first in a fresh session,
+as in CI.
+
+**Evidence**: `Enforced`. SST runs `START` and `STATUS` on a session opened with
+the agent's database and schema as current, and checks them on connect.
+`test_eval_runner_polls_retrieves_scores_and_costs` in
+[test_eval_run.py](../../tests/unit/app/test_eval_run.py) asserts the `START`
+runs in the agent's schema.
+
+**SST depends on it at**: `_start` in
+[run.py](../../snowflake_semantic_tools/app/evals/run.py); `read_status` in
+[retrieve.py](../../snowflake_semantic_tools/app/evals/retrieve.py);
+`_open_scoped` in
+[session.py](../../snowflake_semantic_tools/adapters/snowflake/connector/session.py).
+
+### A system metric cannot name version v1
+
+**Docs say**: every system metric accepts a `version` key, and the versions
+table lists `v1`. Omitting `version`, or `auto`, uses the current default.
+
+**Server does**: `version: v1` is refused at `START`, with a message telling the
+caller to omit the version field to use v1. `v2` and `v3` can be named. So v1 is
+reachable only as an unpinned default.
+
+**Evidence**: `Enforced` for the pin: SST requires every system metric to name a
+version (SST-VAL722), because an unpinned default moves when Snowflake changes
+it. [test_sst_val722.py](../../tests/codes/val/test_sst_val722.py). The refusal
+of `v1` is `Observed`. SST accepts only `v3` (SST-PRS013, SST-VAL723), and
+refuses `v1` with a code no setting lowers (SST-VAL764), so a project that
+demotes SST-PRS013 still never sends it:
+[test_sst_prs013.py](../../tests/codes/prs/test_sst_prs013.py),
+[test_sst_val723.py](../../tests/codes/val/test_sst_val723.py),
+[test_sst_val764.py](../../tests/codes/val/test_sst_val764.py). Probe:
+
+```sql
+-- Stage an evaluation config for <db>.<schema>.probe_agent whose one system
+-- metric sets `version: v1`, at @<db>.<schema>.probe_stage/probe.yaml, then:
+USE SCHEMA <db>.<schema>;
+CALL EXECUTE_AI_EVALUATION('START', OBJECT_CONSTRUCT('run_name', 'probe_run'),
+  '@<db>.<schema>.probe_stage/probe.yaml');
+-- Expect: refused, telling the caller to omit the version to use v1.
+-- Set `version: v3` and the same START is accepted.
+```
+
+**SST depends on it at**: `_system_metric` in
+[eval_config.py](../../snowflake_semantic_tools/domain/validate/eval_config.py);
+`_system_metric_value` in
+[render/eval.py](../../snowflake_semantic_tools/domain/render/eval.py);
+[the evals guide](../guides/evals.md#the-run-configuration).
+
+### PARTIALLY_COMPLETED is reported before COMPLETED
+
+**Docs say**: nothing found about a run passing through a partial status on its
+way to completing.
+
+**Server does**: between a run's last metric and its finalizing steps, `STATUS`
+can read `PARTIALLY_COMPLETED` for up to about a minute, after which the same run
+reads `COMPLETED`.
+
+**Evidence**: `Enforced`. A partial status ends a run only once it has persisted
+for `partial_settle_ms`, three minutes by default.
+`test_a_partial_status_that_turns_completed_within_the_window_is_kept_without_a_retry`
+in [test_eval_poll.py](../../tests/unit/app/test_eval_poll.py) covers the window.
+
+**SST depends on it at**: the module docstring and polling loop of
+[poll.py](../../snowflake_semantic_tools/app/evals/poll.py);
+`partial_settle_ms` in
+[options.py](../../snowflake_semantic_tools/app/evals/options.py).
+
+### An evaluation ignores secondary roles
+
+**Docs say**: the evaluation page lists the privileges a run needs and does not
+mention secondary roles.
+
+**Server does**: a run executes as Snowflake tasks under the session's primary
+role only. A privilege the session holds through a secondary role works
+interactively and fails in the run.
+
+**Evidence**: `Enforced`. Before any run starts, SST-VAL727 reports a run
+privilege held only through a secondary role, and SST-VAL728 one held by no role.
+[test_sst_val727.py](../../tests/codes/val/test_sst_val727.py),
+[test_sst_val728.py](../../tests/codes/val/test_sst_val728.py).
+
+**SST depends on it at**:
+[privileges.py](../../snowflake_semantic_tools/app/evals/privileges.py);
+[the security guide](../guides/security.md).
+
+### An evaluation runs the version its config names, on that version's model
+
+**Docs say**: an evaluation config's `agent_params.agent_version` names the
+version to evaluate. The config has no field for the orchestration model.
+
+**Server does**: a run whose `agent_version` is an alias, such as
+`EVAL_CLAUDE_OPUS_4_8`, evaluates the version carrying it, orchestrated by the
+model that version's specification names. Its spans in
+`SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS` record
+`snow.ai.observability.object.version.name`, `.version.alias`, and
+`agent.planning.model`, and each row of `GET_AI_EVALUATION_DATA` carries the
+REQUEST_ID of the agent request that answered its question.
+
+**Evidence**: `Enforced`. A comparison runs each candidate on a copy of the
+eval whose config differs only in `agent_version`, the candidate's alias, and
+the pinned model on the release by name; the results keep each question's
+request ids, which its cost is read by.
+`test_an_agents_comparison_commits_runs_every_model_and_reports_the_winner` in
+[test_eval_compare.py](../../tests/unit/app/test_eval_compare.py).
+
+**SST depends on it at**: `compared_eval` in
+[compare_runs.py](../../snowflake_semantic_tools/app/evals/compare_runs.py);
+`_ResultCollector.rows` in
+[retrieve.py](../../snowflake_semantic_tools/app/evals/retrieve.py).
+
+### An agent request's credits and a judge's tokens land in the usage views, late
+
+**Docs say**: `SNOWFLAKE.ACCOUNT_USAGE.CORTEX_AGENT_USAGE_HISTORY` has one row
+per agent request, with TOKEN_CREDITS and a METADATA object, and lags up to an
+hour; METADATA's `sql_query_credits` up to eight hours.
+`CORTEX_REST_API_USAGE_HISTORY` lists REST requests with their TOKENS.
+
+**Server does**: an evaluation's agent rows join its results on REQUEST_ID, and
+METADATA reads `interaction_interface` `eval` with the version's name and
+alias; `sql_query_credits` is often null. A CoWork profile's run has a row for
+the router's request alone: the subagent requests it makes are not tied to the
+run. A judge's calls are named by each `eval` span's
+`ai.observability.eval.inference_request_ids`, one VARCHAR of comma-separated
+ids, which join `CORTEX_REST_API_USAGE_HISTORY.REQUEST_ID`; that view has
+tokens and no credits column, so a judge's cost is reported in tokens. A role
+without access to ACCOUNT_USAGE or the events table is refused the read.
+
+**Evidence**: `Enforced`. The comparison reads both views once each, binding
+every id as one JSON array; a request with no row yet is `pending`, a null SQL
+credit younger than eight hours is `pending`, a refused read is `unavailable`
+(SST-VAL773, SST-VAL774), and a profile's cost is labeled its router's
+(SST-VAL776). [test_usage_port.py](../../tests/contract/test_usage_port.py),
+[test_eval_compare_cost.py](../../tests/unit/app/test_eval_compare_cost.py),
+[test_sst_val776.py](../../tests/codes/val/test_sst_val776.py).
+
+**SST depends on it at**:
+[connector/usage.py](../../snowflake_semantic_tools/adapters/snowflake/connector/usage.py);
+[compare_cost.py](../../snowflake_semantic_tools/app/evals/compare_cost.py).
+
+Measured on a sandbox account: a comparison of `jaffle_analyst`'s eval
+reported agent credits per model (0.631405, 1.403313, 0.212347 over 12
+requests each) that equal `SUM(TOKEN_CREDITS)` of the view's rows grouped by
+METADATA `agent_version_alias` (RELEASED, EVAL_CLAUDE_OPUS_4_8,
+EVAL_CLAUDE_HAIKU_4_5) to the sixth decimal; the rows had landed within the
+four minutes the comparison took. Judge requests: 86 of 86 ids joined.
+
+### An agent on `auto` runs a model Snowflake chooses
+
+**Docs say**: `models.orchestration` is optional; without it, a model is
+selected automatically.
+
+**Server does**: a CoWork profile whose specification named `auto` routed with
+`claude-opus-4-8` (by the `CREDITS_GRANULAR` of its evaluation's usage rows),
+while the project's agents pinned `claude-sonnet-4-6`. Which model
+`auto` resolves to is Snowflake's choice and is not reported before a run.
+
+**Evidence**: `Enforced` as a policy, not a check of the model: an agent or
+profile on `auto` is SST-VAL560 (a warning the project sets the severity of),
+and SST-VAL544 when a blocking eval scores it.
+[test_sst_val560.py](../../tests/codes/val/test_sst_val560.py),
+[test_sst_val544.py](../../tests/codes/val/test_sst_val544.py).
+
+**SST depends on it at**: `auto_model_problems` in
+[cross_artifact.py](../../snowflake_semantic_tools/domain/validate/cross_artifact.py).
+
+## Search services and grants
+
+### A search service stays ACTIVE after its source is rebuilt
+
+**Docs say**: change tracking must be enabled on every object a Cortex Search
+service reads, and a service that cannot refresh incrementally fails at
+creation.
+
+**Server does**: after the source table is replaced, including by an ordinary
+`dbt build` that rematerialises it, `ALTER CORTEX SEARCH SERVICE ... REFRESH`
+fails. The service still reports `ACTIVE` indexing and serving states and a
+plausible row count. Only replacing the service recovers it. Its status fields
+cannot show the breakage, so a monitor that reads them sees a healthy service.
+
+**Evidence**: `Observed`. SST never reads the service's status to judge health.
+It warns when a dbt materialization rebuilds the relation an `INCREMENTAL`
+service indexes (SST-VAL617), and when connected validation finds the source's
+change tracking off (SST-VAL618).
+[test_sst_val617.py](../../tests/codes/val/test_sst_val617.py),
+[test_sst_val618.py](../../tests/codes/val/test_sst_val618.py). No test stops a
+change that trusts the status instead. Probe:
+
+```sql
+CREATE TABLE <db>.<schema>.probe_docs (ID INT, BODY STRING) CHANGE_TRACKING = TRUE;
+INSERT INTO <db>.<schema>.probe_docs VALUES (1, 'a'), (2, 'b');
+CREATE CORTEX SEARCH SERVICE <db>.<schema>.probe_search ON BODY
+  WAREHOUSE = <warehouse> TARGET_LAG = '1 hour'
+  AS SELECT ID, BODY FROM <db>.<schema>.probe_docs;
+CREATE OR REPLACE TABLE <db>.<schema>.probe_docs (ID INT, BODY STRING);
+ALTER CORTEX SEARCH SERVICE <db>.<schema>.probe_search REFRESH;
+SHOW CORTEX SEARCH SERVICES LIKE 'PROBE_SEARCH' IN SCHEMA <db>.<schema>;
+-- Expect: the REFRESH fails while SHOW still reports ACTIVE.
+```
+
+**SST depends on it at**: `rebuilt_source` in
+[validate/tool.py](../../snowflake_semantic_tools/domain/validate/tool.py);
+`_tool` and `_change_tracking` in
+[agents/observe.py](../../snowflake_semantic_tools/app/compile/agents/observe.py);
+[val_tool.py](../../snowflake_semantic_tools/domain/diagnostics/specs/val_tool.py).
+
+### Which replaces can keep their grants
+
+**Docs say**: `CREATE AGENT` has `COPY GRANTS`, and it does not copy future
+grants. `COPY GRANTS` and `IF NOT EXISTS` are mutually exclusive on it.
+`CREATE CORTEX SEARCH SERVICE` has no `COPY GRANTS` clause. `SHOW GRANTS ON
+<object_type> <object_name>` is given for any object.
+
+**Server does**: it agrees on agents and search services. A replace without the
+clause drops every explicit grant, for an agent, a dataset and an extension
+alike. `COPY GRANTS` is a syntax error on `CREATE DATASET` and on
+`CREATE CORTEX EXTENSION`. `SHOW GRANTS ON DATASET <name>` is a syntax error in
+every form, so a dataset's grants are visible only from the grantee's side
+(`SHOW GRANTS TO ROLE`), and its owner from `SHOW DATASETS`.
+
+**Evidence**: `Enforced`. Each rendered object's `PublishShape` declares how its
+grants survive an update. A semantic view, procedure and function replace with
+`COPY GRANTS`. A search service is replaced and its explicit grants re-applied.
+Agents, skills, plugins, profiles and evals are never replaced. SST never sends
+`SHOW GRANTS ON DATASET`.
+`test_search_service_update_replays_and_verifies_explicit_grants` in
+[test_apply.py](../../tests/unit/app/test_apply.py);
+`test_sst_val713_silent` in
+[test_sst_val713.py](../../tests/codes/val/test_sst_val713.py);
+`test_replacing_the_view_keeps_the_grants_on_it`, live, in
+[test_apply_live.py](../../tests/integration/test_apply_live.py).
+
+**SST depends on it at**: `GrantPreservation` and each type's
+`grant_preservation` in
+[registry.py](../../snowflake_semantic_tools/domain/model/registry.py); the
+`PublishShape` a search service, procedure or function renders with, in
+[render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
+`_verify_grants` in [apply/one.py](../../snowflake_semantic_tools/app/apply/one.py);
+`_UNLISTED_GRANTS` in
+[catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py).
+
+## Roles and privileges
+
+### CREATE is authorized by the primary role alone
+
+**Docs say**: a session's secondary roles authorize any SQL action except
+`CREATE <object>`, which is authorized by the primary role alone.
+`IS_ROLE_IN_SESSION` reports a role active through the primary role or a
+secondary role.
+
+**Server does**: not probed. SST takes the documented rule as stated.
+
+**Evidence**: `Enforced`. The rule is documented, not observed, and SST acts
+on it in two places. `SST-PLN008` counts a `CREATE` privilege only when the
+primary role holds it through its hierarchy, and asks `IS_ROLE_IN_SESSION` only
+to say that a secondary role holds one it reports; `READ` and `WRITE` on a spec
+stage still count for any role in the session
+([test_preflight.py](../../tests/unit/app/test_preflight.py)). The eval check
+acts on the same rule for its task privileges; see
+[An evaluation ignores secondary roles](#an-evaluation-ignores-secondary-roles).
+Probe:
+
+```sql
+-- With CREATE TABLE on <db>.<schema> granted only to <secondary_role>:
+USE ROLE <primary_role>;
+USE SECONDARY ROLES <secondary_role>;
+SELECT IS_ROLE_IN_SESSION('<secondary_role>');
+-- Expect: TRUE.
+CREATE TABLE <db>.<schema>.probe_table (id NUMBER);
+-- Expect: refused for insufficient privileges, if the documented rule holds.
+USE SECONDARY ROLES NONE;
+```
+
+**SST depends on it at**: `missing_privileges` and `missing_role_privileges` in
+[ports/snowflake/preflight.py](../../snowflake_semantic_tools/domain/ports/snowflake/preflight.py);
+`_lacking` and `missing_role_privileges` in
+[connector/preflight.py](../../snowflake_semantic_tools/adapters/snowflake/connector/preflight.py);
+`_missing_privileges` in
+[app/preflight.py](../../snowflake_semantic_tools/app/preflight.py), which splits
+what the primary role lacks into what a secondary role holds, what the session
+holds past the walk's depth limit, and what nothing does, and which asks the
+session alone when `CURRENT_SECONDARY_ROLES()` names no secondary role; [the troubleshooting guide](../guides/troubleshooting.md#how-sst-reports-a-missing-privilege).
+
+## Procedures and functions
+
+### A JavaScript routine takes no RUNTIME_VERSION or HANDLER
+
+**Docs say**: the `CREATE PROCEDURE` and `CREATE FUNCTION` grammars for Java,
+Python and Scala require `RUNTIME_VERSION` and `HANDLER`. The JavaScript and SQL
+grammars have neither clause: the body is the routine.
+
+**Server does**: not probed. SST follows the documented grammar. The entry
+exists because a reader who sees both clauses required for every other
+non-SQL language could extend the requirement to JavaScript.
+
+**Evidence**: `Enforced` for SST's side; the grammar itself is documented, not
+observed. SST-PRS002 requires both fields only for Java, Python and Scala, and
+the renderer emits both clauses only for those languages.
+`test_a_javascript_routine_needs_no_runtime_version_or_handler_as_its_grammar_has_neither`
+and `test_a_java_python_or_scala_routine_still_needs_runtime_version_and_handler`
+in [test_tools.py](../../tests/unit/domain/test_tools.py);
+`test_a_javascript_routine_renders_without_runtime_version_or_handler` in
+[test_render_tools.py](../../tests/unit/domain/test_render_tools.py). Probe:
+
+```sql
+-- Acceptance: run both against a database that does not exist.
+CREATE OR REPLACE FUNCTION <missing_db>.<schema>.probe_js() RETURNS FLOAT
+  LANGUAGE JAVASCRIPT AS $$ return 1; $$;
+-- Expect: does not exist or not authorized (the statement parsed).
+CREATE OR REPLACE FUNCTION <missing_db>.<schema>.probe_js() RETURNS FLOAT
+  LANGUAGE JAVASCRIPT RUNTIME_VERSION = '1' HANDLER = 'run' AS $$ return 1; $$;
+-- Expect: a syntax error, if the documented grammar holds.
+```
+
+**SST depends on it at**: `HANDLER_LANGUAGES` in
+[model/tool.py](../../snowflake_semantic_tools/domain/model/tool.py);
+`_render_fields` in
+[validate/tool.py](../../snowflake_semantic_tools/domain/validate/tool.py);
+`_render_routine` in
+[render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
+[the agents guide](../guides/agents.md).
+
+### COMMENT goes before EXECUTE AS, and a routine with no arguments takes `()`
+
+**Docs say**: the `CREATE PROCEDURE` grammar lists `COMMENT` before
+`EXECUTE AS`; `ALTER PROCEDURE` and `ALTER FUNCTION` address a routine by its
+name and argument types.
+
+**Server does**: `... LANGUAGE SQL COMMENT = '..' EXECUTE AS CALLER AS $$..$$`
+creates the procedure, and `COMMENT` after `EXECUTE AS` is a syntax error.
+`CREATE FUNCTION ... RETURNS INT COMMENT = '..' AS '1'` works. `ALTER PROCEDURE
+DB.S.P SET COMMENT` for a procedure with no arguments is a syntax error at `SET`;
+`ALTER PROCEDURE DB.S.P() SET COMMENT` works.
+
+**Evidence**: `Enforced`. `test_a_routine_renders_its_description_as_a_comment_before_execute_as`
+and `test_a_function_with_no_arguments_is_addressed_with_empty_parentheses` in
+[test_tool_compile.py](../../tests/unit/app/test_tool_compile.py).
+
+**SST depends on it at**: `_render_routine` and `routine_signature` in
+[render/tool.py](../../snowflake_semantic_tools/domain/render/tool.py);
+`routine_ref` in [sql/names.py](../../snowflake_semantic_tools/domain/sql/names.py);
+`rendered_for_publish` in [compile/tools.py](../../snowflake_semantic_tools/app/compile/tools.py).
+
+### DESCRIBE PROCEDURE and GET_DDL read the same until the object changes
+
+**Docs say**: nothing about whether the output is stable across reads.
+
+**Server does**: `DESCRIBE PROCEDURE` answers one row per property (signature,
+returns, language, `execute as`, body) and `GET_DDL('PROCEDURE', ..)` the same
+text on every read; neither changes after `ALTER ... SET COMMENT`, and
+`ALTER PROCEDURE ... EXECUTE AS OWNER` flips DESCRIBE's `execute as`. `SHOW
+FUNCTIONS` and `SHOW PROCEDURES` list `is_secure` (`Y` or `N`), and `SHOW CORTEX
+SEARCH SERVICES` lists `target_lag` (such as `1 day`) and `warehouse`.
+
+**Evidence**: `Observed`. Plan's drift digest compares these reads with the ones
+apply made after its write, so output that changed between Snowflake releases
+would block every such object (`SST-PLN014`) until the next apply records it
+again; `plan.drift_check: basic` skips the DESCRIBE and GET_DDL reads.
+`test_a_procedure_s_drift_digest_is_stable_across_reads_and_a_comment_but_not_execute_as`
+in [test_connector_contract.py](../../tests/contract_live/test_connector_contract.py)
+is the probe. `SHOW VERSIONS IN DATASET` lists each version's METADATA in a
+`metadata` column, as JSON text, beside the `SYSTEM_AI_OBS_...` version Snowflake
+adds itself; `dataset_version_metadata` reads it (observed on a live account).
+
+**SST depends on it at**: [drift.py](../../snowflake_semantic_tools/app/drift.py);
+[model/lifecycle/drift.py](../../snowflake_semantic_tools/domain/model/lifecycle/drift.py);
+`describe_routine`, `dataset_version_metadata` and `show_objects` in
+[connector/catalog.py](../../snowflake_semantic_tools/adapters/snowflake/connector/catalog.py);
+[concepts](../concepts.md#how-plan-decides-each-change).
+
+## State and lock tables
+
+### A transient schema's refusal of a hybrid table has a number; the account's does not
+
+**Docs say**: not consulted for this entry, which records only what SST
+measured; check Snowflake's hybrid table limitations when re-checking it.
+
+**Server does**: `CREATE HYBRID TABLE` in a transient database or schema fails
+with error 391412, "Cannot create hybrid table within transient database or
+schema." (measured on a live account). The error of an account that cannot
+create hybrid tables at all is not measured: the only account tested supports
+them.
+
+**Evidence**: `Enforced` for the transient schema: `create_refusal` reports
+391412 as `SST-APL030`
+([test_sst_apl030.py](../../tests/codes/apl/test_sst_apl030.py),
+[test_state_convert.py](../../tests/unit/adapters/test_state_convert.py)).
+`Observed` for the account: with no number to match, `create_refusal` reports
+any other failed `CREATE` of a hybrid state or lock table whose message names
+hybrid tables as `SST-APL035`
+([test_sst_apl035.py](../../tests/codes/apl/test_sst_apl035.py)), so a wording
+that does not name them is reported as Snowflake gave it. Probe, on an account
+without hybrid tables:
+
+```sql
+CREATE HYBRID TABLE <db>.<schema>.probe_table (id NUMBER PRIMARY KEY);
+-- Record the error number and message; then give create_refusal the number.
+```
+
+**SST depends on it at**: `create_refusal` in
+[connector/lock_table.py](../../snowflake_semantic_tools/adapters/snowflake/connector/lock_table.py),
+which the state and lock table creates and `sst state convert`
+([connector/convert.py](../../snowflake_semantic_tools/adapters/snowflake/connector/convert.py))
+share; [concepts](../concepts.md).
+
+## Re-checking a behavior
+
+A behavior here can change in any Snowflake release, with or without a change
+to the docs. Re-check an entry when Snowflake ships a release that touches the
+object, before relying on it in a new feature, or when a user reports something
+that contradicts it. A check has three legs:
+
+1. **Read the docs.** Find the current grammar and the claim the entry quotes.
+   The docs are the cheapest source of a statement to try, and they may have
+   caught up.
+2. **Read SST's implementation.** Follow the entry's links to what SST emits or
+   reads today, and the test that holds it.
+3. **Probe the server.** Run the statement in a disposable scratch schema, record
+   what happens, and drop what you created. Run the documented form and the form
+   SST uses side by side, so one result is the other's control.
+
+Probes come in three kinds, and the kind must match the claim:
+
+- **Acceptance**: does the server accept or reject a construct? A syntax
+  question needs only a statement the parser reaches. Run it against a database
+  that does not exist: syntax is checked before names resolve, so a
+  `does not exist or not authorized` error means the clause parsed. Pair it with
+  the same statement minus the clause, which must fail the same way.
+- **Round trip**: does an accepted construct survive read-back? Read it with
+  `GET_DDL`, `DESCRIBE`, and for a semantic view
+  `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW`. They do not agree with each other on
+  order, case, or injected defaults, so compare by meaning, never as raw text.
+- **Execution**: does the created object work? Query it. `CREATE` succeeding is
+  not evidence: the derived-metric and distinct-range entries both pass `CREATE`
+  and fail, or give wrong numbers, only at query time.
+
+A probe whose own artifacts could look like the vendor's behavior proves
+nothing. Check that a failure is not a stray terminator, a padding character that
+appears in a keyword, or a pattern that matches part of a correct value.
+
+**Every surprise found in the field becomes an entry here and a test.** The entry
+records the docs, the server and the code site. The test pins SST's side, so the
+next maintainer cannot follow the docs back into the defect without a failing
+build. If the dependency cannot be pinned offline, the entry is `Observed` and
+carries its probe.
+
+The live suite does not run these probes. It has three layers, which
+[Testing SST](../guides/testing-live.md#live-tests) describes with how to
+configure an account and the scratch schemas they write to:
+
+- [tests/contract_live](../../tests/contract_live/test_connector_contract.py)
+  holds the real connector to the port contract the offline fakes satisfy: the
+  session's role, listing an empty schema, a table's columns, the failure
+  signatures, the state table and run lock, and the drift digest of a
+  procedure.
+- [tests/integration](../../tests/integration/test_apply_live.py) and
+  [tests/e2e](../../tests/e2e/test_live_lifecycle.py) publish one small
+  semantic view, with a comment and two metrics, and check that it answers a
+  metric, that a second plan finds nothing to do, and that a replace keeps a
+  `SELECT` grant.
+
+So the live suite confirms `COPY GRANTS` on a semantic view, that the
+renderer's simplest output is accepted, and that a procedure's drift digest is
+stable across reads. It exercises nothing else on this page.
+Every other entry is held offline or by the probes above.
+
+[^preview]: A Snowflake private preview, as of 2026-10-23.

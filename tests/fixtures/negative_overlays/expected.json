@@ -1,0 +1,205 @@
+{
+  "01-unknown-table-ref.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF001", "severity": "error", "count": 1}]
+  },
+  "02-unknown-column-ref.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF002", "severity": "error", "count": 1}]
+  },
+  "03-metric-names-no-table.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-MEM002", "severity": "error", "count": 1}]
+  },
+  "04-duplicate-name.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-VAL001", "severity": "error", "count": 1}]
+  },
+  "05-circular-metric-reference.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-REF005", "severity": "error", "count": 1}]
+  },
+  "06-derived-metric-window-function.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [
+      {"code": "SST-VAL102", "severity": "error", "count": 1}
+    ]
+  },
+  "07-malformed-template.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [{"code": "SST-LOD004", "severity": "error", "count": 1}]
+  },
+  "08-relationship-table-not-in-view.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL203", "severity": "error", "count": 1}]
+  },
+  "09-vq-sql-file-key.yml": {
+    "into": "semantic_models/verified_queries",
+    "adds": [{"code": "SST-PRS126", "severity": "error", "count": 1}]
+  },
+  "10-legacy-table-global.yml": {
+    "into": "semantic_models/metrics",
+    "adds": [
+      {"code": "SST-REF034", "severity": "error", "count": 1},
+      {"code": "SST-REF035", "severity": "error", "count": 1}
+    ]
+  },
+  "11-nan-sample-value.manifest.json": {
+    "into": "manifest",
+    "adds": [{"code": "SST-VAL316", "severity": "warning", "count": 1}]
+  },
+  "12-eval-dataset-below-row-floor.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL710", "severity": "warning", "count": 1}],
+    "reaches": ["agents/jaffle_analytics/evals/dataset.yml"]
+  },
+  "13-unknown-config-key.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG003", "severity": "warning", "count": 1}]
+  },
+  "14-deprecated-instruction-spelling.yml": {
+    "into": "semantic_models/custom_instructions",
+    "adds": [
+      {"code": "SST-VAL007", "severity": "warning", "count": 1},
+      {"code": "SST-VAL012", "severity": "error", "count": 1}
+    ]
+  },
+  "15-deprecated-deploy-alias.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG200", "severity": "error", "count": 1}]
+  },
+  "16-multi-path-relationship.yml": {
+    "into": "semantic_models/relationships",
+    "adds": [
+      {"code": "SST-VAL116", "severity": "error", "count": 1},
+      {"code": "SST-VAL209", "severity": "warning", "count": 1}
+    ]
+  },
+  "17-removed-config-key.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-CFG043", "severity": "error", "count": 1}]
+  },
+  "18-missing-bundle-stage.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL856", "severity": "error", "count": 6}],
+    "reaches": [
+      "agents/jaffle_analytics/agent.yml",
+      "coco_profiles/jaffle_analyst/coco_profile.yml",
+      "coco_profiles/jaffle_operator/coco_profile.yml"
+    ]
+  },
+  "19-immutable-tool-defines.yml": {
+    "into": "tools",
+    "adds": [
+      {"code": "SST-CFG018", "severity": "warning", "count": 1},
+      {"code": "SST-VAL606", "severity": "error", "count": 1}
+    ]
+  },
+  "20-agent-delegation-cycle.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF022", "severity": "error", "count": 1},
+      {"code": "SST-VAL528", "severity": "warning", "count": 2}
+    ]
+  },
+  "21-unknown-eval-metric.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF026", "severity": "error", "count": 1},
+      {"code": "SST-VAL721", "severity": "error", "count": 1}
+    ]
+  },
+  "22-relative-eval-date.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL706", "severity": "error", "count": 1}]
+  },
+  "23-malformed-custom-judge.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-PRS114", "severity": "error", "count": 1},
+      {"code": "SST-PRS116", "severity": "error", "count": 1},
+      {"code": "SST-VAL741", "severity": "error", "count": 1}
+    ]
+  },
+  "24-dangling-skill-reference.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL808", "severity": "error", "count": 1}]
+  },
+  "25-undeclared-skill-ref.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-REF032", "severity": "error", "count": 1}]
+  },
+  "26-unknown-plugin-member.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL835", "severity": "error", "count": 1},
+      {"code": "SST-VAL856", "severity": "error", "count": 1}
+    ],
+    "reaches": ["coco_profiles/jaffle_operator/coco_profile.yml"]
+  },
+  "27-plugin-member-with-errors.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL808", "severity": "error", "count": 1},
+      {"code": "SST-VAL836", "severity": "error", "count": 1},
+      {"code": "SST-VAL856", "severity": "error", "count": 1}
+    ],
+    "reaches": ["coco_profiles/jaffle_operator/coco_profile.yml"]
+  },
+  "28-coco-profile-rejected-key.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL851", "severity": "error", "count": 1}]
+  },
+  "29-coco-profile-unknown-model.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL894", "severity": "error", "count": 1}]
+  },
+  "30-coco-profile-skill-with-errors.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-VAL808", "severity": "error", "count": 1},
+      {"code": "SST-VAL856", "severity": "error", "count": 2}
+    ],
+    "reaches": ["coco_profiles/jaffle_analyst/coco_profile.yml", "coco_profiles/jaffle_operator/coco_profile.yml"]
+  },
+  "31-coco-desktop-profiles-folder.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL895", "severity": "error", "count": 1}],
+    "reaches": ["coco_desktop_profiles"]
+  },
+  "32-coco-profile-misnamed-folder.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL801", "severity": "error", "count": 1}],
+    "reaches": ["coco_profiles/jaffle-ops"]
+  },
+  "33-coco-profile-shares-agent-schema.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL892", "severity": "error", "count": 2}],
+    "reaches": ["coco_profiles/jaffle_analyst/coco_profile.yml", "coco_profiles/jaffle_operator/coco_profile.yml"]
+  },
+  "34-unknown-custom-instruction.tree.yml": {
+    "into": ".",
+    "adds": [
+      {"code": "SST-REF007", "severity": "error", "count": 1},
+      {"code": "SST-REF011", "severity": "error", "count": 1},
+      {"code": "SST-VAL007", "severity": "warning", "count": 1}
+    ],
+    "reaches": ["semantic_models/custom_instructions/custom_instructions.yml", "agents/jaffle_analytics/agent.yml"]
+  },
+  "35-include-and-exclude-metrics.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL329", "severity": "error", "count": 1}]
+  },
+  "36-unknown-scope-entry.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL330", "severity": "error", "count": 1}]
+  },
+  "37-exclude-a-globally-excluded-column.tree.yml": {
+    "into": ".",
+    "adds": [{"code": "SST-VAL331", "severity": "warning", "count": 1}]
+  },
+  "38-exclude-a-needed-relationship.yml": {
+    "into": "semantic_models/semantic_views",
+    "adds": [{"code": "SST-VAL332", "severity": "error", "count": 1}]
+  }
+}

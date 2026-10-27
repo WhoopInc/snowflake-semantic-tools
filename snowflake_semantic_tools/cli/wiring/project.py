@@ -1,0 +1,225 @@
+"""Bind a resolved project to its files, its build directory, its commit, and its Snowflake target.
+
+Two names are looked up when they are needed rather than when this module is imported,
+so replacing either one changes what every command sees: the commit comes from this
+module's `git_sha` (and the uncommitted paths from its `git_dirty`), and every connection is
+opened through `cli.main.SnowflakeConnector`.
+A connection opened here is closed again if anything fails before it is handed back.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import time
+from collections.abc import Iterator, Mapping
+from contextlib import ExitStack, contextmanager
+from pathlib import Path
+
+import click
+
+from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
+from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
+from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
+from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
+from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
+from snowflake_semantic_tools.app.state import table_state
+from snowflake_semantic_tools.cli.output import announce, register_secrets, verbose_run
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
+from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
+from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
+from snowflake_semantic_tools.domain.state import AppliedEntry
+
+# Where a command's shared `LoadCache` and `DbtCache` are kept, in the click context's `meta`.
+LOAD_CACHE = "sst.load_cache"
+DBT_CACHE = "sst.dbt_cache"
+# `session.statement_timeout` unset: a generating statement runs for at most its default seconds.
+VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["session.statement_timeout"].default or 0)
+
+
+def target_dir(project_dir: Path) -> Path:
+    """Return where SST writes its build artifacts: `sst_target/` under the project."""
+    return sst_target_dir(project_dir)
+
+
+def git_sha(project_dir: Path) -> str:
+    """Return the project's commit as a 7-character sha, or `UNKNOWN_GIT_SHA` when git cannot say."""
+    import subprocess
+
+    completed = subprocess.run(
+        ["git", "-C", str(project_dir), "rev-parse", "--short=7", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    value = completed.stdout.strip()
+    return value if completed.returncode == 0 and value else UNKNOWN_GIT_SHA
+
+
+def git_dirty(project_dir: Path) -> tuple[str, ...]:
+    """Return the project's uncommitted paths, sorted; none when it is clean or git cannot say.
+
+    `git status` lists changed and untracked paths under the project, relative to the work
+    tree's root. SST's build directory is left out, since every compile writes it.
+    """
+    import subprocess
+
+    excluded = f":(exclude){target_dir(project_dir).relative_to(project_dir).as_posix()}"
+    completed = subprocess.run(
+        ["git", "-C", str(project_dir), "status", "--porcelain", "-z", "--", ".", excluded],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return ()
+    paths: set[str] = set()
+    entries = iter(completed.stdout.split("\0"))
+    for entry in entries:
+        if len(entry) > 3:
+            paths.add(entry[3:])
+            # A rename or copy is followed by the path it came from, which is not a change.
+            if entry[0] in "RC":
+                next(entries, None)
+    return tuple(sorted(paths))
+
+
+def project_inputs(
+    files: ProjectPaths, target_name: str | None, manifest_path: Path | None, *, database: str | None = None
+) -> YamlProjectInputs:
+    """Bind the project's files as the inputs every use case reads.
+
+    The commit is asked for through this module's `git_sha`, and the uncommitted paths
+    through its `git_dirty`, each looked up when a use case needs it, so replacing one here
+    changes what every use case sees. Under a click
+    command, every input the command builds shares one load cache, so a file read twice in the
+    run is parsed once, and one dbt cache, so each `dbt parse` runs and each manifest is
+    decoded once. The cache notes the reads it served only under `--verbose`, and a stale
+    `--manifest` is a warning only under the command's `--allow-stale-manifest`.
+
+    Args:
+        database: Resolve refs against this database instead of the target's; None keeps it.
+    """
+    context = click.get_current_context(silent=True)
+    return YamlProjectInputs(
+        files,
+        target_name=target_name,
+        manifest_path=manifest_path,
+        git_sha=lambda: git_sha(files.project_dir),
+        git_dirty=lambda: git_dirty(files.project_dir),
+        database=database,
+        load_cache=context.meta.setdefault(LOAD_CACHE, LoadCache(note_hits=verbose_run()))
+        if context is not None
+        else None,
+        allow_stale_manifest=context is not None and context.params.get("allow_stale_manifest") is True,
+        dbt_cache=context.meta.setdefault(DBT_CACHE, DbtCache()) if context is not None else None,
+    )
+
+
+def open_connector(connection_params: dict[str, object]) -> SnowflakeConnector:
+    """Open a Snowflake session through `cli.main.SnowflakeConnector`, as it is bound right now.
+
+    The recorded-Snowflake helpers and the reference project replace that one attribute to
+    run every command against a double, so the class is looked up on each call.
+    """
+    # Imported here, not at module level: `cli.main` imports the commands that import this module.
+    from snowflake_semantic_tools.cli import main as entry
+
+    return entry.SnowflakeConnector(connection_params)
+
+
+def connect(
+    files: ProjectPaths, target_name: str | None, *, profile: str | None = None, generating: bool = False
+) -> tuple[ProfileTarget, SnowflakeConnector]:
+    """Connect to the project's target, and bind it to the live session's account and role.
+
+    `profile` names the `profiles.yml` profile instead of the project. An error raised once the
+    connection is open closes it again. The target's credentials are
+    registered with the output first, so no report of this run can print one.
+
+    Args:
+        generating: The session creates semantic views, as plan and apply's do: every statement
+            it runs is bounded by `session.statement_timeout` seconds, the session's
+            `STATEMENT_TIMEOUT_IN_SECONDS`. Sessions opened from the returned connection
+            parameters are bounded the same way.
+
+    Raises:
+        ProjectError: the target cannot be connected to as declared, as `connection_params` says.
+        SnowflakePortError: connecting failed, or the session's role is not the target's role.
+    """
+    config = resolved_config(files, target_name).tree
+    resolved_profile = load_profile_target(files, target_name, profile=profile, state=config_block(config.get("state")))
+    if generating:
+        resolved_profile = resolved_profile.with_session_parameters(
+            {"STATEMENT_TIMEOUT_IN_SECONDS": view_timeout(config)}
+        )
+    register_secrets(resolved_profile.secrets)
+    started = time.monotonic()
+    port = open_connector(resolved_profile.connection_params)
+    with ExitStack() as cleanup:
+        cleanup.callback(port.close)
+        live_account = port.current_account_locator()
+        live_role = port.current_role()
+        if resolved_profile.identity.role and live_role.upper() != resolved_profile.identity.role.upper():
+            raise SnowflakePortError(
+                f"connected role {live_role!r} differs from configured role {resolved_profile.identity.role!r}"
+            )
+        identity = dataclasses.replace(
+            resolved_profile.identity,
+            account_locator=live_account,
+            role=live_role,
+        )
+        resolved = ProfileTarget(
+            profile_name=resolved_profile.profile_name,
+            target_name=resolved_profile.target_name,
+            connection_params=resolved_profile.connection_params,
+            identity=identity,
+            state_table=resolved_profile.state_table,
+            state_table_kind=resolved_profile.state_table_kind,
+        )
+        # Connected and bound: the caller owns the session from here, so nothing closes it.
+        cleanup.pop_all()
+    seconds = time.monotonic() - started
+    announce(f"connected to {live_account} as {live_role}", f"target {resolved.target_name}", f"{seconds:.1f}s")
+    return resolved, port
+
+
+def view_timeout(config: Mapping[str, object]) -> int:
+    """Return `session.statement_timeout`, the seconds one generating statement may run; 300 when unset."""
+    return config_int(config_block(config.get("session")).get("statement_timeout")) or VIEW_TIMEOUT_SECONDS
+
+
+@contextmanager
+def closed_on_error(port: SnowflakeConnector) -> Iterator[None]:
+    """Close `port` if the block raises; a block that completes leaves the connection to its owner.
+
+    The close is registered before the block runs and released only once it completes, so an
+    interrupt or a declined prompt closes the session too: nothing else would.
+    """
+    with ExitStack() as cleanup:
+        cleanup.callback(port.close)
+        yield
+        cleanup.pop_all()
+
+
+def state_store(files: ProjectPaths, target_name: str) -> StateFileStore:
+    """Return the local state file of `target_name`, under the project's build directory."""
+    return StateFileStore(
+        state_file(target_dir(files.project_dir), target_name), config_path=files.config_name, root=files.project_dir
+    )
+
+
+def published_entries(port: StatePort, profile: ProfileTarget, config_path: str) -> dict[str, AppliedEntry] | None:
+    """Read the target's state entries from its state table, never the local cache; None when unreadable.
+
+    Only a check reads them, such as which dependencies an unpublished run cannot see, so a
+    read that fails is reported by that check and does not stop the run.
+    """
+    try:
+        state = table_state(port, profile.state_table, profile.identity, config_path)
+    except SnowflakePortError:
+        return None
+    return None if state is None else dict(state.applied)

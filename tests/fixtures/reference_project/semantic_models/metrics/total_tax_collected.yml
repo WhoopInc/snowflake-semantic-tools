@@ -1,0 +1,6 @@
+---
+metric:
+  name: total_tax_collected
+  description: |-
+    Total tax collected across all orders, in cents.
+  expr: "SUM({{ ref('orders', 'tax_paid') }})"

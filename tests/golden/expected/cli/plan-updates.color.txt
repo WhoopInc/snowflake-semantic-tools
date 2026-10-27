@@ -1,0 +1,13 @@
+$ sst --project-dir <project> --manifest <manifest> plan --target dev --no-plan-out
+--- exit 2
+--- stdout
+  [33m~ update[0m  semantic_view:jaffle_menu  SST_REF_DEV...JAFFLE_MENU    metric order_items.line_item_count
+      [33m~ metric order_items.line_item_count[0m
+          expression:
+            [31m- COUNT(ORDER_ITEMS.ORDER_ITEM_ID)[0m
+            [32m+ COUNT(DISTINCT ORDER_ITEMS.ORDER_ITEM_ID)[0m
+  [2m16 unchanged (--verbose lists them)[0m
+--- stderr
+[33m[1m~[0m [1mplan: 0 to create, 1 to update, 0 to prune; 16 unchanged[0m · 0 errors, 0 warnings · <n>s
+[2m  hidden: 18 info (--show-info)[0m
+  [36mnext:[0m review the plan; `sst apply` makes these changes in Snowflake, so run it only when you mean to

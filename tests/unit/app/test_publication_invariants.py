@@ -1,0 +1,90 @@
+"""Invariants of skill publication that keep several failure shapes from arising.
+
+Each test pins the property that rules a condition out, so a change that broke it would fail
+here: versions are named by content, an extension lands where its settings place it and no
+grouping folder moves it, SST issues no grant, and no raw string reaches DDL.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from snowflake_semantic_tools.app.compile.skills import CatalogChannel, CompiledExtension, CompileSkills
+from snowflake_semantic_tools.app.lifecycle.composite import CompositeHandler
+from snowflake_semantic_tools.app.lifecycle.evals import EvalLifecycleHandler
+from snowflake_semantic_tools.app.lifecycle.extensions import ExtensionLifecycleHandler
+from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY, ArtifactLifecycle
+from snowflake_semantic_tools.domain.model.skill import Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.sql import sql
+from snowflake_semantic_tools.domain.state import AppliedEntry
+from snowflake_semantic_tools.domain.validate.config import validate_config
+from tests.helpers.publications import SKILL_STAGE, compiled_skill, publish_skill
+from tests.helpers.snowflake_fake import FakeSnowflake
+
+
+def _skill_in(folder: str, name: str, body: bytes = b"Do it.\n") -> Skill:
+    files = (SkillFile("SKILL.md", b"---\nname: " + name.encode() + b"\ndescription: D.\n---\n" + body),)
+    return Skill(name, folder, name, "D.", body.decode(), files, Origin(f"{folder}/SKILL.md"))
+
+
+def _extensions(*skills: Skill, prefix: str = "GIT_") -> list[CompiledExtension]:
+    channel = CatalogChannel("DB", "S", SKILL_STAGE, version_prefix=prefix)
+    result = CompileSkills(SkillCatalog(skills), channel).run_result()
+    return [item for item in result.compiled if isinstance(item, CompiledExtension)]
+
+
+def test_a_version_alias_is_the_prefix_and_the_bundle_digest_so_one_name_means_one_content() -> None:
+    [first] = _extensions(_skill_in("skills/a", "close"))
+    [again] = _extensions(_skill_in("skills/a", "close"))
+    [edited] = _extensions(_skill_in("skills/a", "close", b"Do it twice.\n"))
+    assert first.release.alias == f"GIT_{first.release.bundle.digest[:12].upper()}"
+    # Re-publishing the same tree, from any deploy, names the same version; any edit, another.
+    assert first.release.alias == again.release.alias != edited.release.alias
+
+
+def test_a_grouping_folder_alone_never_moves_an_extension_out_of_its_channel_schema() -> None:
+    compiled = _extensions(_skill_in("skills/finance/close", "close"), _skill_in("skills/ops/triage", "triage"))
+    assert {item.release.target.folded[:2] for item in compiled} == {("DB", "S")}
+    # Only a route over its folder, or its own `config:`, places a skill elsewhere, and SST-VAL806
+    # says so whenever that leaves its block root's schema.
+    assert validate_config({"skills": {"finance": {"+schema": "FINANCE"}}}) == ()
+    placed = CatalogChannel("DB", "FINANCE", SKILL_STAGE, home=("DB", "S"))
+    result = CompileSkills(SkillCatalog((_skill_in("skills/finance/close", "close"),)), placed).run_result()
+    assert "SST-VAL806" in [item.code for item in result.diagnostics]
+
+
+def test_a_certified_publish_tags_the_version_and_issues_no_grant() -> None:
+    port = FakeSnowflake(existing=())
+    _, result, _ = publish_skill(port, compiled_skill(certified=True))
+    assert result.success, result.outcomes
+    statements = [statement.upper() for script in port.scripts for statement in script]
+    assert any("SET TAG SNOWFLAKE.CORE.CERTIFICATION_STATUS" in statement for statement in statements)
+    assert not any(statement.lstrip().startswith(("GRANT ", "REVOKE ")) for statement in statements)
+    codes = [item.code for item in validate_config({"skills": {"+grant_read_to": ["ANALYST"]}})]
+    assert "SST-CFG043" in codes
+
+
+def test_no_raw_text_reaches_ddl_through_the_statement_builder() -> None:
+    with pytest.raises(TypeError, match="must be Sql"):
+        sql("CREATE CORTEX EXTENSION {name}", name="DB.S.X; DROP TABLE T")  # type: ignore[arg-type]
+
+
+def test_every_composite_prune_sorts_at_its_type_registry_position() -> None:
+    port = FakeSnowflake(existing=())
+    handlers: list[CompositeHandler[Any, Any, Any]] = [
+        ExtensionLifecycleHandler(port, {}, "skill"),
+        ExtensionLifecycleHandler(port, {}, "plugin"),
+        EvalLifecycleHandler(port),
+    ]
+    composite = {
+        name for name, kind in ARTIFACT_REGISTRY.artifacts.items() if kind.lifecycle is ArtifactLifecycle.COMPOSITE
+    }
+    assert {handler.artifact_type for handler in handlers} == composite
+    entry = AppliedEntry("f", "DB.S.GONE", "now", "run", "applied", "f", "m")
+    for handler in handlers:
+        change = handler.report_prune(f"{handler.artifact_type}:gone", entry)
+        # Plan orders a composite prune exactly as it would a generic one of the same type.
+        assert change.order == ARTIFACT_REGISTRY.artifacts[handler.artifact_type].ddl_position

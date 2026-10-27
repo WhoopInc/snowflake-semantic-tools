@@ -1,0 +1,39 @@
+---
+# stg_orders: keeps the latest replicated row per order from the append-only
+# orders_raw. No semantic view reads it, so SST runs no column checks on it
+# even though its columns carry no column_type or data_type.
+
+version: 2
+
+models:
+  - name: stg_orders
+    description: |-
+      Light cleanup over the raw order replica. Staging only -- no semantic
+      layer member is built on it.
+    config:
+      materialized: view
+    columns:
+      - name: order_id
+        description: |-
+          Surrogate key for the order, passed through from the source.
+        data_tests:
+          - unique
+          - not_null
+      - name: customer_id
+        description: |-
+          Foreign key to the customer.
+      - name: location_id
+        description: |-
+          Foreign key to the store location.
+      - name: order_state
+        description: |-
+          Fulfilment state as the source records it.
+      - name: ordered_at
+        description: |-
+          When the order was placed.
+      - name: subtotal
+        description: |-
+          Order value before tax, in cents.
+      - name: order_total
+        description: |-
+          Order value including tax, in cents.

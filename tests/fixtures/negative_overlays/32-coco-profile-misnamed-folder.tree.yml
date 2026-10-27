@@ -1,0 +1,7 @@
+---
+# A Cortex Code profile folder in kebab-case, which no unquoted AGENT name holds.
+files:
+  coco_profiles/jaffle-ops/coco_profile.yml: |
+    name: jaffle-ops
+    skills:
+      - "{{ skill('supply-backfill') }}"
