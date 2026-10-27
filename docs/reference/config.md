@@ -305,7 +305,7 @@ How SST lays out the YAML it writes: `sst format`, `sst enrich` and `sst import`
 |---|---|---|---|
 | `format.blank_line_between_items` | boolean | `false` | Put a blank line before every item but the first of a list of named items -- mappings holding `name` or `question`, such as models, columns, metrics and eval questions -- in every YAML file SST writes, and have `sst format --check` expect it. A blank line already there is kept either way. |
 | `format.wrap_width` | integer, 40 to 400 |  | Fold a single-line string that would run past this many columns into `>-`, broken at single spaces, so it loads back as the same one line; SQL, expressions and instructions are never folded. Unset folds nothing. |
-| `format.unwrap_prose` | boolean | `false` | Join the soft wraps of prose values -- descriptions, comments, eval questions and expectations -- so Snowflake and dbt `persist_docs` receive one line per paragraph; a list, heading, table row, code fence or indented line keeps its line break. This changes values: their whitespace only. |
+| `format.unwrap_prose` | boolean | `false` | Join the soft wraps of prose values -- descriptions, comments, eval questions and expectations -- so Snowflake and dbt `persist_docs` receive one line per paragraph; a list, heading, table row, code fence, indented line, or label line ending in ':' keeps its line break. This changes values: their whitespace only. |
 
 ## plan
 

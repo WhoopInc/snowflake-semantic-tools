@@ -706,7 +706,8 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         _B,
         "Join the soft wraps of prose values -- descriptions, comments, eval questions and expectations -- "
         "so Snowflake and dbt `persist_docs` receive one line per paragraph; a list, heading, table row, code "
-        "fence or indented line keeps its line break. This changes values: their whitespace only.",
+        "fence, indented line, or label line ending in ':' keeps its line break. This changes values: "
+        "their whitespace only.",
         default="false",
     ),
     _key("plan", _BLOCK, "What plan compares beyond each object's ownership marker."),
