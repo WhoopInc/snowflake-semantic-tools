@@ -408,7 +408,8 @@ by an offline validate of that compile, and so is an entry recording --target wh
 offline validate finds, as an earlier SST recorded one. Any other entry recording --target is
 judged by the connected validate, which runs only when there is one; an entry recording
 another target is kept. With --select or --exclude, only the entries of the artifacts chosen,
-by artifact or source file, are considered. An expired baseline is pruned all the same.
+by artifact or source file, are considered. An expired baseline is pruned all the same, and
+an entry whose code SST no longer reports is removed whichever validate recorded it.
 
 Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
 file; 5 when --target cannot be reached.
@@ -453,7 +454,8 @@ sst baseline renew [OPTIONS]
 List the baseline's entries: those of one --code, or with --expired only once it has expired.
 
 Prints the file's entry count and expiry, then one line per entry shown: its code, artifact,
-file, fingerprint, and `offline` or `connected:<target>` for the validate that found it.
+file, fingerprint, and `offline` or `connected:<target>` for the validate that found it. An
+entry whose code SST no longer reports is warned of (SST-CFG062).
 With --target, only the entries a validate against it can match are listed: the offline
 ones and that target's connected ones. Nothing connects. Without a baseline file it says so
 and exits 0.

@@ -53,7 +53,7 @@ def gate_baseline(
         strict: Whether the run is strict, so each warning among the notices is an error.
 
     Diagnostics:
-        Those of `match_baseline`: SST-CFG039, SST-CFG035, SST-INT009, SST-INT011.
+        Those of `match_baseline`: SST-CFG039, SST-CFG035, SST-INT009, SST-INT011, SST-CFG062.
     """
     today = clock_today(clock)
     match = match_baseline(

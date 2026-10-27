@@ -536,6 +536,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="the configuration file holds no YAML document: only whitespace and comments",
     ),
     spec(
+        "SST-CFG062",
+        Severity.WARNING,
+        "Baseline entry names an unknown code",
+        "baseline entry {index} records {code}, which SST does not report; {detail}",
+        "run `sst baseline prune` to remove it; `sst baseline add` records the warning again under its current code",
+        condition=(
+            "a baseline entry's code is not one SST reports, after an upgrade renamed or retired it or "
+            "after a hand edit, so it can never hold a diagnostic"
+        ),
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

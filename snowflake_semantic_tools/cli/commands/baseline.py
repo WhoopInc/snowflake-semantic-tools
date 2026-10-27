@@ -54,6 +54,7 @@ from snowflake_semantic_tools.domain.diagnostics.baseline import (
     chosen_for_baseline,
     found_offline,
     renewed,
+    unknown_codes,
     with_entries,
     without_stale,
 )
@@ -173,7 +174,8 @@ def prune_command(
     offline validate finds, as an earlier SST recorded one. Any other entry recording --target is
     judged by the connected validate, which runs only when there is one; an entry recording
     another target is kept. With --select or --exclude, only the entries of the artifacts chosen,
-    by artifact or source file, are considered. An expired baseline is pruned all the same.
+    by artifact or source file, are considered. An expired baseline is pruned all the same, and
+    an entry whose code SST no longer reports is removed whichever validate recorded it.
 
     Exit 0 when the file is written, even with nothing pruned; 1 when there is no baseline
     file; 5 when --target cannot be reached.
@@ -187,7 +189,10 @@ def prune_command(
     compiled, notes = _compiled(paths, manifest_path, selected, excluded, target_name)
     in_scope = _in_scope(compiled, chosen=bool(selected or excluded))
     offline = _judged_offline(in_scope, target_name)
-    written, pruned = without_stale(current, _validated(paths, compiled, None), offline)
+    unknown = {entry.fingerprint for entry in current.entries if entry.code not in ERROR_REGISTRY}
+    written, pruned = without_stale(
+        current, _validated(paths, compiled, None), lambda entry: offline(entry) or entry.fingerprint in unknown
+    )
     if target_name is not None:
         connected = _judged_connected(in_scope, target_name)
         if any(connected(entry) for entry in written.entries):
@@ -209,7 +214,8 @@ def show_command(
     """List the baseline's entries: those of one --code, or with --expired only once it has expired.
 
     Prints the file's entry count and expiry, then one line per entry shown: its code, artifact,
-    file, fingerprint, and `offline` or `connected:<target>` for the validate that found it.
+    file, fingerprint, and `offline` or `connected:<target>` for the validate that found it. An
+    entry whose code SST no longer reports is warned of (SST-CFG062).
     With --target, only the entries a validate against it can match are listed: the offline
     ones and that target's connected ones. Nothing connects. Without a baseline file it says so
     and exits 0.
@@ -227,7 +233,11 @@ def show_command(
         and (target_name is None or entry.judged_by(None) or entry.judged_by(target_name))
     )
     data = _data(path, current, shown=shown)
-    return CommandResult(data=data, human=lambda: _print_entries(current, shown, lapsed=lapsed))
+    return CommandResult(
+        diagnostics=DiagnosticBag(unknown_codes(current)),
+        data=data,
+        human=lambda: _print_entries(current, shown, lapsed=lapsed),
+    )
 
 
 def _require_reason(reason: str | None) -> None:

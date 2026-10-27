@@ -17,6 +17,7 @@ from hashlib import blake2b
 
 from snowflake_semantic_tools.domain.diagnostics import ERROR_REGISTRY, D, Diagnostic, Origin, Severity
 from snowflake_semantic_tools.domain.diagnostics.core import Precheck
+from snowflake_semantic_tools.domain.diagnostics.specs.aliases import ALIASES, TOMBSTONES
 from snowflake_semantic_tools.domain.model.artifact_key import split_artifact_key
 
 # Context keys a message may print but a stable fingerprint never hashes: where a finding sits
@@ -146,6 +147,7 @@ def match_baseline(
             one per entry, in file order.
         SST-INT011: a blocking diagnostic the baseline does not hold has the code and artifact
             type of an entry that matches nothing, as after a rename; one per code and artifact.
+        SST-CFG062: an entry records a code SST does not report; one per entry, in file order.
     """
     if baseline is None:
         return BaselineMatch(frozenset(), ())
@@ -172,7 +174,44 @@ def match_baseline(
         D("SST-INT011", origin=origin, subject=subject, code=code, artifact=artifact, other=", ".join(others))
         for (code, artifact), others in _moved(baseline.entries, diagnostics, matched, baselined).items()
     )
-    return BaselineMatch(baselined, (*notices, *ambiguous), hints)
+    return BaselineMatch(baselined, (*notices, *ambiguous, *unknown_codes(baseline)), hints)
+
+
+def unknown_codes(baseline: Baseline) -> tuple[Diagnostic, ...]:
+    """Warn of each entry whose code SST does not report, so it can never match a diagnostic.
+
+    An upgrade that renamed or retired the code, or a hand edit, leaves one; the warning names
+    the code that replaced it when one did.
+
+    Diagnostics:
+        SST-CFG062: one per such entry, numbered from 1 in file order.
+    """
+    found: list[Diagnostic] = []
+    for index, entry in enumerate(baseline.entries, start=1):
+        if entry.code in ERROR_REGISTRY:
+            continue
+        found.append(
+            D(
+                "SST-CFG062",
+                origin=Origin(baseline.path),
+                subject=f"config:{baseline.path}",
+                index=index,
+                code=entry.code or "(none)",
+                detail=_successor(entry.code),
+            )
+        )
+    return tuple(found)
+
+
+def _successor(code: str) -> str:
+    """Say which code took over `code`'s condition, or that none is known."""
+    tombstone = TOMBSTONES.get(code)
+    if tombstone is not None and tombstone.superseded_by:
+        return f"it was replaced by {tombstone.superseded_by}"
+    alias = ALIASES.get(code)
+    if alias is not None and alias.targets:
+        return f"it was replaced by {' or '.join(alias.targets)}"
+    return "no code replaced it"
 
 
 def _moved(

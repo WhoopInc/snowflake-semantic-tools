@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 24 codes
-- [Configuration (CFG)](#configuration-cfg) -- 50 codes
+- [Configuration (CFG)](#configuration-cfg) -- 51 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
@@ -788,6 +788,16 @@ Note: Only a whole-value conditional is evaluated; any other would reach its rea
 Raised when the configuration file holds no YAML document: only whitespace and comments.
 
 Fix: add the keys this project needs, or delete it and run `sst init` to write a starter one
+
+### SST-CFG062
+
+**Baseline entry names an unknown code** (warning)
+
+`baseline entry <index> records <code>, which SST does not report; <detail>`
+
+Raised when a baseline entry's code is not one SST reports, after an upgrade renamed or retired it or after a hand edit, so it can never hold a diagnostic.
+
+Fix: run `sst baseline prune` to remove it; `sst baseline add` records the warning again under its current code
 
 ### SST-CFG200
 
