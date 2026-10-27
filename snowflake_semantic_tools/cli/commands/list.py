@@ -104,7 +104,7 @@ def list_command(
     --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
     it, the project's files are compiled in memory, nothing is written, and what fails to
     compile is reported and exits 1. A --select or --exclude value that matches nothing is
-    reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
+    reported; when the selectors choose no artifact and nothing failed to compile, it exits 3.
     --target, --defer-target and --database resolve the in-memory compile as `sst compile`
     would, offline; with a compiled manifest, a --target other than the one it was compiled
     for is refused (SST-MAN006).

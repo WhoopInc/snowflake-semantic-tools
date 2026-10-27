@@ -130,7 +130,7 @@ def test_an_unpublished_run_refuses_a_baseline_capture_and_a_comparison(flags: t
 
 def test_a_selection_without_an_eval_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _unpublished(monkeypatch, project_copy(tmp_path), FakeSnowflake(state={}), "--select", "type:tool")
-    assert result.exit_code == 4
+    assert result.exit_code == 3
 
 
 def test_a_cowork_profile_eval_is_refused_before_anything_connects(

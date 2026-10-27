@@ -16,7 +16,7 @@ Usage: sst compile [OPTIONS]
 
   Exit 0 when everything compiled; 1 when an error stopped the compile, the
   manifest could not be written, --partial left an artifact out, or two emitted
-  files would collide; 4 when --select matches nothing.
+  files would collide; 3 when --select matches nothing.
 
   Diagnostics:
       SST-MAN008: the compile failed, so no manifest was written.

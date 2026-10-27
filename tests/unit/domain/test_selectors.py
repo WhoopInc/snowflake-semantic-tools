@@ -69,6 +69,11 @@ def test_names_globs_types_paths_and_keys_resolve_against_the_compiled_artifacts
         ),
         ("nope:*", "SST-PRT102", "selector 'nope:*' names an unknown kind"),
         ("a,b", "SST-PRT101", "selector 'a,b' contains a comma"),
+        (
+            " ",
+            "SST-PRT100",
+            "selector ' ': is empty; name an artifact, or write type:<type> or path:<glob>",
+        ),
     ],
 )
 def test_each_refusal_names_the_selector(value: str, code: str, message: str) -> None:

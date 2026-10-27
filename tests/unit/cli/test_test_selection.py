@@ -32,7 +32,7 @@ def test_select_and_exclude_narrow_the_smoke_probes(tmp_path: Path, monkeypatch:
     assert selected + excluded == every
 
     nothing = CliRunner().invoke(cli, ["test", *common(project), "--select", "no_such_artifact", "-o", "json"])
-    assert nothing.exit_code == 4
+    assert nothing.exit_code == 3
     assert "SST-DIS010" in {item["code"] for item in json.loads(nothing.stdout)["diagnostics"]}
 
 

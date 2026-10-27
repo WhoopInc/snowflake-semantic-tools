@@ -60,7 +60,7 @@ from snowflake_semantic_tools.cli.envelope import (
     json_envelope,
     print_report,
 )
-from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK
+from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, CONNECTION, ERROR, OK, refusal_exit
 from snowflake_semantic_tools.cli.globals import (
     DEFAULT_OUTPUTS,
     GLOBAL_NAMES,
@@ -647,17 +647,16 @@ def _unusable(command: str, output: str, exc: Exception) -> NoReturn:
     """
     found = tuple(getattr(exc, "diagnostics", ())) or (D("SST-INT010", subject="cli", detail=str(exc)),)
     diagnostics = audit(DiagnosticBag(found))
+    code = refusal_exit(tuple(item.code for item in diagnostics), CONFIG)
     if output == "json":
-        emit_json(
-            json_envelope(command, diagnostics, exit_code=CONFIG, status="error", data={"error": str(exc)}), CONFIG
-        )
+        emit_json(json_envelope(command, diagnostics, exit_code=code, status="error", data={"error": str(exc)}), code)
     if output == "agent":
-        emit_agent(command, diagnostics, CONFIG)
+        emit_agent(command, diagnostics, code)
     render_diagnostics(diagnostics)
     if not diagnostics.has_errors:
         click.echo(f"error: {exc}", err=True)
-    print_verdict(command, CONFIG, diagnostics, next_step=first_next_step(command, CONFIG, diagnostics))
-    raise click.exceptions.Exit(CONFIG) from exc
+    print_verdict(command, code, diagnostics, next_step=first_next_step(command, code, diagnostics))
+    raise click.exceptions.Exit(code) from exc
 
 
 def _internal_error(command: str, output: str, exc: Exception) -> NoReturn:

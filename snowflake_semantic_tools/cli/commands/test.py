@@ -64,7 +64,7 @@ def test_command(
     when its query runs. Nothing is written, no lock is taken, and no agent runs; `sst eval`
     runs agents. `--select` and
     `--exclude` narrow the artifacts probed. Exit 1 when the project does not compile or a
-    probe fails; 4 when the selection compiles nothing to probe, or the compiled manifest is
+    probe fails; 3 when the selection compiles nothing to probe; 4 when the compiled manifest is
     missing or stale; and 5 when Snowflake cannot be reached.
     """
     refuse_stale_inputs(paths, target_name, manifest_path, before="test")

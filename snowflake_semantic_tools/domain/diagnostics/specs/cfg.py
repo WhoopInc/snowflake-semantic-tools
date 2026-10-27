@@ -528,6 +528,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="Only a whole-value conditional is evaluated; any other would reach its reader as template text.",
     ),
     spec(
+        "SST-CFG061",
+        Severity.ERROR,
+        "Config file is empty",
+        "{path} is empty",
+        "add the keys this project needs, or delete it and run `sst init` to write a starter one",
+        condition="the configuration file holds no YAML document: only whitespace and comments",
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

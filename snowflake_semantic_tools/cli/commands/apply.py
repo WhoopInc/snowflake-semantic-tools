@@ -27,7 +27,7 @@ from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan_values import PlanRefused
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
 from snowflake_semantic_tools.cli.envelope import announce_interrupt
-from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK
+from snowflake_semantic_tools.cli.exit_codes import ERROR, INTERRUPTED, OK, refusal_exit
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
@@ -262,7 +262,8 @@ def _planned(
         reuse, planned = None, request.following(saved)
         session = plan_runtime(planned)
     if isinstance(session, PlanRefused):
-        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+        refused = refusal_exit(tuple(item.code for item in session.diagnostics), ERROR)
+        return CommandResult(refused, session.diagnostics, promoted=session.promoted)
     return planned, session, reuse
 
 

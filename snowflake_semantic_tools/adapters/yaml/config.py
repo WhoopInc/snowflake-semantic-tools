@@ -71,6 +71,7 @@ def load_project_config(files: ProjectPaths, render: Render | None = None) -> Pr
 
     Diagnostics:
         SST-CFG002: the file is not valid YAML; raised.
+        SST-CFG061: the file holds no YAML document; raised.
         SST-PRT009: the file cannot be read; raised.
         SST-CFG032: an explicit configuration file shadows a discovered one.
         SST-CFG046: dbt-only configuration is present without a dbt project.
@@ -157,6 +158,9 @@ def _parse_config(files: ProjectPaths) -> ParsedYaml:
     try:
         return parse_yaml_bytes(raw, files.config_name, null_means=empty_is_block)
     except ProjectError as exc:
+        if any(item.code == "SST-LOD003" for item in exc.diagnostics):
+            empty = D("SST-CFG061", subject=f"config:{files.config_name}", path=files.config_name)
+            raise ProjectError(empty.message, diagnostics=(empty,)) from exc
         syntax = [item for item in exc.diagnostics if item.code == "SST-LOD001"]
         if not syntax:
             raise

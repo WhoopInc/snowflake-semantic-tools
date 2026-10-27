@@ -268,10 +268,10 @@ FLAG_SCENARIOS: dict[str, tuple[str, int, Scenario]] = {
     ),
     "test-select": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--select", "jaffle_minimal", applied=True)),
     "test-exclude": ("test", 0, lambda tmp, mp: _test_smoke(tmp, mp, "--exclude", "type:agent", applied=True)),
-    "test-select-matches-nothing": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "nothing")),
+    "test-select-matches-nothing": ("test", 3, lambda tmp, _: _test_compiled(tmp, "--select", "nothing")),
     "test-select-nothing-to-probe": ("test", 4, lambda tmp, _: _test_compiled(tmp, "--select", "type:skill")),
-    "eval-select-matches-nothing": ("eval", 4, lambda tmp, _: _eval_compiled(tmp, "--select", "nothing")),
-    "eval-select-no-eval": ("eval", 4, lambda tmp, _: _eval_compiled(tmp, "--select", "type:semantic_view")),
+    "eval-select-matches-nothing": ("eval", 3, lambda tmp, _: _eval_compiled(tmp, "--select", "nothing")),
+    "eval-select-no-eval": ("eval", 3, lambda tmp, _: _eval_compiled(tmp, "--select", "type:semantic_view")),
     # An unpublished eval run needs no compiled manifest, and fails when the agent picks the wrong tools.
     "eval-unpublished": ("eval", 1, lambda tmp, mp: _eval_unpublished(tmp, mp)),
     "eval-unpublished-capture": (

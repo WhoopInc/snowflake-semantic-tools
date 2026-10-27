@@ -85,7 +85,7 @@ def compile(
     --defer-target, and --database only decide what names resolve to.
 
     Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
-    not be written, --partial left an artifact out, or two emitted files would collide; 4 when
+    not be written, --partial left an artifact out, or two emitted files would collide; 3 when
     --select matches nothing.
 
     Diagnostics:

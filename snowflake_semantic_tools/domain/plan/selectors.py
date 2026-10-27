@@ -135,7 +135,8 @@ def resolve_selectors(
         SST-PRT101: a selector contains a comma.
         SST-PRT102: a selector's prefix is not a registered kind, or globs a fixed vocabulary.
         SST-PRT103: a `state:` selector was given without `--state`.
-        SST-PRT100: a registered kind names an unknown type or state, or is not supported here;
+        SST-PRT100: a selector is empty; a registered kind names an unknown type or state, or is
+            not supported here;
             a graph operator is misplaced, or given where lineage cannot be read; or a dbt node
             or a member is named without one.
     """
@@ -171,6 +172,8 @@ def _resolve_graph(
     """Resolve one selector, walking the lineage graph when it writes graph operators."""
     if "," in value:
         return D("SST-PRT101", subject="cli", value=value)
+    if not value.strip():
+        return _unsupported(value, "is empty; name an artifact, or write type:<type> or path:<glob>")
     try:
         operators = parse_graph_selector(value)
     except ValueError as exc:

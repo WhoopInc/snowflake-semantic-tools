@@ -83,7 +83,7 @@ These go before the command name.
 | 0 | `OK` | Success. For `sst plan`, nothing to change: every live object carries the marker state records, and the properties plan compares are as apply read them back. |
 | 1 | `ERROR` | Errors were reported, an apply, a smoke probe, an eval gate, or a check failed, or an apply skipped a blocked change. |
 | 2 | `CHANGES` | Declared and actual state differ: `sst plan` found changes, `sst diff` found the two states differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` found something to rewrite, or `sst import` found files to write without --write. |
-| 3 | `USAGE` | The command line is invalid. |
+| 3 | `USAGE` | The command line is invalid, or names nothing: an empty `--select`, or one that matches no artifact. |
 | 4 | `CONFIG` | The project, its configuration, or a saved plan cannot be used. |
 | 5 | `CONNECTION` | Snowflake could not be reached, rejected the credential, refused a privilege, or did not finish in time; the diagnostic code says which, so a retry fixes only some of them. |
 | 130 | `INTERRUPTED` | The run was interrupted: Ctrl-C, SIGTERM or SIGHUP, end of input, or a declined prompt. Any command can return it. |
@@ -286,7 +286,7 @@ manifest of the artifacts no error touches, and exits 1. Nothing connects: --tar
 --defer-target, and --database only decide what names resolve to.
 
 Exit 0 when everything compiled; 1 when an error stopped the compile, the manifest could
-not be written, --partial left an artifact out, or two emitted files would collide; 4 when
+not be written, --partial left an artifact out, or two emitted files would collide; 3 when
 --select matches nothing.
 
 Diagnostics:
@@ -479,7 +479,7 @@ with none there, or more than one target's, every artifact is pending. Without
 --no-manifest the manifest `sst compile` wrote is read, and its absence exits 4; with
 it, the project's files are compiled in memory, nothing is written, and what fails to
 compile is reported and exits 1. A --select or --exclude value that matches nothing is
-reported; when the selectors choose no artifact and nothing failed to compile, it exits 4.
+reported; when the selectors choose no artifact and nothing failed to compile, it exits 3.
 --target, --defer-target and --database resolve the in-memory compile as `sst compile`
 would, offline; with a compiled manifest, a --target other than the one it was compiled
 for is refused (SST-MAN006).
@@ -544,7 +544,8 @@ sst lineage [OPTIONS] NODE
 
 Observe live Snowflake state and compute a non-writing plan.
 
-Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+Exit 0 with nothing to change, 2 with changes pending, 1 on an error or a blocked change, and 3
+when --select matches nothing.
 Nothing to change means each live object carries the ownership marker state records, and
 the properties `plan.drift_check` compares are as apply read them back; an object edited
 by hand in either way is blocked (SST-PLN014).
@@ -717,7 +718,7 @@ and verified queries, and a DESCRIBE of each tool, agent, and CoWork profile. A 
 when its query runs. Nothing is written, no lock is taken, and no agent runs; `sst eval`
 runs agents. `--select` and
 `--exclude` narrow the artifacts probed. Exit 1 when the project does not compile or a
-probe fails; 4 when the selection compiles nothing to probe, or the compiled manifest is
+probe fails; 3 when the selection compiles nothing to probe; 4 when the compiled manifest is
 missing or stale; and 5 when Snowflake cannot be reached.
 
 ```text
@@ -741,8 +742,8 @@ Run agent evals in Snowflake and gate them against their baselines; billed.
 Without a mode flag, each selected eval runs against the agent `sst apply` published, once
 `sst compile` has written the manifest, and the gate compares its scores with the eval's
 baseline. `--select` and `--exclude` narrow the evals run. Exit 1 when the project does
-not compile, the gate fails, or another run holds the target's run lock; 4 when the
-selection compiles no eval or the compiled manifest is missing or stale; and 5 when
+not compile, the gate fails, or another run holds the target's run lock; 3 when the
+selection compiles no eval; 4 when the compiled manifest is missing or stale; and 5 when
 Snowflake cannot be reached. The run holds the target's run lock while it runs, and
 `--break-stale-lock` takes it over only from a run that has expired; progress on its runs
 goes to stderr, except under --quiet or --output json. `--capture-baseline` records the

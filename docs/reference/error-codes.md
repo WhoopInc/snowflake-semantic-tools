@@ -16,7 +16,7 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 24 codes
-- [Configuration (CFG)](#configuration-cfg) -- 49 codes
+- [Configuration (CFG)](#configuration-cfg) -- 50 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
@@ -778,6 +778,16 @@ Raised when a value in `sst_config.yml`, after its `var()` calls are substituted
 Fix: make the conditional the whole value, with the full value in each arm, or hold the full value in a variable and make the key `{{ var('<name>') }}`
 
 Note: Only a whole-value conditional is evaluated; any other would reach its reader as template text.
+
+### SST-CFG061
+
+**Config file is empty** (error)
+
+`<path> is empty`
+
+Raised when the configuration file holds no YAML document: only whitespace and comments.
+
+Fix: add the keys this project needs, or delete it and run `sst init` to write a starter one
 
 ### SST-CFG200
 

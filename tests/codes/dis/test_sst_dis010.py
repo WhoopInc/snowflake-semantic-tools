@@ -62,5 +62,5 @@ def test_list_refuses_selectors_that_all_miss(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     compile_project(project)
     listed = CliRunner().invoke(cli, ["list", "--project-dir", str(project), "--select", "nope_xyz", "-o", "json"])
-    assert listed.exit_code == 4
+    assert listed.exit_code == 3
     assert _missed(json.loads(listed.output)["diagnostics"]) == ["--select nope_xyz matched no artifact"]

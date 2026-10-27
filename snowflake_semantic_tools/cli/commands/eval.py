@@ -174,8 +174,8 @@ def eval_command(
     Without a mode flag, each selected eval runs against the agent `sst apply` published, once
     `sst compile` has written the manifest, and the gate compares its scores with the eval's
     baseline. `--select` and `--exclude` narrow the evals run. Exit 1 when the project does
-    not compile, the gate fails, or another run holds the target's run lock; 4 when the
-    selection compiles no eval or the compiled manifest is missing or stale; and 5 when
+    not compile, the gate fails, or another run holds the target's run lock; 3 when the
+    selection compiles no eval; 4 when the compiled manifest is missing or stale; and 5 when
     Snowflake cannot be reached. The run holds the target's run lock while it runs, and
     `--break-stale-lock` takes it over only from a run that has expired; progress on its runs
     goes to stderr, except under --quiet or --output json. `--capture-baseline` records the

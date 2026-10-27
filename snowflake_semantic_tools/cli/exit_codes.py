@@ -10,6 +10,19 @@ CONFIG = 4
 CONNECTION = 5
 INTERRUPTED = 130
 
+# A refusal whose only findings are selectors that named nothing is the command line's fault.
+_SELECTOR_MISSES = frozenset({"SST-DIS010"})
+
+
+def refusal_exit(codes: tuple[str, ...], default: int) -> int:
+    """Return USAGE for a refusal whose every finding is a selector that matched nothing, else `default`.
+
+    `--select` that names nothing is an argument naming nothing, as `sst lineage <node>` reports
+    an unknown node, so every command exits 3 for it.
+    """
+    return USAGE if codes and all(code in _SELECTOR_MISSES for code in codes) else default
+
+
 EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
     (
         OK,
@@ -32,7 +45,11 @@ EXIT_CODE_DOCS: tuple[tuple[int, str, str], ...] = (
         "differ, or `enrich --check`, `format --check`, `docs --check`, `migrate refs`, or `migrate split` "
         "found something to rewrite, or `sst import` found files to write without --write.",
     ),
-    (USAGE, "USAGE", "The command line is invalid."),
+    (
+        USAGE,
+        "USAGE",
+        "The command line is invalid, or names nothing: an empty `--select`, or one that matches no artifact.",
+    ),
     (CONFIG, "CONFIG", "The project, its configuration, or a saved plan cannot be used."),
     (
         CONNECTION,

@@ -26,7 +26,7 @@ from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan_values import PlanRefused
 from snowflake_semantic_tools.app.recover import RecoverResult, RecoverState
 from snowflake_semantic_tools.cli.confirm import confirm, require_answerable
-from snowflake_semantic_tools.cli.exit_codes import ERROR, OK
+from snowflake_semantic_tools.cli.exit_codes import ERROR, OK, refusal_exit
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.help_form import SstSubGroup
@@ -109,7 +109,8 @@ def recover(
     )
     session = plan_runtime(request)
     if isinstance(session, PlanRefused):
-        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+        refused = refusal_exit(tuple(item.code for item in session.diagnostics), ERROR)
+        return CommandResult(refused, session.diagnostics, promoted=session.promoted)
     try:
         if not assume_yes:
             confirm(
@@ -220,7 +221,8 @@ def adopt(
     )
     session = plan_runtime(request)
     if isinstance(session, PlanRefused):
-        return CommandResult(ERROR, session.diagnostics, promoted=session.promoted)
+        refused = refusal_exit(tuple(item.code for item in session.diagnostics), ERROR)
+        return CommandResult(refused, session.diagnostics, promoted=session.promoted)
     try:
         adopter = AdoptObjects(
             session.port,

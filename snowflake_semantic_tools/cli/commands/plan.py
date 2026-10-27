@@ -15,7 +15,7 @@ from snowflake_semantic_tools.adapters.paths import output_root
 from snowflake_semantic_tools.app.baseline import held_by_baseline
 from snowflake_semantic_tools.app.observe import ObserveOptions
 from snowflake_semantic_tools.app.plan_values import PlanReady, PlanRefused
-from snowflake_semantic_tools.cli.exit_codes import ERROR
+from snowflake_semantic_tools.cli.exit_codes import ERROR, refusal_exit
 from snowflake_semantic_tools.cli.globals import GlobalOptions, SstCommand
 from snowflake_semantic_tools.cli.group import SstUsageError
 from snowflake_semantic_tools.cli.options import (
@@ -152,7 +152,8 @@ def plan(
 ) -> CommandResult:
     """Observe live Snowflake state and compute a non-writing plan.
 
-    Exit 0 with nothing to change, 2 with changes pending, and 1 on an error or a blocked change.
+    Exit 0 with nothing to change, 2 with changes pending, 1 on an error or a blocked change, and 3
+    when --select matches nothing.
     Nothing to change means each live object carries the ownership marker state records, and
     the properties `plan.drift_check` compares are as apply read them back; an object edited
     by hand in either way is blocked (SST-PLN014).
@@ -188,7 +189,8 @@ def plan(
     )
     ready, close = _planned(request)
     if isinstance(ready, PlanRefused):
-        return CommandResult(ERROR, ready.diagnostics, promoted=ready.promoted)
+        refused = refusal_exit(tuple(item.code for item in ready.diagnostics), ERROR)
+        return CommandResult(refused, ready.diagnostics, promoted=ready.promoted)
     saved, destination, sql_path, observed_path, diff_path = _save_plan(
         request, ready, close, _Outputs(plan_out, no_plan_out, sql_out, diff_out)
     )
