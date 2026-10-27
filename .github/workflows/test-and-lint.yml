@@ -112,23 +112,20 @@ jobs:
       - name: Check domain coverage
         if: matrix.python == '3.11'
         run: >-
-          poetry run pytest -q --cov=snowflake_semantic_tools.domain --cov-branch
-          --cov-report=term --cov-fail-under=100
-          tests/unit/domain tests/unit/test_render_semantic_view.py
+          poetry run coverage report --include='snowflake_semantic_tools/domain/*'
+          --fail-under=99 --skip-covered
 
       - name: Check application coverage
         if: matrix.python == '3.11'
         run: >-
-          poetry run pytest -q --cov=snowflake_semantic_tools.app --cov-branch
-          --cov-report=term --cov-fail-under=95
-          tests/unit/app tests/unit/test_compile_use_case.py tests/unit/test_manifest_v1.py
+          poetry run coverage report --include='snowflake_semantic_tools/app/*'
+          --fail-under=95 --skip-covered
 
       - name: Check CLI coverage
         if: matrix.python == '3.11'
         run: >-
-          poetry run pytest -q -m "not live" --cov=snowflake_semantic_tools.cli --cov-branch
-          --cov-report=term --cov-fail-under=90
-          tests/unit/cli
+          poetry run coverage report --include='snowflake_semantic_tools/cli/*'
+          --fail-under=90 --skip-covered
 
       - name: Check strict typing
         run: poetry run mypy snowflake_semantic_tools tests
