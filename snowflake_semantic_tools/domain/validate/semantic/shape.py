@@ -8,7 +8,7 @@ from typing import Any
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NULL_ORDERS, SORT_DIRECTIONS, AuthoredDocuments
-from snowflake_semantic_tools.domain.parse.frame import canonical_frame
+from snowflake_semantic_tools.domain.parse.frame import canonical_frame, frame_order_problem
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.validate.column_metadata import printable, synonym_problem
@@ -215,8 +215,14 @@ def _window_parse_diagnostics(node: Mapping[str, Any], subject: str, origin: Ori
     for position, entry in enumerate(order_by if isinstance(order_by, list) else ()):
         diagnostics.extend(_order_by_entry(entry, f"window.order_by[{position}]", subject, origin, wrong_type))
     frame = value.get("frame")
-    if frame is not None and canonical_frame(frame) is None:
+    canonical = canonical_frame(frame) if frame is not None else None
+    if frame is not None and canonical is None:
         diagnostics.append(D("SST-PRS124", artifact=subject, value=frame, subject=subject, origin=origin))
+    problem = frame_order_problem(canonical) if canonical is not None else None
+    if problem is not None:
+        diagnostics.append(
+            D("SST-PRS128", artifact=subject, value=frame, detail=problem, subject=subject, origin=origin)
+        )
     return tuple(diagnostics)
 
 

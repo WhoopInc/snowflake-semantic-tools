@@ -18,7 +18,7 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 49 codes
 - [Discovery (DIS)](#discovery-dis) -- 15 codes
-- [Parsing (PRS)](#parsing-prs) -- 58 codes
+- [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
@@ -1516,6 +1516,18 @@ Raised when a semantic view variable's `default_value` is not a value of its `da
 Fix: write the default as the message says, or change the variable's data_type
 
 Note: A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.
+
+### SST-PRS128
+
+**Window frame bounds are out of order** (error)
+
+`<artifact>: window frame '<value>' is refused: <detail>`
+
+Raised when a window frame's start bound comes after its end bound, starts at UNBOUNDED FOLLOWING, or ends at UNBOUNDED PRECEDING, which Snowflake refuses when the view is created.
+
+Fix: put the earlier bound first: UNBOUNDED PRECEDING, then &lt;n&gt; PRECEDING (larger first), CURRENT ROW, &lt;n&gt; FOLLOWING (smaller first), UNBOUNDED FOLLOWING
+
+Note: Two INTERVAL bounds on one side in different units are not compared; Snowflake checks them.
 
 ### SST-PRS130
 

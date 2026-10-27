@@ -519,6 +519,19 @@ SPECS: tuple[ErrorSpec, ...] = (
         note="A temporal default renders as `'<text>'::<type>`; Snowflake reads a bare string as VARCHAR.",
     ),
     spec(
+        "SST-PRS128",
+        Severity.ERROR,
+        "Window frame bounds are out of order",
+        "{artifact}: window frame '{value}' is refused: {detail}",
+        "put the earlier bound first: UNBOUNDED PRECEDING, then <n> PRECEDING (larger first), CURRENT "
+        "ROW, <n> FOLLOWING (smaller first), UNBOUNDED FOLLOWING",
+        condition=(
+            "a window frame's start bound comes after its end bound, starts at UNBOUNDED FOLLOWING, "
+            "or ends at UNBOUNDED PRECEDING, which Snowflake refuses when the view is created"
+        ),
+        note="Two INTERVAL bounds on one side in different units are not compared; Snowflake checks them.",
+    ),
+    spec(
         "SST-PRS130",
         Severity.ERROR,
         "Signature parameter writes required",
