@@ -409,6 +409,10 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
         "--profile",
     ): "Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project.",
     ("sst drop", "--yes"): "Required on every invocation: it is the confirmation, and there is no prompt.",
+    ("sst drop", "--outside-target"): (
+        "Drop an object outside the target's schema and every schema its state records an object in; "
+        "ownership is checked all the same."
+    ),
     ("sst import", "--like"): "Import only objects whose name matches this Snowflake LIKE pattern.",
     ("sst import", "--not-like"): "Leave out objects whose name matches this Snowflake LIKE pattern.",
     ("sst import", "--to"): (

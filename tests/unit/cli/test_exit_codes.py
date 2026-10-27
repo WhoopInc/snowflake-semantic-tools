@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.diagnostics.signatures import SIGNATURES
 from snowflake_semantic_tools.domain.model.lifecycle import ErrorKind, OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.agent_run import AgentReply
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
+from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry
 from tests.helpers.cli_projects import (
     applied_port,
     common,
@@ -420,7 +421,11 @@ def _drop_project(tmp: Path) -> Path:
 
 def _drop(tmp: Path, monkeypatch: pytest.MonkeyPatch, *, exists: bool) -> Result:
     marker = OwnershipMarker("a" * 64, "b" * 64)
-    port = FakeSnowflake(existing=("DB.S.V",) if exists else (), markers={"DB.S.V": marker})
+    # State records the view, so it vouches for the marker and puts DB.S among the target's schemas.
+    recorded = AppliedEntry("b" * 64, "DB.S.V", "then", "run", APPLIED, "b" * 64, "a" * 64)
+    port = FakeSnowflake(
+        existing=("DB.S.V",) if exists else (), markers={"DB.S.V": marker}, state={"semantic_view:v": recorded}
+    )
     return invoke_with_port(monkeypatch, port, ["drop", *DROP, "--project-dir", str(_drop_project(tmp))])
 
 

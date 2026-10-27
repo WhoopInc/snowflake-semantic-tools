@@ -516,6 +516,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         precheck=Precheck.OBSERVE,
     ),
     spec(
+        "SST-PLN044",
+        Severity.ERROR,
+        "Object is outside the target",
+        "{artifact}: {value} is outside every schema target '{target}' publishes to ({detail})",
+        "check the name and --target; pass --outside-target to drop it from another schema",
+        demotable=False,
+        condition=(
+            "`sst drop` names an object outside the target's own schema and every schema its state records an object in"
+        ),
+        note=(
+            "--outside-target skips only this check: the object must still carry a marker the "
+            "target's state vouches for (SST-PLN024)."
+        ),
+        precheck=Precheck.OBSERVE,
+    ),
+    spec(
         "SST-PLN100",
         Severity.ERROR,
         "Smoke query failed",

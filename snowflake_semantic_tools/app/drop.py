@@ -2,10 +2,14 @@
 
 `DropObject.run` is everything `sst drop` does once its command line is accepted. It takes the
 target's run lease, the same local and remote lock apply holds, so a drop never races an apply.
-It then refuses an object that does not exist, one whose comment carries no SST ownership
-marker, and one whose marker names a manifest the target's state never applied and that state
-does not record: drop removes what SST published to this target, never an object someone else
--- another project sharing the schema included -- owns under the same name. It warns of each
+It then refuses an object that does not exist; one outside the schemas the target publishes to
+(its own schema, and each schema its state records an object in) unless the request says
+`outside_target`; one whose comment carries no SST ownership marker; and one whose marker names
+no manifest the target's state applied while that state does not record the object, which
+includes every marked object when the target has no state: a marker is comment text anyone can
+write, so drop removes what SST published to this target, never an object someone else -- another
+project sharing the schema included -- owns under the same name. Immediately before the DROP it
+checks the lock again, and that the marker still reads as it did. It warns of each
 agent, and each CoWork profile, state records whose live specification names the object, since
 the drop breaks it; it reads no project, so that is all it can know of what depends on the object.
 Only then does it run the one DROP statement, and record the removal in state the way apply
@@ -30,7 +34,7 @@ from snowflake_semantic_tools.app.lifecycle.ports import CatalogPublicationPort
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.signatures import signature_codes, snowflake_diagnostic
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, split_artifact_key
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope
 from snowflake_semantic_tools.domain.model.lifecycle import ExecutionError, OwnershipMarker
 from snowflake_semantic_tools.domain.ports.clock import ClockPort
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
@@ -73,6 +77,10 @@ class DropRequest:
         target_name: The dbt target the drop runs against, which the run lock is held for.
         break_stale_lock: Take over the run lock when its holder has expired, as
             `sst apply --break-stale-lock` does; a live holder is refused all the same.
+        scope: The target's own database and schema; None when unknown, so only the schemas
+            state records an object in are the target's.
+        outside_target: Drop an object outside every schema the target publishes to; ownership
+            is checked all the same.
     """
 
     qualified_name: QualifiedName
@@ -80,6 +88,8 @@ class DropRequest:
     object_type: str
     target_name: str
     break_stale_lock: bool = False
+    scope: SchemaScope | None = None
+    outside_target: bool = False
 
     @property
     def drop_sql(self) -> Sql:
@@ -157,10 +167,13 @@ class DropObject:
             SST-APL011: another run holds the lock, or broke it before the dropped object's
                 state entries could be deleted; they are then left as they are.
             SST-APL010: the request breaks stale locks, and an expired one was taken over.
+            SST-PLN044: the object is outside every schema the target publishes to, and the
+                request does not say `outside_target`.
+            SST-APL012: the object's ownership marker changed while the drop checked it.
             SST-PRT005: the named object does not exist; an extension state records is
                 forgotten all the same.
-            SST-PLN024: the object carries no SST ownership marker, or one naming a manifest
-                the target's state never applied while state does not record the object; an
+            SST-PLN024: the object carries no SST ownership marker, or one naming no manifest
+                the target's state applied while state does not record the object; an
                 extension state does not record at a version it still lists.
             SST-PLN017: an agent or CoWork profile state records names the object; it is dropped
                 all the same.
@@ -178,43 +191,41 @@ class DropObject:
         if not locked or lease.fence is None:
             return DropResult(REFUSED, DiagnosticBag(reported))
         try:
-            result = self._run_locked(request, lease.fence)
+            result = self._run_locked(request, lease)
         finally:
             lease.release()
         return replace(result, diagnostics=DiagnosticBag((*reported, *result.diagnostics)))
 
-    def _run_locked(self, request: DropRequest, fence: LockFence) -> DropResult:
+    def _run_locked(self, request: DropRequest, lease: RunLease) -> DropResult:
+        entries = self._port.read_state(self._state_table, request.target_name) or {}
+        outside = _outside(request, entries)
+        if outside is not None:
+            return DropResult(REFUSED, DiagnosticBag((outside,)))
         if request.object_type == EXTENSION:
-            return self._drop_extension(request, fence)
+            return self._drop_extension(request, lease, entries)
         name = request.qualified_name
         if not self._port.object_exists(request.object_type, name):
             detail = f"no {request.object_type} of that name"
             absent = D("SST-PRT005", subject=request.artifact, value=name.sql, detail=detail)
             return DropResult(ABSENT, DiagnosticBag((absent,)))
         marker = self._port.describe_marker(name, request.object_type)
-        entries = self._port.read_state(self._state_table, request.target_name) or {}
         manifest = self._port.read_state_manifest(self._state_table, request.target_name)
         if marker is None or not _trusted(marker, entries, manifest, request):
             unowned = D("SST-PLN024", subject=request.artifact, artifact=request.artifact, value=name.sql)
             return DropResult(REFUSED, DiagnosticBag((unowned,)))
         dependents = self._dependents(request, entries)
-        executed = self._port.execute_script((request.drop_sql,))
-        if not executed.ok:
-            return DropResult(REJECTED, DiagnosticBag((*dependents, *_rejection(request, executed.error))))
-        forgotten = self._forget(request, fence, entries, manifest)
-        if forgotten is None:
-            broken = D("SST-APL011", value=BROKEN_BY_ANOTHER_RUN)
-            return DropResult(DROPPED, DiagnosticBag((*dependents, broken)))
-        return DropResult(DROPPED, DiagnosticBag(dependents), forgotten)
+        changed = self._changed(request, lease, marker)
+        if changed is not None:
+            return DropResult(REFUSED, DiagnosticBag((*dependents, changed)))
+        return self._execute(request, lease, entries, manifest, dependents)
 
-    def _drop_extension(self, request: DropRequest, fence: LockFence) -> DropResult:
+    def _drop_extension(self, request: DropRequest, lease: RunLease, entries: Mapping[str, AppliedEntry]) -> DropResult:
         """Drop an extension state records at a version it still lists; forget one already gone."""
         name = request.qualified_name
-        entries = self._port.read_state(self._state_table, request.target_name) or {}
         manifest = self._port.read_state_manifest(self._state_table, request.target_name)
         if self._port.observe_extension(name) is None:
             absent = D("SST-PRT005", subject=request.artifact, value=name.sql, detail=f"no {EXTENSION} of that name")
-            forgotten = self._forget(request, fence, entries, manifest)
+            forgotten = self._forget(request, _fence(lease), entries, manifest)
             return DropResult(ABSENT, DiagnosticBag((absent,)), forgotten or ())
         listed = {version.name for version in self._port.extension_versions(name)}
         owned = [key for key in _recording(entries, request) if _recorded_version(entries[key]) in listed]
@@ -222,10 +233,39 @@ class DropObject:
             unowned = D("SST-PLN024", subject=request.artifact, artifact=request.artifact, value=name.sql)
             return DropResult(REFUSED, DiagnosticBag((unowned,)))
         dependents = self._dependents(request, entries)
+        changed = self._changed(request, lease, None)
+        if changed is not None:
+            return DropResult(REFUSED, DiagnosticBag((*dependents, changed)))
+        return self._execute(request, lease, entries, manifest, dependents)
+
+    def _changed(self, request: DropRequest, lease: RunLease, marker: OwnershipMarker | None) -> Diagnostic | None:
+        """Check, immediately before the DROP, that the run still holds the lock and the marker reads as it did.
+
+        `marker` is None for an extension, which carries none.
+
+        Diagnostics:
+            SST-APL011: the run no longer holds the lock.
+            SST-APL012: the object's ownership marker changed since the drop read it.
+        """
+        if not lease.verify():
+            return D("SST-APL011", value=lease.lost_reason)
+        if marker is not None and self._port.describe_marker(request.qualified_name, request.object_type) != marker:
+            return D("SST-APL012", artifact=request.artifact, value=request.qualified_name.sql)
+        return None
+
+    def _execute(
+        self,
+        request: DropRequest,
+        lease: RunLease,
+        entries: Mapping[str, AppliedEntry],
+        manifest: str | None,
+        dependents: tuple[Diagnostic, ...],
+    ) -> DropResult:
+        """Run the DROP, then forget the object in state."""
         executed = self._port.execute_script((request.drop_sql,))
         if not executed.ok:
             return DropResult(REJECTED, DiagnosticBag((*dependents, *_rejection(request, executed.error))))
-        forgotten = self._forget(request, fence, entries, manifest)
+        forgotten = self._forget(request, _fence(lease), entries, manifest)
         if forgotten is None:
             broken = D("SST-APL011", value=BROKEN_BY_ANOTHER_RUN)
             return DropResult(DROPPED, DiagnosticBag((*dependents, broken)))
@@ -307,13 +347,49 @@ def _trusted(
     """Report whether the target's state vouches for the object's marker as this target's own.
 
     It does when state records the object, or when the marker names a manifest the state table
-    or one of its entries names. A target with no state at all has nothing to contradict the
-    marker, so the marker alone is trusted. An object whose marker names another manifest that
-    this target's state never applied, and that state does not record, was published by another
-    project into the same schema.
+    or one of its entries names. A marker is comment text anyone who can set a comment can
+    write, so a target with no state vouches for none: `sst state recover` records such an
+    object first. An object whose marker names another manifest that this target's state never
+    applied, and that state does not record, was published by another project into the same
+    schema.
     """
     known = {manifest, *(entry.manifest_id for entry in entries.values())} - {None, ""}
-    return not known or marker.manifest_id in known or bool(_recording(entries, request))
+    return marker.manifest_id in known or bool(_recording(entries, request))
+
+
+def _outside(request: DropRequest, entries: Mapping[str, AppliedEntry]) -> Diagnostic | None:
+    """Refuse an object outside every schema the target publishes to, unless the request allows it.
+
+    The target publishes to its own schema and to each schema its state records an object in,
+    which is where `+database` and `+schema` route artifacts.
+
+    Diagnostics:
+        SST-PLN044: the object is outside them all, and the request does not say `outside_target`.
+    """
+    if request.outside_target:
+        return None
+    scopes = {(request.scope.database.folded, request.scope.schema.folded)} if request.scope is not None else set()
+    for entry in entries.values():
+        parsed = _parsed(entry.qualified_name)
+        if parsed is not None:
+            scopes.add(parsed.folded[:2])
+    if request.qualified_name.folded[:2] in scopes:
+        return None
+    where = ", ".join(sorted(".".join(scope) for scope in scopes)) or "none"
+    return D(
+        "SST-PLN044",
+        artifact=request.artifact,
+        value=request.qualified_name.sql,
+        target=request.target_name,
+        detail=where,
+    )
+
+
+def _fence(lease: RunLease) -> LockFence:
+    """Return the fence of a lease the run holds, which acquiring it set."""
+    fence = lease.fence
+    assert fence is not None, "a held lease has a fence"
+    return fence
 
 
 def _recording(entries: Mapping[str, AppliedEntry], request: DropRequest) -> tuple[str, ...]:

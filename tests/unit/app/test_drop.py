@@ -7,7 +7,7 @@ from dataclasses import replace
 from types import MappingProxyType
 
 from snowflake_semantic_tools.app.drop import EXTENSION, DropObject, DropRequest, DropResult
-from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName, SchemaScope, TargetIdentity
 from snowflake_semantic_tools.domain.model.lifecycle import OwnershipMarker
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.state import APPLIED, AppliedEntry, State
@@ -20,7 +20,9 @@ from tests.helpers.snowflake_fake import FakeSnowflake
 
 VIEW = QualifiedName.parse("DB.S.ORDERS")
 TABLE = QualifiedName.parse("DB.S.SST_STATE")
-REQUEST = DropRequest(VIEW, "semantic_view", "SEMANTIC VIEW", "dev")
+REQUEST = DropRequest(VIEW, "semantic_view", "SEMANTIC VIEW", "dev", scope=SchemaScope.parse("DB.S"))
+# State that records another object of the same manifest, so it vouches for the view's marker.
+OTHER = {"agent:other": AppliedEntry("b" * 64, "DB.S.OTHER", "then", "run", APPLIED, "b" * 64, "a" * 64)}
 
 
 def _entry(target: str, manifest: str = "a" * 64) -> AppliedEntry:
@@ -84,27 +86,25 @@ def test_the_removed_entry_names_the_manifest_when_the_table_names_none() -> Non
     assert store.writes == []
 
 
-def test_nothing_is_forgotten_when_state_holds_no_entry_or_cannot_be_read() -> None:
-    port = _port()
-    assert DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST).forgotten == ()
-    unreadable = _port()
-    unreadable.read_state = lambda table, target: None  # type: ignore[method-assign,assignment]
-    assert DropObject(unreadable, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST).dropped
+def test_nothing_is_forgotten_when_state_holds_no_entry_naming_the_object() -> None:
+    port = _port(**OTHER)
+    result = DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
+    assert (result.dropped, result.forgotten) == (True, ())
 
 
 def test_absent_unowned_rejected_and_locked_objects_are_not_dropped() -> None:
     absent = _port()
     absent.existing = set()
     assert DropObject(absent, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST).outcome == "absent"
-    unowned = _port()
+    unowned = _port(**OTHER)
     unowned.markers = {}
     refused = DropObject(unowned, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
     assert (refused.outcome, [item.code for item in refused.diagnostics]) == ("refused", ["SST-PLN024"])
-    rejected = _port()
+    rejected = _port(**OTHER)
     rejected.refused = ("DROP",)
     failed = DropObject(rejected, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
     assert (failed.outcome, [item.code for item in failed.diagnostics]) == ("rejected", ["SST-APL001", "SST-SNO001"])
-    locked = _port()
+    locked = _port(**OTHER)
     locked.run_locks.acquire_run_lock(TABLE, "dev", LockClaim("other"), break_stale=False)
     held = DropObject(locked, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(REQUEST)
     assert (held.outcome, [item.code for item in held.diagnostics]) == ("refused", ["SST-APL011"])
@@ -153,10 +153,18 @@ def test_a_marker_state_vouches_for_or_cannot_contradict_is_dropped() -> None:
     same_manifest = _port(**{"agent:other": _entry("DB.S.OTHER")})
     recorded = _port(**{"semantic_view:orders": _entry(VIEW.sql, "c" * 64)})
     recorded.markers = {VIEW.sql: OwnershipMarker("f" * 64, "b" * 64)}
-    no_state = _port()
-    no_state.markers = {VIEW.sql: OwnershipMarker("f" * 64, "b" * 64)}
-    for port in (same_manifest, recorded, no_state):
+    for port in (same_manifest, recorded):
         assert _run(port).outcome == "dropped"
+
+
+def test_a_target_with_no_state_or_unreadable_state_vouches_for_no_marker() -> None:
+    # A marker is comment text anyone can write (GitHub #269); `sst state recover` records it first.
+    unreadable = _port()
+    unreadable.read_state = lambda table, target: None  # type: ignore[method-assign,assignment]
+    for port in (_port(), unreadable):
+        refused = _run(port)
+        assert (refused.outcome, [item.code for item in refused.diagnostics]) == ("refused", ["SST-PLN024"])
+        assert port.scripts == []
 
 
 def test_an_agent_state_records_that_names_the_object_is_warned_of_and_the_drop_goes_ahead() -> None:
@@ -235,7 +243,7 @@ def test_the_warning_is_kept_when_the_drop_is_rejected_or_its_lock_was_broken() 
 
 def test_a_drop_takes_over_an_expired_lock_only_when_asked_and_never_a_live_one() -> None:
     def locked_by(ttl: int) -> FakeSnowflake:
-        port = _port()
+        port = _port(**OTHER)
         port.run_locks.acquire_run_lock(TABLE, "dev", LockClaim("crashed", "R", "h", ttl), break_stale=False)
         port.run_locks.now = 60.0
         return port
@@ -257,7 +265,7 @@ def test_an_extension_state_records_at_a_version_it_lists_is_dropped_and_forgott
     _, published = publish_extensions(port, both, empty_state())
     entry = published.applied["skill:year-close"]
     name = QualifiedName.parse(entry.qualified_name)
-    request = DropRequest(name, "skill", EXTENSION, "dev")
+    request = DropRequest(name, "skill", EXTENSION, "dev", scope=SchemaScope.from_qualified_name(name))
 
     def drop(recorded: AppliedEntry | None) -> DropResult:
         port.remote_state = {"skill:year-close": recorded} if recorded is not None else {}
@@ -286,3 +294,70 @@ def test_an_extension_drop_snowflake_refuses_keeps_its_entry() -> None:
     request = DropRequest(QualifiedName.parse(entry.qualified_name), "skill", EXTENSION, "dev")
     result = DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
     assert result.outcome == "rejected" and set(port.remote_state or {}) == {key}
+
+
+def test_an_object_outside_every_schema_the_target_publishes_to_is_refused_unless_asked() -> None:
+    elsewhere = QualifiedName.parse("OTHER_DB.OTHER.ORDERS")
+    request = replace(REQUEST, qualified_name=elsewhere)
+
+    def port() -> FakeSnowflake:
+        built = _port(**OTHER)
+        built.existing = {elsewhere.sql}
+        built.markers = {elsewhere.sql: OwnershipMarker("a" * 64, "b" * 64)}
+        return built
+
+    outside = port()
+    refused = DropObject(outside, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
+    assert [(item.code, item.message) for item in refused.diagnostics] == [
+        (
+            "SST-PLN044",
+            "semantic_view:orders: OTHER_DB.OTHER.ORDERS is outside every schema target 'dev' publishes to (DB.S)",
+        )
+    ]
+    assert (refused.outcome, outside.scripts) == ("refused", [])
+    asked = port()
+    dropped = DropObject(asked, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(
+        replace(request, outside_target=True)
+    )
+    assert asked.scripts == [("DROP SEMANTIC VIEW OTHER_DB.OTHER.ORDERS",)] and dropped.dropped
+    # A schema state records an object in is the target's, as `+schema` routes there.
+    routed = port()
+    routed.remote_state = {**OTHER, "agent:routed": _entry("OTHER_DB.OTHER.ROUTED")}
+    no_scope = replace(request, scope=None)
+    assert DropObject(routed, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(no_scope).dropped
+    unknown = port()
+    unknown.remote_state = {}
+    assert [item.code for item in _drop_with(unknown, no_scope).diagnostics] == ["SST-PLN044"]
+
+
+def _drop_with(port: FakeSnowflake, request: DropRequest) -> DropResult:
+    return DropObject(port, InMemoryStateStore(), FixedClock(), state_table=TABLE).run(request)
+
+
+def test_a_marker_that_changes_or_a_lock_lost_before_the_drop_stops_it() -> None:
+    changed = _port(**OTHER)
+    describe = changed.describe_marker
+    reads: list[int] = []
+
+    def rewritten(name: QualifiedName, kind: str) -> OwnershipMarker | None:
+        reads.append(1)
+        return describe(name, kind) if len(reads) == 1 else OwnershipMarker("f" * 64, "b" * 64)
+
+    changed.describe_marker = rewritten  # type: ignore[method-assign,assignment]
+    result = _run(changed)
+    assert (result.outcome, [item.code for item in result.diagnostics]) == ("refused", ["SST-APL012"])
+    assert changed.scripts == []
+    lost = _port(**OTHER)
+    lost.verify_run_lock = lambda table, target, fence: False  # type: ignore[method-assign,assignment]
+    stopped = _run(lost)
+    assert (stopped.outcome, [item.code for item in stopped.diagnostics]) == ("refused", ["SST-APL011"])
+    assert lost.scripts == []
+    # An extension, which carries no marker, is stopped by a lost lock as well.
+    port = FakeSnowflake(existing=())
+    _, published = publish_extensions(port, compile_extensions(skill_catalog(skill())), empty_state())
+    [(key, entry)] = published.applied.items()
+    port.remote_state = {key: entry}
+    port.verify_run_lock = lambda table, target, fence: False  # type: ignore[method-assign,assignment]
+    name = QualifiedName.parse(entry.qualified_name)
+    assert _drop_with(port, DropRequest(name, "skill", EXTENSION, "dev")).outcome == "refused"
+    assert name.sql in port.extensions

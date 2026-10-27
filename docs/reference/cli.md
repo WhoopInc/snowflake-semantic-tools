@@ -860,6 +860,9 @@ never a pattern; --type picks the DROP statement; --target has no default and
 --yes is required on every invocation, and there is no prompt. Only an object carrying
 SST's ownership marker is dropped; a skill's or plugin's extension, which carries none, only
 when state records it at a version it still lists, and one already gone is forgotten.
+The object must sit in the target's own schema or a schema its state records an object
+in; --outside-target drops one from another schema, ownership checked all the same. A
+target with no state vouches for no marker: `sst state recover` records the object first.
 Drop holds the target's run lock, as apply does, and
 deletes the object's entries from the state table the configuration's `state:` block
 names, or, when there is no configuration that reads, the target's default `SST_STATE`.
@@ -878,8 +881,11 @@ Diagnostics:
     SST-PRT108: the object is not a three-part name; raised.
     SST-PRT109: --yes was not given; raised.
     SST-PRT005: the object does not exist; an extension state records is forgotten.
-    SST-PLN024: the object carries no SST ownership marker, or, for an extension, state
-        does not record it at a version it still lists.
+    SST-PLN044: the object is outside every schema the target publishes to, without
+        --outside-target.
+    SST-PLN024: the object carries no SST ownership marker the target's state vouches for,
+        or, for an extension, state does not record it at a version it still lists.
+    SST-APL012: the object's marker changed while drop checked it.
     SST-APL001: Snowflake refused the DROP.
     SST-APL011: another run holds the lock, or took it before state was updated.
     SST-APL010: an expired lock was taken over, with --break-stale-lock.
@@ -895,6 +901,7 @@ sst drop [OPTIONS] <DB>.<SCHEMA>.<NAME>
 | `--target / -t` | TEXT |  | Required. Target from `profiles.yml`; there is no default, and `$SST_TARGET` is not read. |
 | `--profile` | TEXT |  | Profile in `profiles.yml`; else `dbt_project.yml`'s `profile:`. Needed outside a project. |
 | `--yes / -y` | flag |  | Required on every invocation: it is the confirmation, and there is no prompt. |
+| `--outside-target` | flag |  | Drop an object outside the target's schema and every schema its state records an object in; ownership is checked all the same. |
 | `--break-stale-lock` | flag |  | Take over the run lock only once the run holding it has expired (SST-APL010); a live lock is refused all the same (SST-APL011). |
 
 ## sst state

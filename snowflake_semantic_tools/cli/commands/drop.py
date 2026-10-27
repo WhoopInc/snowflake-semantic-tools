@@ -93,6 +93,7 @@ def _refuse(objects: tuple[str, ...], artifact_type: str | None, target_name: st
 @click.option("--target", "-t", "target_name")
 @click.option("--profile", "profile_name")
 @click.option("--yes", "-y", "assume_yes", is_flag=True)
+@click.option("--outside-target", "outside_target", is_flag=True)
 @break_stale_lock_option()
 @command_body("drop", config=ConfigNeed.NONE, refusals=_refuse)
 def drop(
@@ -104,6 +105,7 @@ def drop(
     profile_name: str | None,
     assume_yes: bool,
     break_stale_lock: bool,
+    outside_target: bool = False,
 ) -> CommandResult:
     """Break-glass: drop exactly one object SST owns from one target, and forget it in state.
 
@@ -114,6 +116,9 @@ def drop(
     --yes is required on every invocation, and there is no prompt. Only an object carrying
     SST's ownership marker is dropped; a skill's or plugin's extension, which carries none, only
     when state records it at a version it still lists, and one already gone is forgotten.
+    The object must sit in the target's own schema or a schema its state records an object
+    in; --outside-target drops one from another schema, ownership checked all the same. A
+    target with no state vouches for no marker: `sst state recover` records the object first.
     Drop holds the target's run lock, as apply does, and
     deletes the object's entries from the state table the configuration's `state:` block
     names, or, when there is no configuration that reads, the target's default `SST_STATE`.
@@ -132,8 +137,11 @@ def drop(
         SST-PRT108: the object is not a three-part name; raised.
         SST-PRT109: --yes was not given; raised.
         SST-PRT005: the object does not exist; an extension state records is forgotten.
-        SST-PLN024: the object carries no SST ownership marker, or, for an extension, state
-            does not record it at a version it still lists.
+        SST-PLN044: the object is outside every schema the target publishes to, without
+            --outside-target.
+        SST-PLN024: the object carries no SST ownership marker the target's state vouches for,
+            or, for an extension, state does not record it at a version it still lists.
+        SST-APL012: the object's marker changed while drop checked it.
         SST-APL001: Snowflake refused the DROP.
         SST-APL011: another run holds the lock, or took it before state was updated.
         SST-APL010: an expired lock was taken over, with --break-stale-lock.
@@ -148,6 +156,8 @@ def drop(
         droppable_types()[artifact_type],
         profile.target_name,
         break_stale_lock=break_stale_lock,
+        scope=profile.identity.scope,
+        outside_target=outside_target,
     )
     role = profile.identity.role or ""
     _audit(

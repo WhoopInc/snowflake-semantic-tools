@@ -26,7 +26,7 @@ cannot be downgraded by any setting.
 - [dbt (DBT)](#dbt-dbt) -- 33 codes
 - [Rendering (RND)](#rendering-rnd) -- 16 codes
 - [Manifest and state (MAN)](#manifest-and-state-man) -- 21 codes
-- [Planning (PLN)](#planning-pln) -- 48 codes
+- [Planning (PLN)](#planning-pln) -- 49 codes
 - [Apply (APL)](#apply-apl) -- 46 codes
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Import (IMP)](#import-imp) -- 16 codes
@@ -7058,6 +7058,18 @@ Raised when plan or apply runs with `--overwrite`, and SST-PLN014 would block th
 Fix: drop --overwrite to keep the edit, which then blocks the artifact (SST-PLN014)
 
 Note: The artifact is updated instead of blocked. An agent whose newest committed version still holds SST's specification only gets its marked comment, alias and default back; one whose specification was committed by hand gains a version holding SST's, which its alias and default then follow. Every earlier version is kept. Strict mode leaves this a warning, since the flag asked for it.
+
+### SST-PLN044
+
+**Object is outside the target** (error, always an error)
+
+`<artifact>: <value> is outside every schema target '<target>' publishes to (<detail>)`
+
+Raised when `sst drop` names an object outside the target's own schema and every schema its state records an object in.
+
+Fix: check the name and --target; pass --outside-target to drop it from another schema
+
+Note: --outside-target skips only this check: the object must still carry a marker the target's state vouches for (SST-PLN024).
 
 ### SST-PLN100
 
