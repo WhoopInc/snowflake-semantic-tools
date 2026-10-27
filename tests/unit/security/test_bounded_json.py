@@ -97,7 +97,7 @@ def test_diff_from_a_crafted_saved_plan_is_refused_as_unreadable(tmp_path: Path,
 def test_a_crafted_baseline_is_refused_as_unreadable(tmp_path: Path, crafted: str) -> None:
     path = tmp_path / "baseline.json"
     path.write_text(crafted, encoding="utf-8")
-    assert refused_codes(lambda: read_baseline(path, "baseline.json")) == ["SST-PRT009"]
+    assert refused_codes(lambda: read_baseline(path, "baseline.json")) == ["SST-CFG063"]
 
 
 @pytest.mark.parametrize("crafted", CRAFTED, indirect=True)

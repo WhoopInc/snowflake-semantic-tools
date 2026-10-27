@@ -45,7 +45,7 @@ def test_a_baseline_that_cannot_be_read_is_refused(tmp_path: Path, text: str) ->
     path = write(tmp_path, text)
     with pytest.raises(ProjectError) as raised:
         read_baseline(path, BASELINE_FILE.as_posix())
-    assert [item.code for item in raised.value.diagnostics] == ["SST-PRT009"]
+    assert [item.code for item in raised.value.diagnostics] == ["SST-CFG063"]
 
 
 def test_a_missing_baseline_is_refused(tmp_path: Path) -> None:
@@ -61,6 +61,6 @@ def test_an_expiry_that_is_not_a_yyyy_mm_dd_date_is_refused(tmp_path: Path, expi
     with pytest.raises(ProjectError) as raised:
         read_baseline(path, "b.json")
     [diagnostic] = raised.value.diagnostics
-    assert diagnostic.code == "SST-PRT009"
+    assert diagnostic.code == "SST-CFG063"
     if isinstance(expires_on, str):
         assert diagnostic.message == "could not read b.json: expires_on is not a YYYY-MM-DD date"

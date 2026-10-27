@@ -83,10 +83,9 @@ SPECS: tuple[ErrorSpec, ...] = (
         "could not read {path}: {detail}",
         "remove the link, or use a path inside the project; otherwise check that the file exists and can be read",
         condition=(
-            "a file SST reads cannot be read or does not hold what it should (a manifest, baseline, "
-            "saved plan, or `--state` observation), such as a baseline whose `expires_on` is not a "
-            "`YYYY-MM-DD` date; a file or folder to be read is a symbolic link "
-            "or is reached through one, every `file()` sidecar among them; or dbt's "
+            "a file SST reads cannot be read or does not hold what it should (a manifest, saved "
+            "plan, or `--state` observation; a baseline is SST-CFG063's); a file or folder to be "
+            "read is a symbolic link or is reached through one, every `file()` sidecar among them; or dbt's "
             "`target-path` or the semantic-models directory resolves outside the project"
         ),
         precheck=Precheck.RUNTIME,
@@ -165,7 +164,15 @@ SPECS: tuple[ErrorSpec, ...] = (
         "Unknown selector kind",
         "selector '{value}' names an unknown kind",
         "use {expected}",
-        condition="a selector's prefix is not a registered kind, or globs a kind whose values are a fixed set",
+        condition="a selector's prefix is not a registered kind",
+    ),
+    spec(
+        "SST-PRT113",
+        Severity.ERROR,
+        "Glob after a selector kind",
+        "selector '{value}' has a glob after '{kind}:', which takes an exact value",
+        "use {expected}",
+        condition="a selector globs after a kind whose value is an exact name, type or state",
     ),
     spec(
         "SST-PRT103",

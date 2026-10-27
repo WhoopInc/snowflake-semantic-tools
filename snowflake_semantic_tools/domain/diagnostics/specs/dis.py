@@ -96,6 +96,14 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a `--select` value matches no artifact; `state:` selectors are not checked",
     ),
     spec(
+        "SST-DIS015",
+        Severity.WARNING,
+        "Exclusion removed every selected artifact",
+        "--exclude removed every artifact --select {selector} chose",
+        "narrow --exclude, or widen --select",
+        condition="`--select` chooses artifacts and `--exclude` leaves none of them",
+    ),
+    spec(
         "SST-DIS011",
         Severity.WARNING,
         "Exclusion matched nothing",

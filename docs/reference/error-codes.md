@@ -16,8 +16,8 @@ cannot be downgraded by any setting.
 ## Contents
 
 - [Registry (REG)](#registry-reg) -- 24 codes
-- [Configuration (CFG)](#configuration-cfg) -- 51 codes
-- [Discovery (DIS)](#discovery-dis) -- 15 codes
+- [Configuration (CFG)](#configuration-cfg) -- 52 codes
+- [Discovery (DIS)](#discovery-dis) -- 16 codes
 - [Parsing (PRS)](#parsing-prs) -- 59 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
@@ -31,7 +31,7 @@ cannot be downgraded by any setting.
 - [Unpublished runs (ASK)](#unpublished-runs-ask) -- 13 codes
 - [Import (IMP)](#import-imp) -- 16 codes
 - [Snowflake (SNO)](#snowflake-sno) -- 31 codes
-- [External systems (PRT)](#external-systems-prt) -- 26 codes
+- [External systems (PRT)](#external-systems-prt) -- 27 codes
 - [Internal (INT)](#internal-int) -- 13 codes
 - [Retired numbers](#retired-numbers) -- 100 numbers
 
@@ -799,6 +799,16 @@ Raised when a baseline entry's code is not one SST reports, after an upgrade ren
 
 Fix: run `sst baseline prune` to remove it; `sst baseline add` records the warning again under its current code
 
+### SST-CFG063
+
+**Baseline file is not a baseline** (error)
+
+`could not read <path>: <detail>`
+
+Raised when the baseline file is not JSON, or is not a version 1 baseline with an `expires_on` `YYYY-MM-DD` date and a list of entries that each have a fingerprint.
+
+Fix: fix the JSON, or delete the file and run `sst baseline add` to write it again
+
 ### SST-CFG200
 
 **Deprecated config key** (error)
@@ -942,6 +952,16 @@ Fix: add a semantic view, or widen --select and --exclude
 Raised when `sst enrich` is given a PATH or `--select` value and no dbt model of the project matches any of them, so there is nothing to enrich; one per value.
 
 Fix: check the PATH or selector against model-paths and the model names
+
+### SST-DIS015
+
+**Exclusion removed every selected artifact** (warning)
+
+`--exclude removed every artifact --select <selector> chose`
+
+Raised when `--select` chooses artifacts and `--exclude` leaves none of them.
+
+Fix: narrow --exclude, or widen --select
 
 ### SST-DIS200
 
@@ -8443,7 +8463,7 @@ Fix: check the permissions and the free space
 
 `could not read <path>: <detail>`
 
-Raised when a file SST reads cannot be read or does not hold what it should (a manifest, baseline, saved plan, or `--state` observation), such as a baseline whose `expires_on` is not a `YYYY-MM-DD` date; a file or folder to be read is a symbolic link or is reached through one, every `file()` sidecar among them; or dbt's `target-path` or the semantic-models directory resolves outside the project.
+Raised when a file SST reads cannot be read or does not hold what it should (a manifest, saved plan, or `--state` observation; a baseline is SST-CFG063's); a file or folder to be read is a symbolic link or is reached through one, every `file()` sidecar among them; or dbt's `target-path` or the semantic-models directory resolves outside the project.
 
 Fix: remove the link, or use a path inside the project; otherwise check that the file exists and can be read
 
@@ -8525,7 +8545,7 @@ Fix: use space-separated selectors; intersection is not supported
 
 `selector '<value>' names an unknown kind`
 
-Raised when a selector's prefix is not a registered kind, or globs a kind whose values are a fixed set.
+Raised when a selector's prefix is not a registered kind.
 
 Fix: use {expected}
 
@@ -8630,6 +8650,16 @@ Fix: rename one of the two artifacts; names that differ only in case name one fi
 Raised when `sst lineage NODE` names nothing the lineage graph holds: no artifact, member, dbt model, source or exposure of that key or name.
 
 Fix: name an artifact, a member such as metric:&lt;name&gt;, model:&lt;name&gt; or source:&lt;source&gt;.&lt;table&gt;{detail}
+
+### SST-PRT113
+
+**Glob after a selector kind** (error)
+
+`selector '<value>' has a glob after '<kind>:', which takes an exact value`
+
+Raised when a selector globs after a kind whose value is an exact name, type or state.
+
+Fix: use {expected}
 
 ## Internal (INT)
 

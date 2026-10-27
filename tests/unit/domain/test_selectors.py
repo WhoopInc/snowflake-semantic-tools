@@ -98,12 +98,12 @@ def test_a_state_selector_without_state_and_a_typed_glob_are_refused() -> None:
     without = _resolve("state:modified")
     assert isinstance(without, Diagnostic) and without.message == "selector 'state:modified' requires --state"
     glob = _resolve("tool:d*")
-    assert isinstance(glob, Diagnostic) and glob.code == "SST-PRT102"
+    assert isinstance(glob, Diagnostic) and glob.code == "SST-PRT113"
     assert (
         glob.suggestion == "use an exact value after 'tool:', or the bare glob 'd*', which matches a name of every type"
     )
     typed = _resolve("type:ag*")
-    assert isinstance(typed, Diagnostic) and typed.code == "SST-PRT102"
+    assert isinstance(typed, Diagnostic) and typed.code == "SST-PRT113"
 
 
 def test_an_unknown_kind_is_refused_with_the_kinds_there_are() -> None:

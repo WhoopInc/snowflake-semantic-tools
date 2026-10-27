@@ -11,7 +11,7 @@ CONNECTION = 5
 INTERRUPTED = 130
 
 # A refusal whose only findings are selectors that named nothing is the command line's fault.
-_SELECTOR_MISSES = frozenset({"SST-DIS010"})
+_SELECTOR_MISSES = frozenset({"SST-DIS010", "SST-DIS015"})
 
 
 def refusal_exit(codes: tuple[str, ...], default: int) -> int:

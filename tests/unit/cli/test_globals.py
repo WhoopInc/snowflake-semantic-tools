@@ -202,7 +202,7 @@ def test_an_expired_or_unreadable_baseline_fails_the_run(tmp_path: Path) -> None
     assert exit_code == 1 and envelope["diagnostics"][0]["code"] == "SST-CFG039"
     (project / ".sst" / "baseline.json").write_text("{not json", encoding="utf-8")
     exit_code, envelope = _warnings(project)
-    assert (exit_code, envelope["diagnostics"][0]["code"]) == (4, "SST-PRT009")
+    assert (exit_code, envelope["diagnostics"][0]["code"]) == (4, "SST-CFG063")
     for document in ('{"version": 2}', '{"version": 1}', '{"version": 1, "expires_on": "x", "entries": [1]}'):
         (project / ".sst" / "baseline.json").write_text(document, encoding="utf-8")
         assert _warnings(project)[0] == 4

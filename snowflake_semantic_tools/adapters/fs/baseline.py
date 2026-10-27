@@ -29,15 +29,19 @@ def read_baseline(path: Path, name: str) -> Baseline:
     """Read the baseline file at `path`, which diagnostics call `name`.
 
     Raises:
-        ProjectError: the file cannot be read, is not JSON, or is not a version 1 baseline with
-            an `expires_on` `YYYY-MM-DD` date and a list of entries (SST-PRT009).
+        ProjectError: the file cannot be read (SST-PRT009), or is not JSON or not a version 1
+            baseline with an `expires_on` `YYYY-MM-DD` date and a list of entries (SST-CFG063).
 
     Diagnostics:
-        SST-PRT009: the baseline file cannot be read or does not hold a baseline; raised.
+        SST-PRT009: the baseline file cannot be read; raised.
+        SST-CFG063: the baseline file does not hold a baseline; raised.
     """
     try:
         document = read_json_file(path)
-    except (OSError, JsonFileError) as exc:
+    except OSError as exc:
+        unreadable = D("SST-PRT009", subject=f"config:{name}", path=name, detail=str(exc))
+        raise ProjectError(unreadable.message, diagnostics=(unreadable,)) from exc
+    except JsonFileError as exc:
         _refuse(name, str(exc))
     if not isinstance(document, dict) or document.get("version") != 1:
         _refuse(name, "it is not a version 1 baseline")
@@ -128,5 +132,5 @@ def _entry_document(entry: BaselineEntry) -> dict[str, object]:
 
 
 def _refuse(name: str, detail: str) -> NoReturn:
-    diagnostic = D("SST-PRT009", subject=f"config:{name}", path=name, detail=detail)
+    diagnostic = D("SST-CFG063", subject=f"config:{name}", path=name, detail=detail)
     raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))

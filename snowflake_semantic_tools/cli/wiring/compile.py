@@ -122,12 +122,13 @@ def checked_scope(
 
     Diagnostics:
         SST-DIS010: raised, one per `--select` value, when the scope chooses no artifact.
+        SST-DIS015: raised instead when `--select` chose artifacts and `--exclude` removed them.
     """
     scope = selection_scope(selected, excluded, universe, graph=graph)
     if refuse and (selected or excluded) and not any(scope.covers(item.type, item.key) for item in universe):
         raise ProjectError(
             f"selector {' '.join(selected)!r} matched no artifact in {project_dir}",
-            diagnostics=tuple(D("SST-DIS010", selector=value) for value in selected),
+            diagnostics=scope.misses(selected, universe),
         )
     return scope, selector_report(selected, excluded, universe, graph)
 

@@ -547,6 +547,17 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-CFG063",
+        Severity.ERROR,
+        "Baseline file is not a baseline",
+        "could not read {path}: {detail}",
+        "fix the JSON, or delete the file and run `sst baseline add` to write it again",
+        condition=(
+            "the baseline file is not JSON, or is not a version 1 baseline with an "
+            "`expires_on` `YYYY-MM-DD` date and a list of entries that each have a fingerprint"
+        ),
+    ),
+    spec(
         "SST-CFG200",
         Severity.ERROR,
         "Deprecated config key",

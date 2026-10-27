@@ -16,6 +16,7 @@ from types import MappingProxyType
 from snowflake_semantic_tools.app.baseline import blocking, held_by_baseline
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.compile.agents import CompiledAgent, for_publication
+from snowflake_semantic_tools.app.compile.base import CompiledArtifact
 from snowflake_semantic_tools.app.compile.coco_profiles import CompiledCocoProfile, for_coco_publication
 from snowflake_semantic_tools.app.compile.cowork_profiles import CompiledCoworkProfile, for_cowork_publication
 from snowflake_semantic_tools.app.compile.evals import CompiledEval
@@ -143,6 +144,7 @@ class PreparePlan:
             SST-MAN006: the compiled manifest was written for another target.
             SST-MAN009: the compiled manifest is stale.
             SST-DIS010: the selectors matched nothing and nothing prunes, one per selector.
+            SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
         """
         split = partial_split(full) if partial and not full.success else None
         source = split.healthy if split is not None else full
@@ -166,7 +168,7 @@ class PreparePlan:
             and not scope.include_prune
         ):
             return PlanRefused(
-                DiagnosticBag(D("SST-DIS010", selector=value) for value in scope.selected),
+                DiagnosticBag(_missed(scope, source.compiled)),
                 reason=f"selectors {scope.selected!r} matched no artifact in {project}",
             )
         if not selected.success and split is None:
@@ -624,3 +626,18 @@ def _observation_targets(full: CompileResult, state: State) -> tuple[QualifiedNa
             )
         )
     )
+
+
+def _missed(scope: PlanScope, compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic, ...]:
+    """Say why the selectors chose nothing: `--exclude` removed what they chose, or they chose nothing.
+
+    Diagnostics:
+        SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
+        SST-DIS010: the selectors matched nothing, one per selector.
+    """
+    chosen = replace(scope.selection, excluded=None)
+    if scope.selection.excluded is not None and any(
+        chosen.covers(item.artifact_type, item.artifact_key) for item in compiled
+    ):
+        return (D("SST-DIS015", selector=" ".join(scope.selected)),)
+    return tuple(D("SST-DIS010", selector=value) for value in scope.selected)

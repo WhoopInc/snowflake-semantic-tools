@@ -93,6 +93,20 @@ class SelectionScope:
         chosen = self.selected is None or self.selected.names(artifact_type, key)
         return chosen and not (self.excluded is not None and self.excluded.names(artifact_type, key))
 
+    def misses(self, selectors: tuple[str, ...], universe: Iterable[Selectable]) -> tuple[Diagnostic, ...]:
+        """Say why a scope that chooses none of `universe` chose nothing.
+
+        Diagnostics:
+            SST-DIS015: `--select` chose artifacts and `--exclude` removed them all.
+            SST-DIS010: `--select` chose nothing, one per selector.
+        """
+        artifacts = tuple(universe)
+        if self.excluded is not None and any(
+            SelectionScope(self.selected).covers(item.type, item.key) for item in artifacts
+        ):
+            return (D("SST-DIS015", selector=" ".join(selectors)),)
+        return tuple(D("SST-DIS010", selector=value) for value in selectors)
+
     def reaches(self, subject: str | None, *, artifact_types: Collection[str]) -> bool:
         """Report whether a diagnostic about `subject` belongs to the run this scope chooses.
 
@@ -133,7 +147,8 @@ def resolve_selectors(
 
     Diagnostics:
         SST-PRT101: a selector contains a comma.
-        SST-PRT102: a selector's prefix is not a registered kind, or globs a fixed vocabulary.
+        SST-PRT102: a selector's prefix is not a registered kind.
+        SST-PRT113: a selector globs after a kind that takes an exact value.
         SST-PRT103: a `state:` selector was given without `--state`.
         SST-PRT100: a selector is empty; a registered kind names an unknown type or state, or is
             not supported here;
@@ -283,4 +298,10 @@ def _unsupported(value: str, detail: str) -> Diagnostic:
 
 def _globbed(value: str, prefix: str, alternative: str) -> Diagnostic:
     """Refuse a glob after a kind that takes an exact value, saying what to write instead."""
-    return D("SST-PRT102", subject="cli", value=value, expected=f"an exact value after '{prefix}:', {alternative}")
+    return D(
+        "SST-PRT113",
+        subject="cli",
+        value=value,
+        kind=prefix,
+        expected=f"an exact value after '{prefix}:', {alternative}",
+    )
