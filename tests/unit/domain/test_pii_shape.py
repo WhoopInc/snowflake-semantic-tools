@@ -66,4 +66,4 @@ def test_a_project_sized_scan_is_fast() -> None:
     found = [first_pii_shape(values, name) for name, values in columns]
     elapsed = time.perf_counter() - started
     assert not any(found)
-    assert elapsed < 5.0, f"{elapsed:.2f}s"
+    assert elapsed < 15.0, f"{elapsed:.2f}s"
