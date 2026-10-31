@@ -333,6 +333,34 @@ calls is domain code: the checks in `domain.validate.semantic` and attachment in
 without a file. Rendering comes later, in `CompileSemanticViews`, since an adapter
 may not import `domain.render`.
 
+### Reusing a view across loads
+
+A [Python API](../guides/python-api.md) session loads the project again after
+every edit, and most views read nothing an edit touched. Building a view is a
+function of the arguments `_build_view` takes, and rendering one a function of
+the view, so the session keeps both and reuses them:
+
+- `ViewBuilds` (`adapters/yaml/semantic/reuse.py`) holds each view a load built,
+  with its arguments: its node, file, target, settings, the members attached to
+  it, and, shared by every view, the project directory, models, configuration
+  and sources. A view whose arguments are `identical` to last time is the view
+  built then; a change to a shared one rebuilds every view.
+- `RenderedViews` (`app/compile`) holds what each view object rendered to. A
+  reused view is the same object, so its rendering is the one rendering it again
+  would give.
+
+`identical` is stricter than `==`: it compares types, so `1`, `1.0` and `True`
+differ as their YAML does, and it compares every dataclass field, including
+those left out of equality, such as a view's `member_origins`. A type it does not
+know never matches, so a value of a new type is rebuilt rather than reused
+wrongly. A view that failed to build is never kept, and each holds only the last
+load's views. The CLI passes neither, so a command builds and renders every view.
+A new input to `_build_view` must join its arguments, or a reload would reuse a
+view built without it; `tests/unit/api/test_session_reuse.py` compares a reload
+after each kind of edit with a fresh session.
+
+Drawn from: [adapters/yaml/semantic/reuse.py](../../snowflake_semantic_tools/adapters/yaml/semantic/reuse.py), [adapters/yaml/semantic/pipeline.py](../../snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py).
+
 ## Templates and references
 
 Authored files name things with `{{ function('arg') }}` calls rather than

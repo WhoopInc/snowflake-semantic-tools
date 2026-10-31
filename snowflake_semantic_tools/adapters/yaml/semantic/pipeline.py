@@ -36,6 +36,7 @@ from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
     _view_tables,
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _member_poison, _view_poison
+from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
 from snowflake_semantic_tools.adapters.yaml.semantic.target import _view_location, _view_provenance, _view_settings
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _instruction_texts, _view_instructions
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
@@ -128,6 +129,7 @@ def load_semantic_views_result(
     target: DbtTarget,
     models: dict[str, DbtModel],
     catalog: DbtCatalog | None = None,
+    builds: ViewBuilds | None = None,
 ) -> SemanticViewProject:
     """Load healthy views while collecting view-local failures.
 
@@ -171,6 +173,8 @@ def load_semantic_views_result(
         target: The dbt target that `{{ target.database }}` and `{{ target.schema }}` name.
         models: The target's dbt models, by casefolded name.
         catalog: The manifest the models come from; None stands for one holding just `models`.
+        builds: The views an earlier load of the same session built, reused where nothing
+            they read has changed; None builds every view.
 
     Raises:
         ProjectError: A member cannot be read at all.
@@ -210,15 +214,26 @@ def load_semantic_views_result(
         poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
     with RUN_TIMINGS.phase("load.semantic.build"):
         built, attachment, diagnostics = _resolve_and_build(
-            context, parsed.views, parsed.members, poison, dict(view_tables), instruction_names, reported
+            context, parsed.views, parsed.members, poison, dict(view_tables), instruction_names, reported, builds
         )
+    return _loaded(context, built, attachment, instruction_names, (*reported, *diagnostics))
+
+
+def _loaded(
+    context: LoadContext,
+    built: Mapping[str, SemanticView],
+    attachment: Mapping[str, tuple[str, ...]],
+    instruction_names: Mapping[str, frozenset[str]],
+    diagnostics: tuple[Diagnostic, ...],
+) -> SemanticViewProject:
+    """Assemble what the load resolved, and return the views that built with every diagnostic."""
     resolved = ResolvedProject(
         views=tuple(built.values()),
         attachment=attachment,
         custom_instruction_names=MappingProxyType(
             {artifact.casefold(): tuple(sorted(names)) for artifact, names in instruction_names.items()}
         ),
-        diagnostics=DiagnosticBag((*reported, *diagnostics)),
+        diagnostics=DiagnosticBag(diagnostics),
     )
     return SemanticViewProject(resolved.views, resolved.diagnostics, _disabled_views(context))
 
@@ -335,6 +350,7 @@ def _resolve_and_build(
     view_tables: Mapping[str, frozenset[str]],
     instruction_names: Mapping[str, frozenset[str]],
     reported: tuple[Diagnostic, ...],
+    builds: ViewBuilds | None = None,
 ) -> tuple[dict[str, SemanticView], Mapping[str, tuple[str, ...]], tuple[Diagnostic, ...]]:
     """Phases 10 to 12: resolve membership, build the buildable views, and check what built.
 
@@ -357,7 +373,7 @@ def _resolve_and_build(
     )
     attachment = decided.attachment
     orphans = _unreported_orphans(attachment_diagnostics(views, attached_members, attachment), decided.diagnostics)
-    built, build_diagnostics = _build_views(context, built_nodes, attached_members, attachment)
+    built, build_diagnostics = _build_views(context, built_nodes, attached_members, attachment, builds)
     return (
         built,
         attachment,
@@ -426,8 +442,12 @@ def _build_views(
     nodes: tuple[tuple[Path, dict[str, Any]], ...],
     members: tuple[ParsedMember, ...],
     attachment: Mapping[str, tuple[str, ...]],
+    builds: ViewBuilds | None = None,
 ) -> tuple[dict[str, SemanticView], tuple[Diagnostic, ...]]:
     """Build each view of `nodes`, reporting a failure to build instead of raising it.
+
+    With `builds`, a view whose arguments are identical to the last load's is the view built
+    then, and a view this load does not build is forgotten.
 
     Returns:
         The views that built, in node order, by their casefolded artifact keys; and the failures,
@@ -435,11 +455,23 @@ def _build_views(
     """
     views: dict[str, SemanticView] = {}
     diagnostics: list[Diagnostic] = []
+    if builds is not None:
+        builds.begin((context.project_dir, context.models, context.config, context.catalog.sources))
     for path, node in nodes:
         settings = _view_settings(context.config, path, context.semantic_dir, node)
         view_target = _view_location(settings, context.target)
+        key = view_key(str(node["name"]))
+        provenance = _view_provenance(settings, view_target)
+        variable_origins = _entry_origins(context, path, node, "variables")
+        # What `_build_view` reads of `members` and `attachment` is the members this view holds.
+        attached = tuple(member for member in members if key in attachment.get(member.key, ()))
+        arguments = (node, path, view_target, attached, provenance, variable_origins)
+        reused = builds.get(key, arguments) if builds is not None else None
+        if reused is not None:
+            views[key] = reused
+            continue
         try:
-            views[view_key(str(node["name"]))] = _build_view(
+            views[key] = _build_view(
                 node,
                 path,
                 context.project_dir,
@@ -449,14 +481,18 @@ def _build_views(
                 attachment,
                 context.config,
                 context.catalog.sources,
-                settings=_view_provenance(settings, view_target),
-                variable_origins=_entry_origins(context, path, node, "variables"),
+                settings=provenance,
+                variable_origins=variable_origins,
             )
+            if builds is not None:
+                builds.put(key, arguments, views[key])
         except ProjectError as exc:
             # A member several views hold fails the same way in each; it is reported once.
             for item in _build_failure(context.project_dir, path, node, exc):
                 if item not in diagnostics:
                     diagnostics.append(item)
+    if builds is not None:
+        builds.end()
     return views, tuple(diagnostics)
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
@@ -23,8 +23,9 @@ from snowflake_semantic_tools.adapters.locations import ProjectPaths, locate_pro
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
+from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
 from snowflake_semantic_tools.app.baseline import gate_baseline
-from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
+from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult, RenderedViews
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.diagnostics_json import diagnostic_json, summary_counts
 from snowflake_semantic_tools.app.policy import hold_to_policy, severity_policy, strict_disagreement
@@ -110,20 +111,11 @@ class ProjectSession:
     from the files as they are then.
     """
 
-    def __init__(
-        self,
-        paths: ProjectPaths,
-        *,
-        target: str | None,
-        manifest_path: Path | None,
-        load_cache: LoadCache,
-        dbt_cache: DbtCache,
-    ) -> None:
+    def __init__(self, paths: ProjectPaths, *, target: str | None, manifest_path: Path | None, reuse: _Reuse) -> None:
         self._paths = paths
         self._target = target
         self._manifest_path = manifest_path
-        self._load_cache = load_cache
-        self._dbt_cache = dbt_cache
+        self._reuse = reuse
         project = paths.project_dir
         inputs = YamlProjectInputs(
             paths,
@@ -131,12 +123,13 @@ class ProjectSession:
             manifest_path=manifest_path,
             git_sha=lambda: git_sha(project),
             git_dirty=lambda: git_dirty(project),
-            load_cache=load_cache,
-            dbt_cache=dbt_cache,
+            load_cache=reuse.load_cache,
+            dbt_cache=reuse.dbt_cache,
+            view_builds=reuse.view_builds,
         )
         # Read before compiling, as the CLI reads it before its command runs.
         self._first_run = not ran_under_1_0(project)
-        self._compiled = CompileProject(inputs).run()
+        self._compiled = CompileProject(inputs, renders=reuse.renders).run()
         self._by_key = {item.artifact_key: item for item in self._compiled.compiled}
 
     @classmethod
@@ -153,12 +146,13 @@ class ProjectSession:
                 cannot be read, or dbt failing, each with the diagnostic `sst` reports.
         """
         paths = dataclasses.replace(locate_project(project_dir.resolve()), target_name=target)
-        return cls(paths, target=target, manifest_path=manifest_path, load_cache=LoadCache(), dbt_cache=DbtCache())
+        return cls(paths, target=target, manifest_path=manifest_path, reuse=_Reuse())
 
     def reload(self, *, dbt: bool = True) -> ProjectSession:
         """Read and compile the project again, as a new session; this one is unchanged.
 
-        Files whose bytes did not change are not parsed again.
+        A file whose bytes did not change is not parsed again, and a view none of whose inputs
+        changed is neither built nor rendered again: what this returns is what `open` would.
 
         Args:
             dbt: Run `dbt parse` again, as a session must once a dbt file changed; False reads
@@ -168,8 +162,7 @@ class ProjectSession:
             dataclasses.replace(self._paths, resolved={}),
             target=self._target,
             manifest_path=self._manifest_path,
-            load_cache=self._load_cache,
-            dbt_cache=DbtCache() if dbt else self._dbt_cache,
+            reuse=dataclasses.replace(self._reuse, dbt_cache=DbtCache()) if dbt else self._reuse,
         )
 
     @property
@@ -280,6 +273,16 @@ def _summary_counts(diagnostics: DiagnosticBag, baselined: frozenset[str], promo
         "suppressed_cascade": sum(item.cascaded for item in diagnostics),
         "baselined": counts["baselined"],
     }
+
+
+@dataclass(frozen=True, slots=True)
+class _Reuse:
+    """What one session's loads share, so a load reads and builds again only what changed."""
+
+    load_cache: LoadCache = field(default_factory=LoadCache)
+    dbt_cache: DbtCache = field(default_factory=DbtCache)
+    view_builds: ViewBuilds = field(default_factory=ViewBuilds)
+    renders: RenderedViews = field(default_factory=RenderedViews)
 
 
 def _summary(item: CompiledArtifact) -> ObjectSummary:

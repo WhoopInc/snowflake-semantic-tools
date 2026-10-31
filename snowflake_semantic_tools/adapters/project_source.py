@@ -51,6 +51,7 @@ from snowflake_semantic_tools.adapters.yaml.fields import strings
 from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
+from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
@@ -89,6 +90,8 @@ class YamlProjectSource:
     one way. `allow_stale_manifest` reports a stale manifest SST did not write (SST-DBT005) as a
     warning instead of an error, as `--allow-stale-manifest` asks. `dbt_cache` is shared by
     every source of one run, so each `dbt parse` runs and each manifest is decoded once.
+    `view_builds` is a session's record of the views its last load built, reused where nothing
+    they read has changed; None builds every view.
     """
 
     def __init__(
@@ -103,9 +106,11 @@ class YamlProjectSource:
         load_cache: LoadCache | None = None,
         allow_stale_manifest: bool = False,
         dbt_cache: DbtCache | None = None,
+        view_builds: ViewBuilds | None = None,
     ) -> None:
         self._files = files
         self._database = database
+        self._view_builds = view_builds
         self._dbt_cache = dbt_cache or DbtCache()
         self._project_dir = files.project_dir
         self._target_name = target_name
@@ -320,7 +325,9 @@ class YamlProjectSource:
             target = dataclasses.replace(target, database=self._database)
         catalog = self.dbt_catalog()
         models = {model.name.casefold(): model for model in catalog.models}
-        project = load_semantic_views_result(self._project_dir, inputs, target=target, models=models, catalog=catalog)
+        project = load_semantic_views_result(
+            self._project_dir, inputs, target=target, models=models, catalog=catalog, builds=self._view_builds
+        )
         with RUN_TIMINGS.phase("load.dbt.seam"):
             seam = self._seam_diagnostics(catalog)
         return dataclasses.replace(project, diagnostics=DiagnosticBag((*seam, *project.diagnostics)))
@@ -424,7 +431,8 @@ class YamlProjectInputs(ProjectInputs):
     Without a dbt manifest path, the semantic views and tools run `dbt parse` first. The
     commit comes from `git_sha`, and the uncommitted paths from `git_dirty`, which the CLI
     supplies, so the CLI decides how git is asked; without `git_dirty`, none are.
-    `allow_stale_manifest` is passed to the source, as `YamlProjectSource` describes.
+    `allow_stale_manifest` and `view_builds` are passed to the source, as `YamlProjectSource`
+    describes.
     """
 
     def __init__(
@@ -440,6 +448,7 @@ class YamlProjectInputs(ProjectInputs):
         load_cache: LoadCache | None = None,
         allow_stale_manifest: bool = False,
         dbt_cache: DbtCache | None = None,
+        view_builds: ViewBuilds | None = None,
     ) -> None:
         self._files = files
         self._project_dir = files.project_dir
@@ -456,6 +465,7 @@ class YamlProjectInputs(ProjectInputs):
             load_cache=self._load_cache,
             allow_stale_manifest=allow_stale_manifest,
             dbt_cache=dbt_cache,
+            view_builds=view_builds,
         )
         self._git_sha = git_sha
         self._git_dirty = git_dirty

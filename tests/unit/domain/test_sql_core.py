@@ -5,9 +5,17 @@ from __future__ import annotations
 import dataclasses
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from snowflake_semantic_tools.domain.sql import Sql, canonical, join, literal, sql
+from snowflake_semantic_tools.domain.sql.core import _line_ends_stripped
+from snowflake_semantic_tools.domain.sql.lexer import LexError, tokenize
 from tests.helpers.sql_values import statement
+
+# The characters that decide a canonical form: whitespace of each kind, line ends, quotes,
+# comment and dollar-quote markers, and a few plain ones.
+_CANONICAL_ALPHABET = st.sampled_from("ab1 \t\x0b\x0c\r\n\u00a0\u2028.,()'\"-/*$")
 
 
 def test_sql_cannot_be_constructed_outside_the_package() -> None:
@@ -96,3 +104,27 @@ def test_canonical_keeps_every_value_byte_for_byte() -> None:
 
 def test_a_statement_that_does_not_lex_keeps_its_lines_as_written() -> None:
     assert str(canonical(statement("  A 'open  \n  B  \n"))) == "A 'open  \n  B"
+
+
+def _read_token_by_token(text: str, *, keep_indent: bool) -> str:
+    """What `canonical` returns for `text` when it reads every statement's tokens."""
+    try:
+        tokens = tokenize(text)
+    except LexError:
+        stripped = text
+    else:
+        stripped = "".join(_line_ends_stripped(token) for token in tokens)
+    return stripped.rstrip() if keep_indent else stripped.strip()
+
+
+@given(st.text(alphabet=_CANONICAL_ALPHABET, max_size=200), st.booleans())
+def test_canonical_is_what_reading_every_token_gives(text: str, keep_indent: bool) -> None:
+    """Text with no whitespace before a line end skips the lexer; the result is the same."""
+    assert str(canonical(statement(text), keep_indent=keep_indent)) == _read_token_by_token(
+        text, keep_indent=keep_indent
+    )
+
+
+def test_text_with_no_space_before_a_line_end_loses_only_its_ends() -> None:
+    assert str(canonical(statement("  SELECT 'a  b'\n  1  "))) == "SELECT 'a  b'\n  1"
+    assert str(canonical(statement("  SELECT\n  1  "), keep_indent=True)) == "  SELECT\n  1"

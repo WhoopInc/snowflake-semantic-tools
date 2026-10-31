@@ -22,6 +22,9 @@ _FORMATTER = string.Formatter()
 # so only a code-authored template can create one, and no value can be read as a placeholder.
 _MARK = "\x00"
 _PLACEHOLDER = re.compile(r"%(\([A-Za-z_][A-Za-z0-9_]*\))?s")
+# A character `str.rstrip` strips, right before a `\n`: the only place `canonical` removes one,
+# but for the statement's ends. `\s` and `str.isspace` agree on every code point.
+_LINE_END_SPACE = re.compile(r"[^\S\n]\n")
 # Tokens holding a value, kept byte for byte: what is inside them is data, not layout.
 _VERBATIM = frozenset((TokenKind.STRING, TokenKind.QUOTED_IDENTIFIER, TokenKind.DOLLAR_STRING))
 
@@ -162,6 +165,11 @@ def canonical(statement: Sql, *, keep_indent: bool = False) -> Sql:
     Args:
         keep_indent: Strip only the end of the whole, for a fragment that continues a line.
     """
+    # Stripping only ever removes whitespace before a `\n`, then at the ends. Text with none
+    # before any `\n` is already canonical but for its ends, so its tokens need not be read:
+    # rendered DDL, megabytes of it per compile, is mostly of this form.
+    if _LINE_END_SPACE.search(statement.text) is None:
+        return _compose(statement.text.rstrip() if keep_indent else statement.text.strip())
     try:
         tokens = tokenize(statement.text)
     except LexError:

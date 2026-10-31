@@ -98,7 +98,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-CFG033`](error-codes.md#sst-cfg033) | CFG | error | local | `snowflake_semantic_tools.domain.validate.config` | `tests/codes/cfg/test_sst_cfg033.py` |
 | [`SST-CFG034`](error-codes.md#sst-cfg034) | CFG | warning | local | `snowflake_semantic_tools.app.policy` | `tests/codes/cfg/test_sst_cfg034.py` |
 | [`SST-CFG035`](error-codes.md#sst-cfg035) | CFG | warning | local | `snowflake_semantic_tools.domain.diagnostics.baseline` | `tests/codes/cfg/test_sst_cfg035.py` |
-| [`SST-CFG036`](error-codes.md#sst-cfg036) | CFG | error | local | `snowflake_semantic_tools.app.compile.project`<br>`snowflake_semantic_tools.domain.resolve.tags` | `tests/codes/cfg/test_sst_cfg036.py` |
+| [`SST-CFG036`](error-codes.md#sst-cfg036) | CFG | error | local | `snowflake_semantic_tools.app.compile.extensions`<br>`snowflake_semantic_tools.app.compile.project`<br>`snowflake_semantic_tools.domain.resolve.tags` | `tests/codes/cfg/test_sst_cfg036.py` |
 | [`SST-CFG037`](error-codes.md#sst-cfg037) | CFG | warning | local | `snowflake_semantic_tools.app.policy` | `tests/codes/cfg/test_sst_cfg037.py` |
 | [`SST-CFG038`](error-codes.md#sst-cfg038) | CFG | error | local | `snowflake_semantic_tools.domain.enrich.components` | `tests/codes/cfg/test_sst_cfg038.py` |
 | [`SST-CFG039`](error-codes.md#sst-cfg039) | CFG | error | local | `snowflake_semantic_tools.domain.diagnostics.baseline` | `tests/codes/cfg/test_sst_cfg039.py` |

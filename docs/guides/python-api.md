@@ -49,9 +49,11 @@ list it; `validate` reports why.
 A session holds what it read and never reads the project again, so every
 answer it gives describes the same files. `session.reload()` reads the project
 again into a new session and leaves the old one unchanged; a file whose bytes
-did not change is not parsed again. Pass `dbt=False` when no dbt file changed,
-to read the models as the old session read them instead of running
-`dbt parse`.
+did not change is not parsed again, and a semantic view none of whose inputs
+changed is neither built nor rendered again, so a reload answers exactly as a
+session opened fresh on the same files would. Pass `dbt=False` when no dbt
+file changed, to read the models as the old session read them instead of
+running `dbt parse`.
 
 ```python
 edited = session.reload(dbt=False)

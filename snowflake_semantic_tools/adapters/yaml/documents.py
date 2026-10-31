@@ -127,22 +127,24 @@ class LoadCache:
     """The parses of files already read in this run, by resolved path and the SHA-256 of their bytes.
 
     A file is served from the cache only while its bytes are unchanged, so an edit between two
-    reads is always parsed again. Whether a read was served is progress, not a finding about the
-    project: it is noted only when `note_hits` asks, as `--verbose` does, so a run's diagnostics
-    never depend on how often SST read a file.
+    reads is always parsed again. Only the last parse of each file is kept, so a session that
+    reads a file after every edit holds one parse of it, not one per edit. Whether a read was
+    served is progress, not a finding about the project: it is noted only when `note_hits` asks,
+    as `--verbose` does, so a run's diagnostics never depend on how often SST read a file.
     """
 
     def __init__(self, *, note_hits: bool = False) -> None:
-        self._parsed: dict[tuple[Path, str], ParsedYaml] = {}
+        self._parsed: dict[Path, tuple[str, ParsedYaml]] = {}
         self.note_hits = note_hits
 
     def get(self, path: Path, checksum: str) -> ParsedYaml | None:
         """Return the parse of `path` with these bytes, or None when it was not read with them."""
-        return self._parsed.get((path.resolve(), checksum))
+        held = self._parsed.get(path.resolve())
+        return held[1] if held is not None and held[0] == checksum else None
 
     def put(self, path: Path, checksum: str, parsed: ParsedYaml) -> None:
-        """Remember the parse of `path` with these bytes."""
-        self._parsed[(path.resolve(), checksum)] = parsed
+        """Remember the parse of `path` with these bytes, in place of any earlier parse of it."""
+        self._parsed[path.resolve()] = (checksum, parsed)
 
 
 def _parsed(

@@ -64,6 +64,7 @@ __all__ = [
     "CompiledView",
     "CompileResult",
     "CompileSemanticViews",
+    "RenderedViews",
     "SemanticCompileResult",
     "StandaloneArtifact",
     "compile_checked",
@@ -381,11 +382,38 @@ def _shared_targets(compiled: tuple[CompiledArtifact, ...]) -> tuple[Diagnostic,
     )
 
 
-class CompileSemanticViews:
-    """Render every semantic view a source offers."""
+class RenderedViews:
+    """What a session's last compile rendered, by the view object each was rendered from.
 
-    def __init__(self, source: SemanticViewSource) -> None:
+    Rendering is a pure function of a view, and a view an earlier load built and reused is the
+    same object, so the rendering held for it is the one rendering it again would give. Held by
+    the object itself, not by equality, which some of a view's fields are left out of; holding
+    each view keeps its id from naming another. A render that raises is not held. Only the last
+    compile's views are kept.
+    """
+
+    def __init__(self) -> None:
+        self._held: dict[int, tuple[SemanticView, tuple[CompiledView | None, tuple[Diagnostic, ...]]]] = {}
+        self._next: dict[int, tuple[SemanticView, tuple[CompiledView | None, tuple[Diagnostic, ...]]]] = {}
+
+    def render(self, view: SemanticView) -> tuple[CompiledView | None, tuple[Diagnostic, ...]]:
+        """Return `view` compiled, as the last compile rendered it when it rendered this object."""
+        held = self._held.get(id(view))
+        rendered = held[1] if held is not None and held[0] is view else _compiled_view(view)
+        self._next[id(view)] = (view, rendered)
+        return rendered
+
+    def end(self) -> None:
+        """Keep what this compile rendered, and forget the rest."""
+        self._held, self._next = self._next, {}
+
+
+class CompileSemanticViews:
+    """Render every semantic view a source offers, reusing `renders` when given."""
+
+    def __init__(self, source: SemanticViewSource, *, renders: RenderedViews | None = None) -> None:
         self._source = source
+        self._renders = renders
 
     def run_result(self) -> SemanticCompileResult:
         """Compile without turning one rendering invariant into process failure.
@@ -407,11 +435,13 @@ class CompileSemanticViews:
         result = compile_checked(
             sorted(project.views, key=lambda view: view.fqn),
             key=lambda view: artifact_key("semantic_view", view.fqn),
-            render=_compiled_view,
+            render=_compiled_view if self._renders is None else self._renders.render,
             diagnostics=project.diagnostics,
             skip=None,
             errors=(TypeError, ValueError),
         )
+        if self._renders is not None:
+            self._renders.end()
         checked = tuple(
             diagnostic
             for item in result.compiled

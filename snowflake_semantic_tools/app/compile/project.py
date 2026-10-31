@@ -13,7 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
-from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews
+from snowflake_semantic_tools.app.compile import CompileArtifacts, CompileSemanticViews, RenderedViews
 from snowflake_semantic_tools.app.compile.agents import AgentCompileContext, CompileAgents, CompiledAgent
 from snowflake_semantic_tools.app.compile.agents.cross import cross_artifact_result
 from snowflake_semantic_tools.app.compile.agents.settled import agent_environment, settled_agent
@@ -29,6 +29,7 @@ from snowflake_semantic_tools.app.compile.cowork_profiles import (
     pinned_extensions,
 )
 from snowflake_semantic_tools.app.compile.evals import CompileEvals
+from snowflake_semantic_tools.app.compile.extensions import consumed_extensions as consumed_extensions
 from snowflake_semantic_tools.app.compile.skills import (
     CatalogChannel,
     CompileSkills,
@@ -61,7 +62,7 @@ from snowflake_semantic_tools.domain.model.eval import EvalCatalog, profile_subj
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName, TargetIdentity
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE, ROOT_SOURCE, ROUTE_PREFIX
-from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
+from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
 from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
@@ -206,12 +207,16 @@ class CompileProject:
 
     A problem in what was authored is a diagnostic in the result, never an exception. An input
     the port cannot read raises out of `run`, at the step that reads it. Each step is timed as a
-    `load.<step>` phase of `phases`, its reads through the port included.
+    `load.<step>` phase of `phases`, its reads through the port included. `renders` is a
+    session's record of the views its last compile rendered, reused for a view it built again.
     """
 
-    def __init__(self, inputs: ProjectInputs, *, phases: PhaseTimer = NO_PHASES) -> None:
+    def __init__(
+        self, inputs: ProjectInputs, *, phases: PhaseTimer = NO_PHASES, renders: RenderedViews | None = None
+    ) -> None:
         self._inputs = inputs
         self._phases = phases
+        self._renders = renders
 
     def run(self) -> CompileResult:
         """Compile the project's artifacts and merge them in DDL order, then by key.
@@ -352,7 +357,7 @@ class CompileProject:
                 no configuration value.
         """
         with self._phases.phase("load.semantic_views"):
-            semantic = CompileSemanticViews(self._inputs).run_result()
+            semantic = CompileSemanticViews(self._inputs, renders=self._renders).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
         unpublished = {
             **unpublished,
@@ -584,56 +589,6 @@ def _avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
     """Return `snowflake.profile.avatar_allowlist`; None when it is not configured as a list."""
     allowlist = config_block(snowflake.get("profile")).get("avatar_allowlist")
     return frozenset(str(value) for value in allowlist) if isinstance(allowlist, list) else None
-
-
-def consumed_extensions(
-    config: Mapping[str, object], target: TargetIdentity, *, file: str = CONFIG_FILE
-) -> tuple[dict[str, QualifiedName], tuple[Diagnostic, ...]]:
-    """Resolve `extensions:`: the extensions agents consume and this project does not publish.
-
-    An entry resolves to its `fqn:`, else to `default_prefix` plus its name as an identifier;
-    both may name `{{ target.* }}`.
-
-    Returns:
-        The resolved names by casefolded entry name, and one diagnostic per entry that does
-        not resolve, in entry order.
-
-    Diagnostics:
-        SST-CFG036: an entry's name does not parse, the block sets no `default_prefix`, or
-            the entry's key is not a single identifier.
-    """
-    block = config_block(config.get("extensions"))
-    prefix = target_text(block.get("default_prefix"), target, None)
-    resolved: dict[str, QualifiedName] = {}
-    diagnostics: list[Diagnostic] = []
-    for name, entry in block.items():
-        if name == "default_prefix":
-            continue
-        fqn = target_text(entry.get("fqn"), target, None) if isinstance(entry, dict) else None
-        try:
-            if fqn:
-                resolved[name.casefold()] = QualifiedName.parse(fqn)
-                continue
-            if prefix and "." not in name:
-                resolved[name.casefold()] = QualifiedName.parse(f"{prefix}.{extension_identifier(name)}")
-                continue
-        except ValueError as exc:
-            diagnostics.append(_unqualified_extension(name, f"its name does not parse ({exc})", file))
-            continue
-        reason = "the block sets no default_prefix" if not prefix else "the key is not a single identifier"
-        diagnostics.append(_unqualified_extension(name, reason, file))
-    return resolved, tuple(diagnostics)
-
-
-def _unqualified_extension(name: str, reason: str, file: str) -> Diagnostic:
-    return D(
-        "SST-CFG036",
-        origin=Origin(file),
-        subject=f"config:extensions.{name}",
-        block="extensions",
-        name=name,
-        reason=reason,
-    )
 
 
 def _object_in(name: str, database: str, schema: str) -> QualifiedName:
