@@ -33,7 +33,7 @@ def test_sst_man031_fires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     project = project_copy(tmp_path)
     manifest = tmp_path / "manifest.json"
     shutil.copy(DBT_MANIFEST, manifest)
-    monkeypatch.setattr(compiling, "CompileProject", lambda inputs: RewritesManifest(inputs, manifest))
+    monkeypatch.setattr(compiling, "CompileProject", lambda inputs, **_: RewritesManifest(inputs, manifest))
     [diagnostic] = compiling.compile_result(project_paths(project), None, manifest).diagnostics
     assert (diagnostic.code, diagnostic.severity) == ("SST-MAN031", Severity.ERROR)
     assert diagnostic.message == "dbt manifest digest changed during the run"

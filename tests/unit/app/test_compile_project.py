@@ -5,8 +5,9 @@ What it reads, in what order, and what it builds.
 
 from __future__ import annotations
 
+import contextlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import replace
 from types import MappingProxyType
 
@@ -520,3 +521,41 @@ def test_a_var_version_pins_the_value_vars_declares_and_an_undeclared_one_pins_n
     )
     for tree in unresolved:
         assert "SST-VAL538" in {item.code for item in _consuming(tree).diagnostics}
+
+
+class _Phases:
+    """A phase timer that records the names it was asked to time, in the order they opened."""
+
+    def __init__(self) -> None:
+        self.opened: list[str] = []
+
+    @contextlib.contextmanager
+    def phase(self, name: str) -> Iterator[None]:
+        self.opened.append(name)
+        yield
+
+
+def test_each_step_of_a_dbt_project_compile_is_timed_as_a_load_detail_and_changes_nothing() -> None:
+    model = AgentModel("helper", Origin("agent.yml"), ("agent.yml",))
+    phases = _Phases()
+
+    timed = CompileProject(InMemoryProjectInputs(agent_models=(model,)), phases=phases).run()
+
+    assert phases.opened == [
+        "load.config",
+        "load.publishing",
+        "load.semantic_views",
+        "load.tools",
+        "load.agents",
+        "load.evals",
+        "load.merge",
+    ]
+    assert timed == CompileProject(InMemoryProjectInputs(agent_models=(model,))).run()
+
+
+def test_a_project_without_dbt_times_only_its_configuration_publishing_and_merge() -> None:
+    phases = _Phases()
+
+    CompileProject(InMemoryProjectInputs(has_dbt_project=False), phases=phases).run()
+
+    assert phases.opened == ["load.config", "load.publishing", "load.merge"]

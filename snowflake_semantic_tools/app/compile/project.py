@@ -64,6 +64,7 @@ from snowflake_semantic_tools.domain.model.setting import CONFIG_SOURCE, ROOT_SO
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX, Plugin, Skill, extension_identifier
 from snowflake_semantic_tools.domain.model.tool import ToolCatalog, ToolMember
 from snowflake_semantic_tools.domain.ports.project import ProjectInputs
+from snowflake_semantic_tools.domain.ports.timing import NO_PHASES, PhaseTimer
 from snowflake_semantic_tools.domain.resolve.stage_path import stage_member
 from snowflake_semantic_tools.domain.resolve.tags import declared_tags
 from snowflake_semantic_tools.domain.validate.coco_profile import schema_problems
@@ -204,11 +205,13 @@ class CompileProject:
     """Compile every artifact a project declares into one result, reading it through its inputs.
 
     A problem in what was authored is a diagnostic in the result, never an exception. An input
-    the port cannot read raises out of `run`, at the step that reads it.
+    the port cannot read raises out of `run`, at the step that reads it. Each step is timed as a
+    `load.<step>` phase of `phases`, its reads through the port included.
     """
 
-    def __init__(self, inputs: ProjectInputs) -> None:
+    def __init__(self, inputs: ProjectInputs, *, phases: PhaseTimer = NO_PHASES) -> None:
         self._inputs = inputs
+        self._phases = phases
 
     def run(self) -> CompileResult:
         """Compile the project's artifacts and merge them in DDL order, then by key.
@@ -230,11 +233,13 @@ class CompileProject:
                 it consumes.
             Each typed compiler's, as it documents them.
         """
-        config = self._inputs.config()
-        target = self._inputs.target()
-        settings = _Settings(config.tree, target.identity, config.file)
-        consumed, consumed_diagnostics = consumed_extensions(config.tree, target.identity, file=config.file)
-        publishing = self._publishing(settings, consumed)
+        with self._phases.phase("load.config"):
+            config = self._inputs.config()
+            target = self._inputs.target()
+            settings = _Settings(config.tree, target.identity, config.file)
+            consumed, consumed_diagnostics = consumed_extensions(config.tree, target.identity, file=config.file)
+        with self._phases.phase("load.publishing"):
+            publishing = self._publishing(settings, consumed)
         # A reference to an entry that cannot be qualified names that cause, not "undeclared".
         unpublished = {
             **publishing.unpublished,
@@ -262,9 +267,10 @@ class CompileProject:
         if config.has_dbt_project:
             results.extend(self._dbt_artifacts(settings, publishing, consumed, unpublished))
         results.append(CompileResult((), DiagnosticBag(settings.problems)))
-        merged = CompileArtifacts.merge(results, POSITIONS)
-        # Each code reports at the severity the project sets for it from here on.
-        return replace(merged, diagnostics=apply_overrides(merged.diagnostics, severity_overrides(config.tree)))
+        with self._phases.phase("load.merge"):
+            merged = CompileArtifacts.merge(results, POSITIONS)
+            # Each code reports at the severity the project sets for it from here on.
+            return replace(merged, diagnostics=apply_overrides(merged.diagnostics, severity_overrides(config.tree)))
 
     def _publishing(self, settings: _Settings, consumed: Mapping[str, QualifiedName]) -> Publishing:
         """Compile skills, plugins, and Cortex Code agent profiles, each where its resolved settings place it.
@@ -345,43 +351,54 @@ class CompileProject:
             SST-CFG018: a declared tool member is referenced by no agent, no CoWork profile, and
                 no configuration value.
         """
-        semantic = CompileSemanticViews(self._inputs).run_result()
+        with self._phases.phase("load.semantic_views"):
+            semantic = CompileSemanticViews(self._inputs).run_result()
         # A view the project declares disabled is named as such, not as undeclared, by a tool.
         unpublished = {
             **unpublished,
             **{view_key(name): "it is disabled" for name in semantic.disabled},
         }
-        dbt = self._inputs.dbt_catalog()
-        tool_catalog = self._inputs.tool_catalog()
-        tools = _compile_tools(settings, tool_catalog, dbt)
-        loaded, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
-        profiles, profile_diagnostics = self._inputs.cowork_profiles(
-            cowork_profiles_dir=settings.directory("cowork_profiles_dir", "cowork_profiles")
-        )
-        # Loading resolves each agent's settings, `enabled` among them; the rest are applied here.
-        tags = declared_tags(settings.tree.get("tags"), settings.target)
-        settled = tuple(settled_agent(model, settings.target, tags) for model in loaded)
-        agent_models = tuple(model for model, _ in settled)
-        agent_diagnostics = DiagnosticBag((*agent_diagnostics, *(item for _, found in settled for item in found)))
-        enabled = tuple(model for model in agent_models if model.enabled)
-        context = self._agent_context(
-            settings, enabled, semantic, tool_catalog, consumed, publishing, unpublished, pinned_extensions(profiles)
-        )
-        contexts: dict[str, AgentCompileContext] = {}
-        for model in enabled:
-            # The first of two agents with one name keeps it, as its published location does.
-            contexts.setdefault(model.key, _agent_environment(settings, context, model))
-        agents = CompileAgents(enabled, agent_diagnostics, context, contexts=contexts).run_result()
-        cowork = compile_cowork_profiles(
-            profiles,
-            profile_diagnostics,
-            enabled,
-            context,
-            target=settings.target,
-            tags=tags,
-            place=lambda models: _published_names(settings, models, "cowork_profiles"),
-        )
-        eval_catalog, evals = self._evals(enabled, profiles, agents, cowork, context)
+        with self._phases.phase("load.tools"):
+            dbt = self._inputs.dbt_catalog()
+            tool_catalog = self._inputs.tool_catalog()
+            tools = _compile_tools(settings, tool_catalog, dbt)
+        with self._phases.phase("load.agents"):
+            loaded, agent_diagnostics = self._inputs.agents(agents_dir=settings.directory("agents_dir", "agents"))
+            profiles, profile_diagnostics = self._inputs.cowork_profiles(
+                cowork_profiles_dir=settings.directory("cowork_profiles_dir", "cowork_profiles")
+            )
+            # Loading resolves each agent's settings, `enabled` among them; the rest are applied here.
+            tags = declared_tags(settings.tree.get("tags"), settings.target)
+            settled = tuple(settled_agent(model, settings.target, tags) for model in loaded)
+            agent_models = tuple(model for model, _ in settled)
+            agent_diagnostics = DiagnosticBag((*agent_diagnostics, *(item for _, found in settled for item in found)))
+            enabled = tuple(model for model in agent_models if model.enabled)
+            context = self._agent_context(
+                settings,
+                enabled,
+                semantic,
+                tool_catalog,
+                consumed,
+                publishing,
+                unpublished,
+                pinned_extensions(profiles),
+            )
+            contexts: dict[str, AgentCompileContext] = {}
+            for model in enabled:
+                # The first of two agents with one name keeps it, as its published location does.
+                contexts.setdefault(model.key, _agent_environment(settings, context, model))
+            agents = CompileAgents(enabled, agent_diagnostics, context, contexts=contexts).run_result()
+            cowork = compile_cowork_profiles(
+                profiles,
+                profile_diagnostics,
+                enabled,
+                context,
+                target=settings.target,
+                tags=tags,
+                place=lambda models: _published_names(settings, models, "cowork_profiles"),
+            )
+        with self._phases.phase("load.evals"):
+            eval_catalog, evals = self._evals(enabled, profiles, agents, cowork, context)
         compiled = (semantic, tools, agents, cowork, evals)
         # Every agent and profile counts as a consumer, enabled or not: disabling one does not
         # orphan its tools. So does a configuration value's `tool()`.

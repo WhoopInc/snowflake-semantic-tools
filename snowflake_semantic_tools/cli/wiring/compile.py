@@ -35,7 +35,8 @@ def compile_result(
     With a dbt manifest given, its models are digested before and after the compile, and a
     manifest rewritten in between, by a concurrent `dbt compile`, fails the compile. Without
     one, SST runs `dbt parse` itself and so rewrites the manifest on purpose; nothing is checked.
-    The whole compile, any `dbt parse` included, is timed as the run's `load` phase.
+    The whole compile, any `dbt parse` included, is timed as the run's `load` phase, and each
+    step of it as a `load.<step>` detail.
 
     Args:
         database: Resolve refs against this database instead of the target's; None keeps it.
@@ -52,10 +53,12 @@ def _compile_result(
 ) -> CompileResult:
     inputs = project_inputs(paths, target_name, manifest_path, database=database)
     if manifest_path is None:
-        return CompileProject(inputs).run()
-    before = inputs.manifest_sources()
-    result = CompileProject(inputs).run()
-    moved = dbt_manifest_moved(before, inputs.manifest_sources())
+        return CompileProject(inputs, phases=RUN_TIMINGS).run()
+    with RUN_TIMINGS.phase("load.manifest_sources"):
+        before = inputs.manifest_sources()
+    result = CompileProject(inputs, phases=RUN_TIMINGS).run()
+    with RUN_TIMINGS.phase("load.manifest_sources"):
+        moved = dbt_manifest_moved(before, inputs.manifest_sources())
     if moved is None:
         return result
     return dataclasses.replace(result, diagnostics=DiagnosticBag((*result.diagnostics, moved)))
