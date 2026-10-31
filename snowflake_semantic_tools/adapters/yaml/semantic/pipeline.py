@@ -3,6 +3,8 @@
 `load_semantic_views_result` runs the load as a fixed sequence of phases. The checks live
 in `phases` and `view_instructions`, the poisoning in `poison`; attaching and building
 live here. Every phase returns its diagnostics, which the loader reports in phase order.
+Phases 1-9 are timed as the run's `load.semantic.checks` detail, and 10-12 as
+`load.semantic.build`.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ from typing import Any
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.discover import FileSet, directory_refused, discover_yaml
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache, RawDocument, RawDocuments, load_documents
 from snowflake_semantic_tools.adapters.yaml.ownership import assign_owners
@@ -174,39 +177,41 @@ def load_semantic_views_result(
     """
     if inputs.refused:
         return SemanticViewProject(())
-    parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
-    resolved_members, instruction_text_diagnostics, unresolved_instructions = _instruction_texts(
-        parsed, catalog or DbtCatalog("v12", None, None, tuple(models.values()))
-    )
-    parsed = replace(parsed, members=resolved_members)
-    members = _typed_members(parsed)
-    context = _load_context(project_dir, inputs, target, models, catalog)
-    structure = _structural_checks(context, parsed, members.metrics)
-    semantic = _semantic_checks(context, members, structure.legacy_files)
-    poison = _member_poison(parsed.members, members, structure.legacy_files, semantic)
-    healthy = poison.healthy_metrics(members.metrics)
-    view_tables = _view_tables(parsed.views)
-    relationship_diagnostics, unattached = _relationship_checks(context, members, healthy, view_tables)
-    using_diagnostics, misrouted = _using_checks(members, healthy)
-    poison = poison.with_members(unattached | misrouted | unresolved_instructions)
-    instruction_names, view_diagnostics = _view_content_checks(
-        context, parsed, members, poison.member_keys, instruction_text_diagnostics
-    )
-    table_diagnostics = _view_table_checks(context, parsed, structure.duplicate_views, structure.legacy_files)
-    reported = (
-        *parsed.diagnostics,
-        *structure.diagnostics,
-        *semantic.diagnostics,
-        *relationship_diagnostics,
-        *using_diagnostics,
-        *table_diagnostics,
-        *view_diagnostics,
-    )
-    # After every check: the views left unbuilt are read from the errors reported so far.
-    poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
-    built, attachment, diagnostics = _resolve_and_build(
-        context, parsed.views, parsed.members, poison, dict(view_tables), instruction_names, reported
-    )
+    with RUN_TIMINGS.phase("load.semantic.checks"):
+        parsed = parse_semantic_project(inputs.documents, project_dir, inputs.semantic_models_dir, models)
+        resolved_members, instruction_text_diagnostics, unresolved_instructions = _instruction_texts(
+            parsed, catalog or DbtCatalog("v12", None, None, tuple(models.values()))
+        )
+        parsed = replace(parsed, members=resolved_members)
+        members = _typed_members(parsed)
+        context = _load_context(project_dir, inputs, target, models, catalog)
+        structure = _structural_checks(context, parsed, members.metrics)
+        semantic = _semantic_checks(context, members, structure.legacy_files)
+        poison = _member_poison(parsed.members, members, structure.legacy_files, semantic)
+        healthy = poison.healthy_metrics(members.metrics)
+        view_tables = _view_tables(parsed.views)
+        relationship_diagnostics, unattached = _relationship_checks(context, members, healthy, view_tables)
+        using_diagnostics, misrouted = _using_checks(members, healthy)
+        poison = poison.with_members(unattached | misrouted | unresolved_instructions)
+        instruction_names, view_diagnostics = _view_content_checks(
+            context, parsed, members, poison.member_keys, instruction_text_diagnostics
+        )
+        table_diagnostics = _view_table_checks(context, parsed, structure.duplicate_views, structure.legacy_files)
+        reported = (
+            *parsed.diagnostics,
+            *structure.diagnostics,
+            *semantic.diagnostics,
+            *relationship_diagnostics,
+            *using_diagnostics,
+            *table_diagnostics,
+            *view_diagnostics,
+        )
+        # After every check: the views left unbuilt are read from the errors reported so far.
+        poison = _view_poison(poison, parsed.views, reported, structure.duplicate_views, structure.legacy_files)
+    with RUN_TIMINGS.phase("load.semantic.build"):
+        built, attachment, diagnostics = _resolve_and_build(
+            context, parsed.views, parsed.members, poison, dict(view_tables), instruction_names, reported
+        )
     resolved = ResolvedProject(
         views=tuple(built.values()),
         attachment=attachment,

@@ -39,6 +39,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.paths import walk_refusal
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.adapters.yaml.agents import load_agents
 from snowflake_semantic_tools.adapters.yaml.coco_profiles import load_coco_profile_catalog
 from snowflake_semantic_tools.adapters.yaml.config import read_config_document
@@ -146,23 +147,24 @@ class YamlProjectSource:
         path = self.manifest_file()
         settings = dbt_settings(self._config_tree())
         if self._manifest_path is None and self._invoke_dbt and settings.invoke and not self._parsed:
-            check_model_paths(self._project_dir, read_plain_yaml)
-            profiles_dir = self._files.profiles_directory()
-            key = (self._project_dir.resolve(), self._target_name, path.resolve(), None, settings.command)
-            self._parse_warnings = self._dbt_cache.parse(
-                (*key, profiles_dir, id(self._runner)),
-                lambda: parse_project(
-                    self._project_dir,
-                    self._target_name,
-                    path,
-                    runner=self._runner,
-                    auto_compile=self._auto_compile(),
-                    profiles_dir=profiles_dir,
-                    command=settings.command,
-                    installation_cache=self._installation_cache(),
-                ),
-            )
-            self._parsed = True
+            with RUN_TIMINGS.phase("load.dbt.parse"):
+                check_model_paths(self._project_dir, read_plain_yaml)
+                profiles_dir = self._files.profiles_directory()
+                key = (self._project_dir.resolve(), self._target_name, path.resolve(), None, settings.command)
+                self._parse_warnings = self._dbt_cache.parse(
+                    (*key, profiles_dir, id(self._runner)),
+                    lambda: parse_project(
+                        self._project_dir,
+                        self._target_name,
+                        path,
+                        runner=self._runner,
+                        auto_compile=self._auto_compile(),
+                        profiles_dir=profiles_dir,
+                        command=settings.command,
+                        installation_cache=self._installation_cache(),
+                    ),
+                )
+                self._parsed = True
         return path
 
     def _installation_cache(self) -> Path | None:
@@ -203,18 +205,19 @@ class YamlProjectSource:
         deferral = resolve_deferral(self._files, self._target_name)
         if deferral is None:
             return catalog
-        if self._deferred is None:
-            settings = dbt_settings(self._config_tree())
-            if deferral.produce and self._invoke_dbt and settings.invoke:
-                profiles_dir = self._files.profiles_directory()
-                key = (self._project_dir.resolve(), deferral.target, deferral.manifest.resolve())
-                self._dbt_cache.parse(
-                    (*key, deferral.state_dir, settings.command, profiles_dir, id(self._runner)),
-                    lambda: self._produce_deferred(deferral, profiles_dir, settings.command),
-                )
-                self._defer_notes = self._dbt_cache.notes(key)
-            self._deferred = self.read_catalog(deferral.manifest)
-        return defer_relations(catalog, self._deferred)
+        with RUN_TIMINGS.phase("load.dbt.defer"):
+            if self._deferred is None:
+                settings = dbt_settings(self._config_tree())
+                if deferral.produce and self._invoke_dbt and settings.invoke:
+                    profiles_dir = self._files.profiles_directory()
+                    key = (self._project_dir.resolve(), deferral.target, deferral.manifest.resolve())
+                    self._dbt_cache.parse(
+                        (*key, deferral.state_dir, settings.command, profiles_dir, id(self._runner)),
+                        lambda: self._produce_deferred(deferral, profiles_dir, settings.command),
+                    )
+                    self._defer_notes = self._dbt_cache.notes(key)
+                self._deferred = self.read_catalog(deferral.manifest)
+            return defer_relations(catalog, self._deferred)
 
     def _produce_deferred(self, deferral: Deferral, profiles_dir: Path, command: str) -> tuple[Diagnostic, ...]:
         """Write the deferred target's manifest, or reuse it when nothing its parse reads changed.
@@ -259,11 +262,12 @@ class YamlProjectSource:
         """
         allow = self._files.allow_unsupported_manifest_schema
         versions = dbt_settings(self._config_tree()).manifest_schema_versions
-        return self._dbt_cache.catalog(
-            path,
-            (allow, versions),
-            lambda: load_manifest_catalog(path, allow_unsupported_schema=allow, supported_versions=versions),
-        )
+        with RUN_TIMINGS.phase("load.dbt.decode"):
+            return self._dbt_cache.catalog(
+                path,
+                (allow, versions),
+                lambda: load_manifest_catalog(path, allow_unsupported_schema=allow, supported_versions=versions),
+            )
 
     def _seam_diagnostics(self, catalog: DbtCatalog) -> tuple[Diagnostic, ...]:
         """What the dbt seam found before any semantic file is checked against the models.
@@ -307,16 +311,18 @@ class YamlProjectSource:
         # SST's own files first, then the dbt target and models: a problem in either is
         # reported in that order, and before dbt is run.
         config = resolved_config(self._files, self._target_name)
-        inputs = read_semantic_inputs(
-            self._files, dict(config.tree), self._load_cache, config_diagnostics=config.diagnostics
-        )
+        with RUN_TIMINGS.phase("load.semantic.read"):
+            inputs = read_semantic_inputs(
+                self._files, dict(config.tree), self._load_cache, config_diagnostics=config.diagnostics
+            )
         target = resolve_target(self._files, self._target_name)
         if self._database is not None:
             target = dataclasses.replace(target, database=self._database)
         catalog = self.dbt_catalog()
         models = {model.name.casefold(): model for model in catalog.models}
         project = load_semantic_views_result(self._project_dir, inputs, target=target, models=models, catalog=catalog)
-        seam = self._seam_diagnostics(catalog)
+        with RUN_TIMINGS.phase("load.dbt.seam"):
+            seam = self._seam_diagnostics(catalog)
         return dataclasses.replace(project, diagnostics=DiagnosticBag((*seam, *project.diagnostics)))
 
     def load_tools(self) -> ToolCatalog:

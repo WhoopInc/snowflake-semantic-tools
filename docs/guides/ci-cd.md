@@ -386,7 +386,10 @@ shown indented here:
   evals' own reads), `observe`, `classify` for `plan` and `apply`; `lock`,
   `publish`, `state_write` for `apply`; `smoke`; `disconnect`, closing the
   parallel sessions), a phase
-  absent when the run did not reach it; `snowflake`, with `queries` (statements
+  absent when the run did not reach it. A name with a dot is a detail, which the
+  progress display does not show: each `load.<step>` (such as `load.dbt.parse`
+  or `load.semantic.checks`) is part of `load` and counts in it too, and
+  `manifest.build` is the time spent building the compiled manifest; `snowflake`, with `queries` (statements
   sent, failed ones included), `client_s` (their summed time, which statements
   on parallel sessions push past the wall clock), `max_s` (the slowest),
   `busy_s` (the wall time during which any statement or login was in flight),

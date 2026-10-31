@@ -8,6 +8,7 @@ from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.local import ManifestFileStore
 from snowflake_semantic_tools.adapters.locations import ProjectPaths
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
+from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
 from snowflake_semantic_tools.app.compile import CompileResult
 from snowflake_semantic_tools.app.manifest import manifest_for, stale_inputs, stale_manifest, target_mismatch
 from snowflake_semantic_tools.cli.wiring.project import project_inputs, target_dir
@@ -19,8 +20,12 @@ from snowflake_semantic_tools.domain.state import Manifest
 def build_manifest(
     paths: ProjectPaths, result: CompileResult, manifest_path: Path | None, target_name: str | None = None
 ) -> Manifest:
-    """Build the manifest `result` publishes for `target_name`, reading what it records of the files now."""
-    return manifest_for(result, project_inputs(paths, target_name, manifest_path).manifest_sources())
+    """Build the manifest `result` publishes for `target_name`, reading what it records of the files now.
+
+    Timed as the run's `manifest.build` detail.
+    """
+    with RUN_TIMINGS.phase("manifest.build"):
+        return manifest_for(result, project_inputs(paths, target_name, manifest_path).manifest_sources())
 
 
 def lineage_of(

@@ -143,6 +143,33 @@ def test_only_a_code_that_declares_internal_detail_reports_it() -> None:
     assert diagnostic_json(written)["internal_detail"] is None
 
 
+def test_compile_json_reports_each_step_of_load_as_a_detail_within_it(tmp_path: Path) -> None:
+    project = project_copy(tmp_path, offline=False)
+    result = CliRunner().invoke(cli, ["compile", *common(project), "--output", "json"])
+    assert result.exit_code == 0, result.output
+    phases = json.loads(result.output)["invocation"]["timings"]["phases"]
+    steps = {name for name in phases if name.startswith("load.")}
+    assert {
+        "load.config",
+        "load.publishing",
+        "load.semantic_views",
+        "load.semantic.read",
+        "load.semantic.checks",
+        "load.semantic.build",
+        "load.dbt.decode",
+        "load.dbt.seam",
+        "load.tools",
+        "load.agents",
+        "load.evals",
+        "load.merge",
+        "load.manifest_sources",
+    } <= steps
+    # A manifest given with --manifest is read, not parsed: dbt never ran.
+    assert "load.dbt.parse" not in steps
+    assert all(phases[name] <= phases["load"] for name in steps)
+    assert "manifest.build" in phases
+
+
 def test_a_run_that_prints_no_envelope_records_no_timings(tmp_path: Path) -> None:
     project = project_copy(tmp_path, offline=False)
     result = CliRunner().invoke(cli, ["validate", *common(project), "--no-strict", "--no-snowflake-syntax-check"])
