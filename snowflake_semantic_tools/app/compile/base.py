@@ -26,7 +26,8 @@ class CompiledArtifact(Protocol):
     """Manifest and lifecycle projection shared by compiled artifact types.
 
     Every member is a pure read of the compiled value: calling one again returns an
-    equal result, and none of them caches or mutates anything.
+    equal result, and none of them mutates anything. An artifact may remember a member
+    it derives, since the value it derives from never changes.
     """
 
     __slots__ = ()

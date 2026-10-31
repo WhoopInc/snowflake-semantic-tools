@@ -14,6 +14,7 @@ other typed compilers live in `tools`, `skills`, `profiles`, `agents`, and `eval
 
 from __future__ import annotations
 
+import functools
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
@@ -88,7 +89,8 @@ class CompiledView(CompiledArtifact):
 
     Both are kept because the caller needs the name for output and the DDL for
     comparison, and re-deriving either from the other would be a second source of
-    truth.
+    truth. The canonical DDL, its fingerprint and the rendered artifact are each derived
+    once and remembered: a compile reads them several times, and the view never changes.
     """
 
     view: SemanticView
@@ -99,7 +101,7 @@ class CompiledView(CompiledArtifact):
         """The unqualified view name -- the last part of the FQN."""
         return str(self.view.fqn.rsplit(".", 1)[-1])
 
-    @property
+    @functools.cached_property
     def canonical_ddl(self) -> str:
         """Canonical bytes hashed by manifests and compared by plans: the DDL as `canonical` makes it."""
         return canonical(self.ddl).text + "\n"
@@ -109,7 +111,7 @@ class CompiledView(CompiledArtifact):
         """Return the size of `canonical_ddl` in UTF-8 bytes."""
         return len(self.canonical_ddl.encode("utf-8"))
 
-    @property
+    @functools.cached_property
     def fingerprint(self) -> str:
         """Return the SHA-256 hex digest of `canonical_ddl`, which the marked DDL keeps as its own."""
         return sha256(self.canonical_ddl.encode("utf-8")).hexdigest()
@@ -173,7 +175,7 @@ class CompiledView(CompiledArtifact):
         by_model = {table.logical_name.casefold(): table.fqn for table in self.view.tables}
         return tuple((model, by_model.get(model, "")) for model in self.referenced_models)
 
-    @property
+    @functools.cached_property
     def rendered_artifact(self) -> RenderedArtifact:
         return self._rendered_artifact(self.ddl)
 

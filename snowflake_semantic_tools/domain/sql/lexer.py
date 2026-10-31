@@ -11,6 +11,7 @@ ends one, so a comment holding one does not lex: SST never guesses where Snowfla
 
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -157,11 +158,32 @@ def _token_end(text: str, index: int) -> tuple[TokenKind, int]:
 def tokenize(text: str) -> tuple[Token, ...]:
     """Split text into tokens, in order; concatenating their text gives the text back.
 
+    A text of at most `_CACHED_LENGTH` characters is lexed once and its tokens remembered, as a
+    compile guards each authored expression in several places; a longer one, such as a view's
+    whole DDL, is lexed each time, so the cache never holds a statement's tokens.
+
     Raises:
         LexError: a string, quoted identifier, `$$` body, or block comment is never closed, a
             line comment is ended by a line break other than `\n` or `\r\n`, or the text holds
             a NUL.
     """
+    if len(text) <= _CACHED_LENGTH:
+        return _cached_tokens(text)
+    return _lexed(text)
+
+
+# The texts `tokenize` remembers: the authored expressions and queries one compile guards several
+# times over. A large project lexes thousands of distinct texts this short, each several times.
+_CACHED_LENGTH = 4096
+_CACHED_TEXTS = 16384
+
+
+@functools.lru_cache(maxsize=_CACHED_TEXTS)
+def _cached_tokens(text: str) -> tuple[Token, ...]:
+    return _lexed(text)
+
+
+def _lexed(text: str) -> tuple[Token, ...]:
     tokens: list[Token] = []
     index = 0
     while index < len(text):

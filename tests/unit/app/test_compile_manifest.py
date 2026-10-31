@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 
 import pytest
@@ -22,6 +23,20 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.state import MANIFEST_SCHEMA_VERSION
 from tests.helpers.sql_values import authored, authored_query, statement
+
+
+def test_a_compiled_view_renders_once_and_a_replaced_one_renders_its_own_ddl() -> None:
+    view = SemanticView("DB.S.V", (Table("T", "DB.S.T"),), metrics=(Metric("M", authored("COUNT(1)"), "T"),))
+    compiled = CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+
+    assert compiled.rendered_artifact is compiled.rendered_artifact
+    assert compiled.canonical_ddl is compiled.canonical_ddl
+    # Remembering what it derived leaves the value as it was: equal, and hashed the same.
+    assert compiled == CompiledView(view, statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V COPY GRANTS"))
+    other = replace(compiled, ddl=statement("CREATE OR REPLACE SEMANTIC VIEW DB.S.V"))
+    assert other.canonical_ddl == "CREATE OR REPLACE SEMANTIC VIEW DB.S.V\n"
+    assert other.fingerprint != compiled.fingerprint
+    assert other.rendered_artifact.fingerprint == other.fingerprint
 
 
 def test_compiled_view_emits_all_smoke_probe_kinds_and_required_relations() -> None:
