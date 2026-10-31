@@ -340,3 +340,26 @@ def test_a_library_warning_is_held_back_unless_the_level_was_given(
     logging.getLogger("snowflake.connector").warning("retrying")
     assert capsys.readouterr().err == "warn  snowflake.connector: retrying\n"
     assert hidden_warnings() == 0
+
+
+def test_a_detail_phase_shows_as_the_step_it_runs_inside() -> None:
+    display, _, clock, _ = _display()
+    display.start()
+    try:
+        clock.now += 2.0
+        counts = LiveCounts(phases=("load", "load.semantic_views", "load.dbt.parse"), dbt=1)
+        assert display.describe(counts) == "reading the project · 2.0s"
+        assert display.describe(LiveCounts(phases=("manifest.build",))) == "working · 2.0s"
+    finally:
+        display.stop()
+
+
+def test_a_slow_detail_phase_leaves_no_finished_line() -> None:
+    display, stream, _, _ = _display()
+    display.start()
+    try:
+        display.phase_finished("load.dbt.parse", 40.0)
+        display.phase_finished("load", 41.0)
+    finally:
+        display.stop()
+    assert stream.getvalue() == "✓ read the project · 41.0s\n"

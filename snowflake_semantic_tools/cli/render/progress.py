@@ -17,6 +17,9 @@ more units are in flight than the terminal has rows, the block shows the first o
 
 Without a terminal the display prints only where `$CI` is set: a line as each slow phase ends,
 and one every `HEARTBEAT_SECONDS` while a phase runs, so a CI log shows the run is alive.
+
+A phase whose name holds a dot (`load.dbt.parse`) is a detail of the step it runs inside: the
+envelope reports it, and the display shows only the step around it.
 """
 
 from __future__ import annotations
@@ -211,7 +214,7 @@ class ProgressDisplay:
 
     def phase_finished(self, name: str, seconds: float) -> None:
         """Leave a finished line for a phase that took a while, once progress is showing."""
-        if seconds < _FINISHED_AT or (self._live and not self._shown):
+        if seconds < _FINISHED_AT or (self._live and not self._shown) or _is_detail(name):
             return
         label = PHASE_LABELS.get(name, (name, name))[1]
         counted = self._counts.get(name)
@@ -226,8 +229,9 @@ class ProgressDisplay:
             `observing Snowflake · 151 queries · 16 sessions · 12.3s`
         """
         sep = self._style.sep
-        if counts.phases:
-            label = PHASE_LABELS.get(counts.phases[-1], (counts.phases[-1].replace("_", " "), ""))[0]
+        phase = next((name for name in reversed(counts.phases) if not _is_detail(name)), None)
+        if phase is not None:
+            label = PHASE_LABELS.get(phase, (phase.replace("_", " "), ""))[0]
         elif counts.dbt:
             label = "running dbt"
         elif counts.connecting:
@@ -235,7 +239,7 @@ class ProgressDisplay:
         else:
             label = "working"
         parts = [label]
-        counted = self._counts.get(counts.phases[-1]) if counts.phases else None
+        counted = self._counts.get(phase) if phase is not None else None
         if counted and counted[1]:
             parts.append(f"{counted[0]}/{counted[1]}")
         if counts.queries:
@@ -257,7 +261,7 @@ class ProgressDisplay:
                 elif now - self._last_heartbeat >= HEARTBEAT_SECONDS:
                     self._last_heartbeat = now
                     counts = self._timings.live()
-                    if counts.phases or counts.dbt or counts.connecting:
+                    if any(not _is_detail(name) for name in counts.phases) or counts.dbt or counts.connecting:
                         self._write(f"... {self.describe(counts)}\n")
 
     def _redraw(self) -> None:
@@ -317,6 +321,11 @@ def _elapsed(seconds: float) -> str:
     """Render a unit's time in flight as whole seconds, or minutes and seconds: `12s`, `1m05s`."""
     whole = max(int(seconds), 0)
     return f"{whole}s" if whole < 60 else f"{whole // 60}m{whole % 60:02d}s"
+
+
+def _is_detail(phase: str) -> bool:
+    """Whether `phase` is a detail of the step it runs inside, which the display does not show."""
+    return "." in phase
 
 
 class _ClearingStream:
