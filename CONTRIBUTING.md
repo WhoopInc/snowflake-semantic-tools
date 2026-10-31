@@ -285,11 +285,12 @@ naming the command. The benchmark exits 1 when any run failed.
 Why the engine is shaped this way, with diagrams, is in [docs/design/](docs/design/README.md); start
 with [architecture.md](docs/design/architecture.md). This section is the rules a change must keep.
 
-The CLI is the only interface: the package exports nothing but `__version__`, so new behavior is a command or an option. The package root holds `__init__.py`, `_version.py`, and four rings:
+SST has two interfaces: the CLI, and the library interface `snowflake_semantic_tools.api` ([docs/guides/python-api.md](docs/guides/python-api.md)). The package root exports nothing but `__version__`, and every module outside `api/` is internal, so new behavior is a command or an option, or a call `api` exports. The package root holds `__init__.py`, `_version.py`, and five rings:
 
 ```text
 snowflake_semantic_tools/
 ├── cli/        # click commands: the composition root that wires adapters into use cases
+├── api/        # the library interface: the other composition root, for a caller in Python
 ├── app/        # use cases: compile, validate, plan, apply, the test suites, migrate refs and split
 ├── adapters/   # the edges: YAML, the dbt manifest, the Snowflake connector, files, config, profile
 └── domain/     # pure: the pipeline's logic by stage, its data types, and the ports adapters implement
@@ -330,13 +331,14 @@ Imports run one way, `cli` → (`app` | `adapters`) → `domain`:
 - Only `adapters/yaml` (SST's own files), `adapters/dbt` (dbt's), and `adapters/bounded_yaml.py` (the depth-bounded loader both parse through) import `yaml`; everything else reaches YAML through them.
 - Only `adapters/roundtrip.py` and the `yaml` adapter import `ruamel`; the `dbt` adapter edits YAML in place through `roundtrip.py`.
 
-`poetry run lint-imports` enforces these as ten contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
+`poetry run lint-imports` enforces these as eleven contracts in `pyproject.toml`, and `tests/unit/test_ring_boundaries.py` proves that each contract rejects a crossing and that the package root holds nothing else:
 
 | Contract | Rule |
 |----------|------|
-| Rings are layered: cli above (app \| adapters) above domain | `cli` → (`app` \| `adapters`) → `domain`; `app` and `adapters` independent |
+| Rings are layered: cli above api above (app \| adapters) above domain | `cli` → `api` → (`app` \| `adapters`) → `domain`; `app` and `adapters` independent |
 | domain is pure -- no I/O, no clock, no environment, no SDKs | `domain` imports none of `yaml`, `click`, `snowflake`, `os`, `pathlib`, `datetime`, `time`, `random`, `tempfile`, `subprocess`, `socket`, `logging` |
 | app imports domain only -- no SDKs, no terminal | `app` imports none of `yaml`, `click`, `snowflake` |
+| api never touches the terminal | `api` imports no `click`: a library never prints, prompts, or exits |
 | SST never imports dbt -- it runs the executable | no module imports `dbt` |
 | adapters use domain ports and models, not domain renderers | `adapters` never imports `domain.render` |
 | adapter subpackages are independent | `adapters.yaml`, `.dbt`, `.snowflake`, `.fs` never import one another |

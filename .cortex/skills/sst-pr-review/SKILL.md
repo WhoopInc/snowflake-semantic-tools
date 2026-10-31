@@ -54,8 +54,8 @@ Read the diff carefully. Focus on:
 - `--output json` prints exactly one envelope on stdout; exit codes match `docs/reference/cli.md`
 
 **Architecture**
-- Rings: `cli` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` checks the nine contracts in `pyproject.toml` and catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
-- The package root gains nothing beside `__init__.py`, `_version.py`, and the four rings, and `__init__.py` exports nothing but `__version__`: there is no Python API
+- Rings: `cli` → `api` → (`app` | `adapters`) → `domain`, with `app` and `adapters` independent. `lint-imports` checks the eleven contracts in `pyproject.toml` and catches crossing imports; also look for I/O or SDK use hidden behind a helper in `domain/` or `app/`
+- The package root gains nothing beside `__init__.py`, `_version.py`, and the five rings, and `__init__.py` exports nothing but `__version__`; the only Python API is what `snowflake_semantic_tools.api` exports, and a change to it is a public interface change
 - Where code belongs: commands and options in `cli/`; use cases in `app/`; YAML, dbt, Snowflake, and filesystem access in `adapters/`, behind a port in `domain/ports/`; rules, rendering, reference resolution, plan diffing, and state in `domain/`, by stage (`parse`, `resolve`, `validate`, `render`, `plan`, `state`), with `domain/model` holding data types only and a use case typed with the narrowest Snowflake port role it calls
 - Tests use real in-memory ports (`tests/helpers/app_ports.py`, `tests/helpers/snowflake_fake/`), not mocks, and nothing outside the `live` marker reaches the network
 - A golden change is intended and explained in the PR, and was made with `python -m tests.helpers.update_goldens`, not by hand; otherwise it is a regression

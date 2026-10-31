@@ -25,18 +25,19 @@ SST is a command-line compiler and publisher for a Snowflake semantic layer kept
 
 ## Layout
 
-`snowflake_semantic_tools/` holds `__init__.py`, `_version.py`, and four rings, nothing else:
+`snowflake_semantic_tools/` holds `__init__.py`, `_version.py`, and five rings, nothing else:
 
 | Ring | Holds | Import rules |
 |------|-------|--------------|
 | `cli/` | click commands; the composition root | may import every ring |
+| `api/` | the library interface (`ProjectSession`); the composition root for a Python caller | `app`, `adapters`, `domain`; never `cli` or `click` |
 | `app/` | use cases (compile, validate, plan, apply, test suites, migrate refs and split) | `domain` only, never `adapters`; no `yaml`, `click`, or `snowflake` |
 | `adapters/` | YAML, dbt manifest, Snowflake connector, filesystem, config, profile | `domain` models and ports, never `domain.render` or `app`; the `yaml`, `dbt`, `snowflake`, and `fs` subpackages never import each other; only `yaml`, `dbt`, and `bounded_yaml.py` import `yaml`, and only `roundtrip.py` and `yaml` import `ruamel` (`dbt` edits through `roundtrip.py`) |
 | `domain/` | pure, by stage: parse, resolve, validate, render, plan, state; plus model (data types only), diagnostics, enrich, migrate, sql, ports | no I/O, clock, environment, randomness, logging, or SDKs |
 
 No module in any ring imports `dbt`: SST runs the dbt executable and reads its manifest.
 
-`poetry run lint-imports` enforces these as the nine contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
+`poetry run lint-imports` enforces these as the eleven contracts in `pyproject.toml`; `tests/unit/test_ring_boundaries.py` proves each one rejects a crossing.
 
 ## Gates
 

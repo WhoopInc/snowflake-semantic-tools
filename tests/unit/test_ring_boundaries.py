@@ -83,6 +83,30 @@ CROSSINGS = [
         id="adapter-may-not-call-back-into-a-use-case",
     ),
     pytest.param(
+        "app/_boundary_probe.py",
+        "from snowflake_semantic_tools import api\n",
+        "Rings are layered",
+        id="app-may-not-import-the-library-interface",
+    ),
+    pytest.param(
+        "adapters/_boundary_probe.py",
+        "from snowflake_semantic_tools import api\n",
+        "Rings are layered",
+        id="adapter-may-not-import-the-library-interface",
+    ),
+    pytest.param(
+        "api/_boundary_probe.py",
+        "from snowflake_semantic_tools import cli\n",
+        "Rings are layered",
+        id="api-may-not-import-the-cli",
+    ),
+    pytest.param(
+        "api/_boundary_probe.py",
+        "import click\n",
+        "api never touches the terminal",
+        id="api-may-not-touch-the-terminal",
+    ),
+    pytest.param(
         "adapters/_boundary_probe.py",
         "from snowflake_semantic_tools.domain import render\n",
         "adapters use domain ports and models",
@@ -156,8 +180,8 @@ CROSSINGS = [
     ),
 ]
 
-# Everything the package root may hold: the four rings and the version module.
-PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "cli", "app", "adapters", "domain"))
+# Everything the package root may hold: the five rings and the version module.
+PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "cli", "api", "app", "adapters", "domain"))
 
 
 def _lint_imports(root: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:
@@ -237,11 +261,11 @@ def test_contracts_hold_on_the_real_tree() -> None:
     """
     result = _lint_imports()
     assert result.returncode == 0, f"contracts already broken before probing:\n{result.stdout}"
-    assert "Contracts: 10 kept, 0 broken." in result.stdout, result.stdout
+    assert "Contracts: 11 kept, 0 broken." in result.stdout, result.stdout
 
 
 def test_package_root_holds_only_the_rings() -> None:
-    """No module outside the four rings: a new top-level package would sit outside every contract."""
+    """No module outside the five rings: a new top-level package would sit outside every contract."""
     entries = {entry.name for entry in PKG.iterdir() if not entry.name.startswith(".")} - {"__pycache__"}
     assert entries == PACKAGE_ROOT, f"unexpected package-root entries: {sorted(entries - PACKAGE_ROOT)}"
 

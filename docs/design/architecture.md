@@ -8,7 +8,7 @@ vocabulary used here: key, fingerprint, poisoned, ownership marker.
 
 ## Rings and import contracts
 
-The package is four rings. Imports run one way, from the command line inward,
+The package is five rings. Imports run one way, from the command line inward,
 and the two middle rings never see each other. The rule exists so that the one
 ring holding the logic, `domain`, can be tested on values alone, and so that the
 use cases in `app` never depend on which file format or SDK sits behind them.
@@ -18,31 +18,39 @@ The diagram shows which ring may import which.
 ```mermaid
 flowchart TD
     cli["cli: commands, wiring, runner"]
+    api["api: the library interface"]
     app["app: use cases"]
     adapters["adapters: yaml, dbt, snowflake, fs"]
     domain["domain: model, parse, resolve, validate, render, plan, state, sql, ports"]
+    cli --> api
     cli --> app
     cli --> adapters
     cli --> domain
+    api --> app
+    api --> adapters
+    api --> domain
     app --> domain
     adapters --> domain
     app -.-|"no import either way"| adapters
 ```
 
-Drawn from: [pyproject.toml](../../pyproject.toml), [cli/wiring/project.py](../../snowflake_semantic_tools/cli/wiring/project.py).
+Drawn from: [pyproject.toml](../../pyproject.toml), [cli/wiring/project.py](../../snowflake_semantic_tools/cli/wiring/project.py), [api/session.py](../../snowflake_semantic_tools/api/session.py).
 
-`cli` is the composition root: it is the only ring that constructs an adapter and
-hands it to a use case. A use case receives everything it touches through a
+`cli` and `api` are the composition roots: the only rings that construct an
+adapter and hand it to a use case. `cli` serves the command line; `api` serves a
+program that loads a project once and asks it questions
+([the Python API](../guides/python-api.md)), and never prints or exits. A use case receives everything it touches through a
 protocol in `domain/ports/`, or a union of those declared beside it, so `app` and
-`adapters` meet only in `cli`.
+`adapters` meet only in `cli` and `api`.
 
-`poetry run lint-imports` enforces ten contracts, by these exact names:
+`poetry run lint-imports` enforces eleven contracts, by these exact names:
 
 | Contract | Why it exists |
 |---|---|
-| Rings are layered: cli above (app \| adapters) above domain | A use case cannot reach for a concrete adapter, and an adapter cannot call back into a use case, so either side can be replaced alone. |
+| Rings are layered: cli above api above (app \| adapters) above domain | A use case cannot reach for a concrete adapter, and an adapter cannot call back into a use case, so either side can be replaced alone; nothing below `api` depends on the library interface. |
 | domain is pure -- no I/O, no clock, no environment, no SDKs | Everything the domain needs arrives as a parameter, so its output is a function of its input. |
 | app imports domain only -- no SDKs, no terminal | Orchestration stays independent of the YAML library, click, and the Snowflake driver; printing is the CLI's job. |
+| api never touches the terminal | The library runs inside its caller's process, so it returns values and never prints, prompts, or exits. |
 | SST never imports dbt -- it runs the executable | dbt is an optional extra and its Python API is not a stable interface, so SST runs whichever `dbt` is on `PATH` and reads the manifest it writes. |
 | adapters use domain ports and models, not domain renderers | Rendering is domain logic; an adapter reads and writes, it does not decide what SST publishes. |
 | adapter subpackages are independent | `yaml`, `dbt`, `snowflake`, and `fs` never import one another, so each can be tested and swapped on its own; a top-level adapter module such as `project_source.py` composes them. |
@@ -54,7 +62,7 @@ protocol in `domain/ports/`, or a union of those declared beside it, so `app` an
 A contract that has never rejected anything proves nothing, so
 `tests/unit/test_ring_boundaries.py` writes a module that crosses each boundary
 into a copy of the package, asserts that `lint-imports` reports that contract
-broken, and checks that the package root holds only the four rings and
+broken, and checks that the package root holds only the five rings and
 `_version.py`.
 
 ### Why the domain is pure

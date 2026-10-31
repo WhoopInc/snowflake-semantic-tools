@@ -35,6 +35,19 @@ def sst_target_dir(project_dir: Path) -> Path:
     return project_dir / SST_TARGET
 
 
+def ran_under_1_0(project_dir: Path) -> bool:
+    """Report whether the project has an SST 1.0 manifest, which only a 1.0 run writes.
+
+    0.3 wrote `target/sst_manifest.json`, so this file is the recorded fact that a 1.0 run
+    happened: in `sst_target/`, or in `target/sst/`, where 1.0 wrote it before it moved. Read
+    before a command runs, it says the same thing on every run until one compiles.
+    """
+    return any(
+        (directory / "manifest.json").is_file()
+        for directory in (sst_target_dir(project_dir), project_dir / LEGACY_SST_TARGET)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class ProjectPaths:
     """The project directory, the configuration file a run reads, and where profiles are found.

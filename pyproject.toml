@@ -183,20 +183,23 @@ root_package = "snowflake_semantic_tools"
 # (yaml, click, snowflake, ...) and not just internal modules.
 include_external_packages = true
 
-# cli -> (app | adapters) -> domain.
+# cli -> api -> (app | adapters) -> domain.
 # app and adapters are SIBLINGS declared independent: app must not reach for a
-# concrete adapter, and an adapter must not call back into a use case. cli is the
-# composition root above both and may import anything.
+# concrete adapter, and an adapter must not call back into a use case. cli and api
+# are the two composition roots above both: api is the library interface, which
+# wires adapters into use cases for a caller in Python, and cli the command line,
+# which may also use api. Nothing below api imports it.
 #
 # The delimiter is load-bearing and the two are near-opposites: "|" makes siblings
 # INDEPENDENT (neither may import the other), ":" makes them non-independent (both
 # may). An earlier draft used ":" here, which licensed the exact crossing this
 # contract exists to forbid -- caught by tests/unit/test_ring_boundaries.py.
 [[tool.importlinter.contracts]]
-name = "Rings are layered: cli above (app | adapters) above domain"
+name = "Rings are layered: cli above api above (app | adapters) above domain"
 type = "layers"
 layers = [
     "snowflake_semantic_tools.cli",
+    "snowflake_semantic_tools.api",
     "snowflake_semantic_tools.app | snowflake_semantic_tools.adapters",
     "snowflake_semantic_tools.domain",
 ]
@@ -235,6 +238,14 @@ forbidden_modules = [
     "click",
     "snowflake",
 ]
+
+# api/ is a library a caller runs inside its own process: it never prints, prompts or
+# exits, so it never imports click, the terminal the CLI owns.
+[[tool.importlinter.contracts]]
+name = "api never touches the terminal"
+type = "forbidden"
+source_modules = ["snowflake_semantic_tools.api"]
+forbidden_modules = ["click"]
 
 # Textual draws `sst ask`'s conversation; only the cli's tui package imports it, and `sst ask`
 # loads that package when it runs, so no other command pays for importing Textual.
