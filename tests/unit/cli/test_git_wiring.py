@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from snowflake_semantic_tools.cli.wiring.project import git_dirty, git_sha
+from snowflake_semantic_tools.adapters.git import git_dirty, git_sha
 from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")

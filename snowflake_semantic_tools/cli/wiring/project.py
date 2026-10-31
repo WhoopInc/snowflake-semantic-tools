@@ -20,6 +20,8 @@ import click
 from snowflake_semantic_tools.adapters.dbt.profiles import ProfileTarget, load_profile_target
 from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
 from snowflake_semantic_tools.adapters.fs.local import StateFileStore, state_file
+from snowflake_semantic_tools.adapters.git import git_dirty as git_dirty
+from snowflake_semantic_tools.adapters.git import git_sha as git_sha
 from snowflake_semantic_tools.adapters.locations import ProjectPaths, sst_target_dir
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
@@ -28,7 +30,6 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.app.state import table_state
 from snowflake_semantic_tools.cli.output import announce, register_secrets, verbose_run
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_int
-from snowflake_semantic_tools.domain.ports.project import UNKNOWN_GIT_SHA
 from snowflake_semantic_tools.domain.ports.snowflake.errors import SnowflakePortError
 from snowflake_semantic_tools.domain.ports.snowflake.state import StatePort
 from snowflake_semantic_tools.domain.state import AppliedEntry
@@ -43,48 +44,6 @@ VIEW_TIMEOUT_SECONDS = int(CONFIG_KEYS["session.statement_timeout"].default or 0
 def target_dir(project_dir: Path) -> Path:
     """Return where SST writes its build artifacts: `sst_target/` under the project."""
     return sst_target_dir(project_dir)
-
-
-def git_sha(project_dir: Path) -> str:
-    """Return the project's commit as a 7-character sha, or `UNKNOWN_GIT_SHA` when git cannot say."""
-    import subprocess
-
-    completed = subprocess.run(
-        ["git", "-C", str(project_dir), "rev-parse", "--short=7", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    value = completed.stdout.strip()
-    return value if completed.returncode == 0 and value else UNKNOWN_GIT_SHA
-
-
-def git_dirty(project_dir: Path) -> tuple[str, ...]:
-    """Return the project's uncommitted paths, sorted; none when it is clean or git cannot say.
-
-    `git status` lists changed and untracked paths under the project, relative to the work
-    tree's root. SST's build directory is left out, since every compile writes it.
-    """
-    import subprocess
-
-    excluded = f":(exclude){target_dir(project_dir).relative_to(project_dir).as_posix()}"
-    completed = subprocess.run(
-        ["git", "-C", str(project_dir), "status", "--porcelain", "-z", "--", ".", excluded],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return ()
-    paths: set[str] = set()
-    entries = iter(completed.stdout.split("\0"))
-    for entry in entries:
-        if len(entry) > 3:
-            paths.add(entry[3:])
-            # A rename or copy is followed by the path it came from, which is not a change.
-            if entry[0] in "RC":
-                next(entries, None)
-    return tuple(sorted(paths))
 
 
 def project_inputs(

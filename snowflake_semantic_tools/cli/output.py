@@ -21,6 +21,7 @@ import click
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.timings import RUN_TIMINGS
+from snowflake_semantic_tools.app.diagnostics_json import summary_counts as counted_by_severity
 from snowflake_semantic_tools.cli.exit_codes import CHANGES, CONFIG, INTERRUPTED, OK
 from snowflake_semantic_tools.cli.render.diagnostics import (
     HIDDEN_FLAGS,
@@ -41,12 +42,10 @@ from snowflake_semantic_tools.domain.diagnostics import (
     DiagnosticBag,
 )
 from snowflake_semantic_tools.domain.diagnostics.baseline import stable_fingerprint
-from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 _INVOCATION: dict[str, object] = {}
 # Credential values resolved this run; no envelope, report, or rendered diagnostic may carry one.
 _SECRETS: set[str] = set()
-_ARTIFACT_SUBJECTS = frozenset(SEMANTIC_REGISTRY.artifacts)
 # Four or more diagnostics of one code collapse to the first few in the human render.
 _GROUP_AT = 4
 _GROUP_SHOWN = 3
@@ -166,11 +165,7 @@ def summary_counts(diagnostics: Iterable[Diagnostic], baselined: frozenset[str] 
     Args:
         baselined: The fingerprints the baseline holds; this run's when None.
     """
-    held = baselined_fingerprints() if baselined is None else baselined
-    counts: Counter[str] = Counter()
-    for item in diagnostics:
-        counts["baselined" if stable_fingerprint(item) in held else item.severity.name.lower()] += 1
-    return {key: counts[key] for key in ("error", "warning", "info", "baselined")}
+    return counted_by_severity(diagnostics, baselined_fingerprints() if baselined is None else baselined)
 
 
 def counted(count: int, noun: str) -> str:
