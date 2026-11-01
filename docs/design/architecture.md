@@ -359,7 +359,18 @@ A new input to `_build_view` must join its arguments, or a reload would reuse a
 view built without it; `tests/unit/api/test_session_reuse.py` compares a reload
 after each kind of edit with a fresh session.
 
-Drawn from: [adapters/yaml/semantic/reuse.py](../../snowflake_semantic_tools/adapters/yaml/semantic/reuse.py), [adapters/yaml/semantic/pipeline.py](../../snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py).
+An overlay (`with_overlay`) reads unsaved edits from a private copy of the
+project, `adapters/fs/working_copy.py`, which is brought back in step with the
+project by each file's size, time and kind, and leaves out dbt's and SST's own
+output. Its views are read from another directory, so overlays keep their own
+`ViewBuilds` and `RenderedViews`. One whose edits touch nothing `dbt parse`
+reads (`adapters/dbt/parse_stamp.dbt_inputs`), nor `profiles.yml` or
+`sst_config.yml`, takes the project session's `DbtOutcome`: its models with
+deferral applied, and what the dbt seam reported. Any other overlay reads dbt
+in the copy, deferral manifests included, so the project's are never
+rewritten.
+
+Drawn from: [adapters/yaml/semantic/reuse.py](../../snowflake_semantic_tools/adapters/yaml/semantic/reuse.py), [adapters/fs/working_copy.py](../../snowflake_semantic_tools/adapters/fs/working_copy.py), [api/session.py](../../snowflake_semantic_tools/api/session.py), [adapters/yaml/semantic/pipeline.py](../../snowflake_semantic_tools/adapters/yaml/semantic/pipeline.py), [app/compile/\_\_init\_\_.py](../../snowflake_semantic_tools/app/compile/__init__.py).
 
 ## Templates and references
 

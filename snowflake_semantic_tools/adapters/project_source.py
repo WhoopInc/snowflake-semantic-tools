@@ -82,6 +82,22 @@ from snowflake_semantic_tools.domain.state import canonical_json
 from snowflake_semantic_tools.domain.validate.dbt_seam import empty_catalog
 
 
+@dataclasses.dataclass(frozen=True, slots=True)
+class DbtOutcome:
+    """What reading dbt gave one source: its models, deferral applied, and what the seam found.
+
+    A source given one answers from it instead of reading dbt, which is exact only while nothing
+    dbt reads has changed: the dbt project's files, the profiles, and SST's `dbt:` and `defer:`.
+
+    Attributes:
+        catalog: The models, as `dbt_catalog` returns them.
+        seam: The diagnostics a semantic load reports first, as `_seam_diagnostics` found them.
+    """
+
+    catalog: DbtCatalog
+    seam: tuple[Diagnostic, ...]
+
+
 class YamlProjectSource:
     """Reads semantic views from a dbt + SST project directory.
 
@@ -91,7 +107,8 @@ class YamlProjectSource:
     warning instead of an error, as `--allow-stale-manifest` asks. `dbt_cache` is shared by
     every source of one run, so each `dbt parse` runs and each manifest is decoded once.
     `view_builds` is a session's record of the views its last load built, reused where nothing
-    they read has changed; None builds every view.
+    they read has changed; None builds every view. `dbt_outcome` is what another source of the
+    same session read from dbt, answered from instead of running or reading dbt again.
     """
 
     def __init__(
@@ -107,10 +124,12 @@ class YamlProjectSource:
         allow_stale_manifest: bool = False,
         dbt_cache: DbtCache | None = None,
         view_builds: ViewBuilds | None = None,
+        dbt_outcome: DbtOutcome | None = None,
     ) -> None:
         self._files = files
         self._database = database
         self._view_builds = view_builds
+        self._outcome = dbt_outcome
         self._dbt_cache = dbt_cache or DbtCache()
         self._project_dir = files.project_dir
         self._target_name = target_name
@@ -195,7 +214,20 @@ class YamlProjectSource:
             ProjectError: dbt fails, or a manifest is absent, unreadable, or of another schema;
                 or the deferred target is not declared (SST-CFG010).
         """
+        if self._outcome is not None:
+            return self._outcome.catalog
         return self.deferred(self.read_catalog(self._parsed_manifest()))
+
+    def dbt_outcome(self) -> DbtOutcome:
+        """Return what reading dbt gave this source, reading it first if no load has.
+
+        Raises:
+            ProjectError: as `dbt_catalog` raises.
+        """
+        if self._outcome is None:
+            catalog = self.dbt_catalog()
+            self._outcome = DbtOutcome(catalog, self._seam_diagnostics(catalog))
+        return self._outcome
 
     def deferred(self, catalog: DbtCatalog) -> DbtCatalog:
         """Return `catalog` with its relations resolved to the deferred target's; itself without a deferral.
@@ -329,7 +361,8 @@ class YamlProjectSource:
             self._project_dir, inputs, target=target, models=models, catalog=catalog, builds=self._view_builds
         )
         with RUN_TIMINGS.phase("load.dbt.seam"):
-            seam = self._seam_diagnostics(catalog)
+            seam = self._outcome.seam if self._outcome is not None else self._seam_diagnostics(catalog)
+        self._outcome = DbtOutcome(catalog, seam)
         return dataclasses.replace(project, diagnostics=DiagnosticBag((*seam, *project.diagnostics)))
 
     def load_tools(self) -> ToolCatalog:
@@ -431,8 +464,8 @@ class YamlProjectInputs(ProjectInputs):
     Without a dbt manifest path, the semantic views and tools run `dbt parse` first. The
     commit comes from `git_sha`, and the uncommitted paths from `git_dirty`, which the CLI
     supplies, so the CLI decides how git is asked; without `git_dirty`, none are.
-    `allow_stale_manifest` and `view_builds` are passed to the source, as `YamlProjectSource`
-    describes.
+    `allow_stale_manifest`, `view_builds` and `dbt_outcome` are passed to the source, as
+    `YamlProjectSource` describes.
     """
 
     def __init__(
@@ -449,6 +482,7 @@ class YamlProjectInputs(ProjectInputs):
         allow_stale_manifest: bool = False,
         dbt_cache: DbtCache | None = None,
         view_builds: ViewBuilds | None = None,
+        dbt_outcome: DbtOutcome | None = None,
     ) -> None:
         self._files = files
         self._project_dir = files.project_dir
@@ -466,6 +500,7 @@ class YamlProjectInputs(ProjectInputs):
             allow_stale_manifest=allow_stale_manifest,
             dbt_cache=dbt_cache,
             view_builds=view_builds,
+            dbt_outcome=dbt_outcome,
         )
         self._git_sha = git_sha
         self._git_dirty = git_dirty
@@ -495,6 +530,10 @@ class YamlProjectInputs(ProjectInputs):
 
     def dbt_catalog(self) -> DbtCatalog:
         return self._source.dbt_catalog()
+
+    def dbt_outcome(self) -> DbtOutcome:
+        """Return what reading dbt gave these inputs, for another session's inputs to answer from."""
+        return self._source.dbt_outcome()
 
     def tool_catalog(self) -> ToolCatalog:
         return self._source.load_tools()

@@ -110,18 +110,31 @@ def write_stamp(state_dir: Path, digest: str, now: datetime | None = None) -> No
         return
 
 
-def _inputs(project_dir: Path, profiles_dir: Path) -> Iterator[tuple[str, int, int]]:
-    """Yield each dbt input file as (path, size, modification time)."""
-    root = project_dir.resolve()
-    project = read_plain_yaml(root / "dbt_project.yml")
+def dbt_inputs(project_dir: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return what in the project a `dbt parse` reads: its input files, and its input folders.
+
+    Both are relative to the project, as the module docstring lists them; the `profiles.yml` dbt
+    is given, which may lie outside the project, is not among them.
+
+    Raises:
+        ProjectError: `dbt_project.yml` cannot be read, as `read_plain_yaml` raises.
+    """
+    project = read_plain_yaml(project_dir / "dbt_project.yml")
     directories: set[str] = {str(project.get("packages-install-path") or "dbt_packages")}
     for key, default in _INPUT_DIRS.items():
         declared = project.get(key)
         named = declared if isinstance(declared, list) and declared else list(default)
         directories.update(str(item) for item in named)
-    files = [root / name for name in _INPUT_FILES]
+    return _INPUT_FILES, tuple(sorted(directories))
+
+
+def _inputs(project_dir: Path, profiles_dir: Path) -> Iterator[tuple[str, int, int]]:
+    """Yield each dbt input file as (path, size, modification time)."""
+    root = project_dir.resolve()
+    names, directories = dbt_inputs(root)
+    files = [root / name for name in names]
     files.append(profiles_dir.resolve() / "profiles.yml")
-    for directory in sorted(directories):
+    for directory in directories:
         base = root / directory
         if base.is_dir():
             files.extend(path for path in base.rglob("*") if path.is_file())

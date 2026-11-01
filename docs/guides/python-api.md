@@ -7,7 +7,8 @@ internal and may change in any release; import only from
 `snowflake_semantic_tools.api`.
 
 The API reads and checks a project. It does not connect to Snowflake, print,
-or exit, and it never writes a project file.
+or exit, and it never writes a project file: unsaved edits are read from a
+private copy of the project.
 
 ## Open a project
 
@@ -33,6 +34,8 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.render(key)` | a `Rendered`: what one artifact publishes, its definition and the statements that create it; `KeyError` for a key the project did not compile |
 | `session.validate(strict=None, baseline=True)` | a `Validation`: what `sst validate --no-snowflake-syntax-check --output json` reports, as data |
 | `session.compiled` | the compile result itself, for a caller that needs more than the summaries give |
+| `session.reload(dbt=True)` | a new session from the project's files as they are now |
+| `session.with_overlay(files)` | a new session from them with unsaved edits over them; see below |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -60,6 +63,32 @@ edited = session.reload(dbt=False)
 for item in edited.validate().diagnostics:
     print(item["code"], item["message"])
 ```
+
+## Unsaved edits
+
+`session.with_overlay(files)` returns a session for the project with edits
+that are not saved: each key is a path relative to the project, its bytes
+replace the file or create it, and `None` deletes it. It answers exactly as a
+session opened on the project with those edits saved would, but the project is
+never written to. The session reads a private copy instead: made the first
+time an overlay is asked for, and brought back in step with the project for
+each one after, so every overlay reads the project's files as they are then.
+
+```python
+draft = session.with_overlay({
+    "semantic_models/metrics/total_revenue.yml": edited_text.encode(),
+    "semantic_models/metrics/old_metric.yml": None,
+})
+print(draft.validate().passed)
+```
+
+An overlay of a session that already has one keeps its edits and adds these.
+dbt is read again only when an edit is to something it reads: a model, macro,
+seed, snapshot, analysis or test file, a dbt project or package file,
+`profiles.yml`, or `sst_config.yml`; otherwise the overlay takes the models
+the session read. Overlays of one project share what they parse and build, so
+each reads again only what its edits changed. `draft.overlay` is the edits a
+session reads, and `draft.reload()` reads the project again with them.
 
 ## Stability
 

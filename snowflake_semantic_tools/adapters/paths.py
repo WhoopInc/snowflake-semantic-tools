@@ -248,6 +248,74 @@ def scratch_folder(prefix: str) -> Iterator[Path]:
         shutil.rmtree(folder, ignore_errors=True)
 
 
+def private_folder(prefix: str) -> Path:
+    """Create a new temporary folder only its owner can read, for `remove_private_folder` to remove.
+
+    `scratch_folder` for one that must outlive a block, such as a session's working copy.
+    """
+    return Path(tempfile.mkdtemp(prefix=prefix))
+
+
+def remove_private_folder(folder: Path) -> None:
+    """Remove a folder `private_folder` created, with everything in it; nothing when it is gone."""
+    shutil.rmtree(folder, ignore_errors=True)
+
+
+def mirror_file_within(root: Path, path: Path, data: bytes, modified_ns: int | None) -> None:
+    """Replace the file at `path`, inside `root`, with `data`, modified at `modified_ns`, unsynced.
+
+    For a copy of a project SST throws away: it is replaced in one rename as `write_within` does,
+    but not synced to disk, and it keeps the time the original was modified, so a check that
+    compares a file's time reads the copy as it reads the original; None keeps the time of the
+    write. The file is readable by its owner only.
+
+    Raises:
+        UnsafeWrite: As `write_within` raises it.
+        OSError: The folder or the file cannot be written; the temporary file is removed.
+    """
+    folders, name = _split(root, path)
+    with _folder(root, folders, path, create=True) as folder:
+        _existing(folder, name, path)
+        temporary = f".sst-{secrets.token_hex(8)}.tmp"
+        descriptor = os.open(temporary, _CREATE_FLAGS, 0o600, dir_fd=folder)
+        try:
+            try:
+                _write_all(descriptor, data)
+            finally:
+                os.close(descriptor)
+            if modified_ns is not None:
+                os.utime(temporary, ns=(modified_ns, modified_ns), dir_fd=folder, follow_symlinks=False)
+            os.replace(temporary, name, src_dir_fd=folder, dst_dir_fd=folder)
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                os.unlink(temporary, dir_fd=folder)
+
+
+def mirror_link_within(root: Path, path: Path, target: str) -> None:
+    """Make `path`, inside `root`, a symbolic link to `target`, as the original it copies is.
+
+    The link is written as the original's is, so a relative one resolves inside the copy as it
+    did inside the project, and every loader's containment check reads it as it read that. A file
+    or link already at `path` is replaced.
+
+    Raises:
+        UnsafeWrite: `path` lies outside `root`, names `root` itself, or a link or a file is on the
+            way to it, or a folder is at it.
+        OSError: The link cannot be made.
+    """
+    folders, name = _split(root, path)
+    with _folder(root, folders, path, create=True) as folder:
+        try:
+            found = os.stat(name, dir_fd=folder, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISDIR(found.st_mode):
+                raise UnsafeWrite(path, "it is a folder, not a file")
+            os.unlink(name, dir_fd=folder)
+        os.symlink(target, name, dir_fd=folder)
+
+
 def _split(root: Path, path: Path) -> tuple[tuple[str, ...], str]:
     """Return the folders from `root` to the file at `path`, and the file's name.
 
