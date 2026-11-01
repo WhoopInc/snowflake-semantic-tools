@@ -281,63 +281,10 @@ EXECUTE_AS = ("caller", "owner", "restricted caller")
 HANDLER_LANGUAGES = frozenset(("java", "python", "scala"))
 # The routine languages whose DDL has no RUNTIME_VERSION, HANDLER, PACKAGES or IMPORTS.
 NON_HANDLER_LANGUAGES = frozenset(("javascript", "sql"))
-CREATION_KEYS = frozenset(
-    (
-        "on",
-        "where",
-        "attribute_columns",
-        "refresh_mode",
-        "language",
-        "runtime_version",
-        "handler",
-        "body",
-        "returns",
-        "packages",
-        "imports",
-        "external_access_integrations",
-        "secrets",
-    )
-)
-# The keys a member may write; the roots a tools file holds members under are the registry's. YAML
-# 1.1 reads an unquoted `on:` as the boolean `true`, which a member's loader reads as `on:`.
-TOOL_MEMBER_KEYS = frozenset(
-    (
-        *CREATION_KEYS,
-        "name",
-        "type",
-        "description",
-        "search_column",
-        "title_column",
-        "id_column",
-        "columns",
-        "relative_path_column",
-        "signature",
-        "relations",
-        "meta",
-        "config",
-    )
-)
-# The keys a search service member's `columns:` entry may write.
-TOOL_COLUMN_KEYS = frozenset(("column", "description", "type", "searchable", "filterable"))
-# Keys a member, or an entry of a `tools:` list, wrote before tools lost their groups, with where
-# each is written now. Each is an error, so a file still writing one learns it does nothing.
-MOVED_TOOL_KEYS: Mapping[str, str] = MappingProxyType(
-    {
-        "warehouse": "a tool member sets it under config:, as config.warehouse",
-        "target_lag": "a tool member sets it under config:, as config.target_lag",
-        "embedding_model": "a tool member sets it under config:, as config.embedding_model",
-        "execute_as": "a tool member sets it under config:, as config.execute_as",
-        "immutable": "a tool member sets it under config:, as config.immutable, or a folder route as +immutable",
-        "owner": "a tool member names its owner under meta:, as meta.owner",
-        "body_file": "a routine names its body as body: \"{{ file('<path>') }}\", relative to the tool file",
-        "columns_and_descriptions": (
-            "a search service lists its columns under columns:, each column a {{ ref('<model>', '<column>') }}"
-        ),
-        "group": "tools have no groups: a member's folder under the tools directory routes it",
-        "define": "tools have no groups: write each member as a tool: file or a tools: list entry",
-        "reference": "tools have no groups: a member that writes relations: is a reference",
-    }
-)
+# Every routine language a defined procedure or function may write, lower-cased.
+ROUTINE_LANGUAGES = ("java", "javascript", "python", "scala", "sql")
+# How a defined search service may refresh, lower-cased; a value is matched ignoring case.
+REFRESH_MODES = ("auto", "full", "incremental")
 
 
 def vocabulary_key(value: str) -> str:

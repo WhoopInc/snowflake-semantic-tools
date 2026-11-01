@@ -22,14 +22,17 @@ from snowflake_semantic_tools.adapters.yaml.fields import (
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
-from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
-from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
-from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
-from snowflake_semantic_tools.domain.model.tool import (
+from snowflake_semantic_tools.domain.model.authored_schema import (
     CREATION_KEYS,
     MOVED_TOOL_KEYS,
     TOOL_COLUMN_KEYS,
     TOOL_MEMBER_KEYS,
+)
+from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
+from snowflake_semantic_tools.domain.model.dbt import DbtCatalog
+from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
+from snowflake_semantic_tools.domain.model.tool import (
+    REFRESH_MODES,
     ToolColumn,
     ToolMember,
     ToolOwnership,
@@ -104,7 +107,7 @@ def unknown_tool_keys(
     return found
 
 
-_REFRESH_MODES = ("AUTO", "FULL", "INCREMENTAL")
+_REFRESH_MODES = tuple(mode.upper() for mode in REFRESH_MODES)
 
 
 def parse_member(source: ToolSource, path: NodePath, value: object) -> tuple[ToolMember | None, tuple[Diagnostic, ...]]:

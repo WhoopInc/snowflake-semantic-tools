@@ -33,11 +33,17 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentModel, AgentProfile, AgentTool
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
+from snowflake_semantic_tools.domain.model.authored_schema import (
+    AGENT,
+    AGENT_TOOL,
+    FieldStatus,
+    node_patterns,
+    unread_fields,
+)
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.resolve.calls import literal_problem
-from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import name_problem
 
@@ -136,43 +142,21 @@ _AGENT_FILES = ("agent.yml", "agent.yaml")
 
 # The keys each block of an agent file models, by the block's path; `*` stands for any list index.
 # `meta` and the passthrough blocks are free-form, and a tool's own mapping fields are its type's.
-_TOOL_KEYS = frozenset(key for keys in TOOL_KEYS.values() for key in keys)
-_AGENT_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
-    {
-        (): frozenset(("name", "comment", "profile", "spec", "config", "deprecated", "meta", "evals")),
-        ("profile",): frozenset(("display_name", "avatar", "color")),
-        ("spec",): frozenset(("instructions", "tools", "skills", "passthrough")),
-        ("spec", "instructions"): frozenset(("orchestration", "response", "sample_questions")),
-        ("spec", "tools", "*"): _TOOL_KEYS,
-        ("spec", "skills", "*"): frozenset(("name", "source")),
-        ("spec", "skills", "*", "source"): frozenset(("type", "path", "version")),
-        # `config:`'s own keys are the `agents:` settings, which `item_config_diagnostics` checks.
-        ("config", "tags", "*"): frozenset(("name", "value")),
-        ("evals",): frozenset(("dataset", "config")),
-    }
-)
+# `config:`'s own keys are the `agents:` settings, which `item_config_diagnostics` checks.
+_AGENT_KEYS: Mapping[NodePath, frozenset[str]] = node_patterns(AGENT.node)
+_TOOL_ENTRY: NodePath = ("spec", "tools", "*")
 # Settings an earlier draft read outside `config:`, by the block that held them, with where each
 # is set now. Each is an error, so a file still writing one learns it no longer does anything.
 _MOVED: Mapping[tuple[NodePath, str], str] = MappingProxyType(
     {
-        ((), "alias"): "an agent sets it under config:, as config.alias",
-        ((), "secure"): "an agent sets it under config:, as config.secure",
-        ((), "enabled"): "an agent sets it under config:, as config.enabled",
-        ((), "tags"): "an agent sets it under config:, as config.tags",
-        (("spec",), "models"): "an agent sets its model under config:, as config.orchestration_model",
-        (("spec",), "orchestration"): (
-            "an agent sets these under config:, as config.budget_seconds, config.budget_tokens, "
-            "config.tool_not_accessible and config.analytical_search"
-        ),
+        (pattern, item.name): str(item.replacement)
+        for pattern, item in unread_fields(AGENT.node, FieldStatus.REMOVED)
+        if pattern != _TOOL_ENTRY
     }
 )
 # Keys a `spec.tools` entry wrote before columns became references, with where each is written now.
 _MOVED_TOOL_KEYS: Mapping[str, str] = MappingProxyType(
-    {
-        "columns_and_descriptions": (
-            "a search tool lists its columns under columns:, each column as its member names its own"
-        ),
-    }
+    {item.name: str(item.replacement) for item in AGENT_TOOL.fields if item.status is FieldStatus.REMOVED}
 )
 
 

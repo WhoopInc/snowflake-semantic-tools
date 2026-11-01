@@ -37,6 +37,7 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.agent import AgentProfile
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosition
+from snowflake_semantic_tools.domain.model.authored_schema import COWORK_PROFILE, node_patterns
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel, CoworkProfileTool, CoworkSubagent
 from snowflake_semantic_tools.domain.parse.names import name_warnings
@@ -49,22 +50,9 @@ from snowflake_semantic_tools.domain.validate.sql import name_problem
 COWORK_PROFILE_FILES = ("cowork_profile.yml", "cowork_profile.yaml")
 _KIND = "cowork_profile"
 # The keys each block of a profile file models, by the block's path; `*` stands for any list
-# index. `meta` and `spec.passthrough` are free-form.
-_PROFILE_KEYS: Mapping[NodePath, frozenset[str]] = MappingProxyType(
-    {
-        (): frozenset(("name", "comment", "display", "spec", "config", "deprecated", "meta", "evals")),
-        ("display",): frozenset(("display_name", "avatar", "color")),
-        ("spec",): frozenset(("instructions", "subagents", "tools", "skills", "passthrough")),
-        ("spec", "instructions"): frozenset(("orchestration", "response", "sample_questions")),
-        ("spec", "subagents", "*"): frozenset(("agent", "display_name", "description", "sample_questions")),
-        ("spec", "tools", "*"): frozenset(("type", "name")),
-        ("spec", "skills", "*"): frozenset(("name", "source")),
-        ("spec", "skills", "*", "source"): frozenset(("type", "path", "version")),
-        # `config:`'s own keys are the `cowork_profiles:` settings, which `item_config_diagnostics` checks.
-        ("config", "tags", "*"): frozenset(("name", "value")),
-        ("evals",): frozenset(("dataset", "config")),
-    }
-)
+# index. `meta` and `spec.passthrough` are free-form; `config:`'s own keys are the
+# `cowork_profiles:` settings, which `item_config_diagnostics` checks.
+_PROFILE_KEYS: Mapping[NodePath, frozenset[str]] = node_patterns(COWORK_PROFILE.node)
 
 
 def load_cowork_profiles(

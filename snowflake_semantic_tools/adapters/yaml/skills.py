@@ -28,12 +28,13 @@ from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.text_checks import read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored_schema import PLUGIN
 from snowflake_semantic_tools.domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
 PLUGIN_FILES = ("plugin.yml", "plugin.yaml")
 _NONE: Mapping[str, object] = MappingProxyType({})
-PLUGIN_KEYS = frozenset(("name", "description", "owner_team", "skills", "config"))
+PLUGIN_KEYS = PLUGIN.node.read_keys()
 
 
 def _published(path: Path, root: Path) -> bool:

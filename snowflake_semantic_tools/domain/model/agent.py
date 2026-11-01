@@ -21,6 +21,8 @@ KNOWN_AGENT_TOOL_TYPES = frozenset(
     )
 )
 RESERVED_AGENT_ALIASES = frozenset(("LIVE", "FIRST", "LAST", "DEFAULT"))
+# The types a search tool's column descriptor may give a column, lower-cased.
+SEARCH_COLUMN_TYPES = frozenset(("string", "datetime"))
 
 
 @dataclass(frozen=True, slots=True)

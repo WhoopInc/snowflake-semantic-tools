@@ -22,21 +22,10 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
 from snowflake_semantic_tools.adapters.yaml.fields import refused, report_unknown_keys
 from snowflake_semantic_tools.adapters.yaml.parse import read_yaml_file
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.authored_schema import EVAL_METRIC
 from snowflake_semantic_tools.domain.model.eval import CustomEvalMetric, EvalScoreRanges
 
-_CUSTOM_METRIC_KEYS = frozenset(
-    (
-        "name",
-        "description",
-        "model",
-        "score_ranges",
-        "prompt",
-        "gate_default",
-        "threshold_default",
-        "enabled",
-        "meta",
-    )
-)
+_CUSTOM_METRIC_KEYS = EVAL_METRIC.node.read_keys()
 
 
 def load_custom_metrics(

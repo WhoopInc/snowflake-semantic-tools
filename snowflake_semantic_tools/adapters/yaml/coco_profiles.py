@@ -29,6 +29,7 @@ from snowflake_semantic_tools.adapters.yaml.skills import _published
 from snowflake_semantic_tools.adapters.yaml.text_checks import read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
+from snowflake_semantic_tools.domain.model.authored_schema import COCO_PROFILE, COCO_SHARED_PROFILE
 from snowflake_semantic_tools.domain.model.coco_profile import (
     REJECTED_COCO_PROFILE_KEYS,
     SHARED_PROFILE,
@@ -40,8 +41,8 @@ from snowflake_semantic_tools.domain.model.coco_profile import (
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
-COCO_PROFILE_KEYS = frozenset(("name", "description", "model", "skills", "plugins", "config"))
-SHARED_KEYS = frozenset(("skills",))
+COCO_PROFILE_KEYS = COCO_PROFILE.node.read_keys()
+SHARED_KEYS = COCO_SHARED_PROFILE.node.read_keys()
 COCO_PROFILE_FILES = ("coco_profile.yml", "coco_profile.yaml")
 # The folder SST read CoCo Desktop profiles from before agent profiles replaced them.
 RETIRED_PROFILES_DIR = "coco_desktop_profiles"

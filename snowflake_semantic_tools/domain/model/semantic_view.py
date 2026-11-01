@@ -196,6 +196,14 @@ class Tag:
     value: str
 
 
+# Each scope kind's include key, exclude key, and the word a diagnostic names its members by.
+SCOPE_KINDS: tuple[tuple[str, str, str], ...] = (
+    ("columns", "exclude_columns", "column"),
+    ("metrics", "exclude_metrics", "metric"),
+    ("relationships", "exclude_relationships", "relationship"),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ViewScope:
     """Which of its tables' members a view exposes: its scope lists, include or exclude.

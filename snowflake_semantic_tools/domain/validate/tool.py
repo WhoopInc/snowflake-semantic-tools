@@ -11,6 +11,8 @@ from snowflake_semantic_tools.domain.model.tool import (
     HANDLER_LANGUAGES,
     KNOWN_TOOL_TYPES,
     NON_HANDLER_LANGUAGES,
+    REFRESH_MODES,
+    ROUTINE_LANGUAGES,
     ToolCatalog,
     ToolKind,
     ToolMember,
@@ -264,8 +266,6 @@ def _handler_keys(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
     return emit.diagnostics
 
 
-_LANGUAGES = ("java", "javascript", "python", "scala", "sql")
-_REFRESH_MODES = ("auto", "full", "incremental")
 # dbt materializations that rebuild the relation on every run instead of merging into it.
 _REPLACING_MATERIALIZATIONS = frozenset(("table", "view"))
 
@@ -352,9 +352,9 @@ def _sql_values(member: ToolMember, subject: str) -> tuple[Diagnostic, ...]:
         if value and not is_datatype(value) and not value.strip().upper().startswith("TABLE"):
             emit("SST-PRS003", field=key, expected="a Snowflake data type", found=repr(value))
     for key, value, allowed in (
-        ("language", member.language, _LANGUAGES),
+        ("language", member.language, ROUTINE_LANGUAGES),
         ("execute_as", member.execute_as, EXECUTE_AS),
-        ("refresh_mode", member.refresh_mode, _REFRESH_MODES),
+        ("refresh_mode", member.refresh_mode, REFRESH_MODES),
     ):
         if value and vocabulary_key(value) not in allowed:
             emit("SST-PRS013", field=key, found=value, expected=", ".join(allowed))

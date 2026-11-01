@@ -12,6 +12,7 @@ from snowflake_semantic_tools.adapters.dbt.manifest_schema import decode_manifes
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.json_files import parse_json, read_bounded
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.authored_schema import DBT_COLUMN_META, DBT_MODEL_META
 from snowflake_semantic_tools.domain.model.dbt import DbtCatalog, DbtColumn, DbtModel, DbtNode, DbtSource
 from snowflake_semantic_tools.domain.text import unstorable
 from snowflake_semantic_tools.domain.validate.column_metadata import is_boolean_type
@@ -30,19 +31,8 @@ _GRAPH_RESOURCES = frozenset((*_TABLE_RESOURCES, "test"))
 
 # The `meta.sst` keys SST reads. `database` and `schema` are read only to be
 # refused (SST-DBT030); anything else is reported where a view uses the model.
-MODEL_META_KEYS = frozenset(("primary_key", "unique_keys", "synonyms", "distinct_range", "database", "schema"))
-COLUMN_META_KEYS = frozenset(
-    (
-        "column_type",
-        "data_type",
-        "synonyms",
-        "sample_values",
-        "is_enum",
-        "exclude",
-        "access_modifier",
-        "governance_tags",
-    )
-)
+MODEL_META_KEYS = DBT_MODEL_META.node.read_keys()
+COLUMN_META_KEYS = DBT_COLUMN_META.node.read_keys()
 
 # Tests whose columns hold keys. A numeric column one of them names is an identifier, so
 # enrich derives it as a dimension, not as a fact to sum.

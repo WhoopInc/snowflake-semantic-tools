@@ -14,24 +14,32 @@ from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments
+from snowflake_semantic_tools.domain.model.authored import VISIBILITY, AuthoredDocument, AuthoredDocuments
+from snowflake_semantic_tools.domain.model.authored_schema import SEMANTIC_KINDS, FieldStatus
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_root
 
 # 0.3 spellings, by node type: each maps to its 1.0 key. Written alone, the old key is read and
 # reported; written beside the 1.0 key, it is refused.
 DEPRECATED_KEYS: Mapping[str, Mapping[str, str]] = MappingProxyType(
     {
-        "custom_instruction": MappingProxyType(
-            {"sql_generation": "ai_sql_generation", "question_categorization": "ai_question_categorization"}
-        ),
-        "metric": MappingProxyType({"visibility": "access_modifier"}),
+        kind.name: MappingProxyType(deprecated)
+        for kind in SEMANTIC_KINDS
+        if (
+            deprecated := {
+                item.name: str(item.replacement) for item in kind.node.fields if item.status is FieldStatus.DEPRECATED
+            }
+        )
     }
 )
 # Keys SST reads only to report that the renderer emits nothing for them. A filter's
 # `synonyms:` is not read: it is SST-VAL406's, as an unread key.
-INERT_KEYS: Mapping[str, tuple[str, ...]] = MappingProxyType({"relationship": ("relationship_type", "join_type")})
-# The values 0.3 wrote under `visibility`, as the access modifiers they mean.
-VISIBILITY: Mapping[str, str] = MappingProxyType({"public": "public_access", "private": "private_access"})
+INERT_KEYS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        kind.name: inert
+        for kind in SEMANTIC_KINDS
+        if (inert := tuple(item.name for item in kind.node.fields if item.status is FieldStatus.INERT))
+    }
+)
 
 
 def honored(node: Mapping[str, Any], key: str, node_type: str) -> object:

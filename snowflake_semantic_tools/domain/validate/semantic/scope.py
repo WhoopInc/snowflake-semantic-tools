@@ -26,7 +26,7 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, vie
 from snowflake_semantic_tools.domain.model.authored import FilterDef, MetricDef, VerifiedQueryDef
 from snowflake_semantic_tools.domain.model.dbt import DbtModel
 from snowflake_semantic_tools.domain.model.project import ParsedView
-from snowflake_semantic_tools.domain.model.semantic_view import Relationship, ViewScope
+from snowflake_semantic_tools.domain.model.semantic_view import SCOPE_KINDS, Relationship, ViewScope
 from snowflake_semantic_tools.domain.parse.template import (
     TemplateSyntaxError,
     single_template_call,
@@ -36,12 +36,6 @@ from snowflake_semantic_tools.domain.resolve.membership import ViewMembers
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
 from snowflake_semantic_tools.domain.resolve.scope_reads import column_reads, hidden_reads
 
-# Each kind's include key, exclude key, and the word a diagnostic names its members by.
-SCOPE_KINDS: tuple[tuple[str, str, str], ...] = (
-    ("columns", "exclude_columns", "column"),
-    ("metrics", "exclude_metrics", "metric"),
-    ("relationships", "exclude_relationships", "relationship"),
-)
 SCOPE_KEYS = frozenset(key for include, exclude, _ in SCOPE_KINDS for key in (include, exclude))
 
 

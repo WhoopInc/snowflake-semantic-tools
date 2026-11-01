@@ -20,6 +20,8 @@ NodePath: TypeAlias = tuple[str | int, ...]
 
 # The `access_modifier` values a metric or a column may write.
 ACCESS_MODIFIERS = ("public_access", "private_access")
+# The values 0.3 wrote under `visibility`, as the access modifiers they mean.
+VISIBILITY: Mapping[str, str] = MappingProxyType({"public": "public_access", "private": "private_access"})
 
 
 @dataclass(frozen=True, slots=True)

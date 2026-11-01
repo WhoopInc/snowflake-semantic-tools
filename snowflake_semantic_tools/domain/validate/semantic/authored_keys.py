@@ -9,138 +9,71 @@ from typing import Any
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key, view_key
 from snowflake_semantic_tools.domain.model.authored import AuthoredDocument, AuthoredDocuments, NodePath
+from snowflake_semantic_tools.domain.model.authored_schema import SEMANTIC_KINDS, Field, FieldStatus, Node
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
-from snowflake_semantic_tools.domain.validate.semantic.deprecated import DEPRECATED_KEYS, INERT_KEYS
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_label, node_origin, node_root, written_root
-from snowflake_semantic_tools.domain.validate.semantic.scope import SCOPE_KEYS
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
+
+
+def _scopes(scope: str, node: Node) -> Iterator[tuple[str, Node]]:
+    """Yield `node` and each node nested in it, depth-first, with its scope: `<type>` or `<type>.<field>`."""
+    yield scope, node
+    for item in node.fields:
+        nested = item.nested if item.read else None
+        if nested is not None:
+            yield from _scopes(f"{scope}.{item.name}", nested)
+
+
+_SCOPED: tuple[tuple[str, Node], ...] = tuple(
+    scoped for kind in SEMANTIC_KINDS for scoped in _scopes(kind.name, kind.node)
+)
+_NESTED: tuple[tuple[str, Field], ...] = tuple(
+    (scope, item) for scope, node in _SCOPED for item in node.fields if item.read and item.nested is not None
+)
+
+
+def _unread(status: FieldStatus, code: str | None = None) -> Mapping[tuple[str, str], str]:
+    return MappingProxyType(
+        {
+            (scope, item.name): str(item.replacement)
+            for scope, node in _SCOPED
+            for item in node.fields
+            if item.status is status and item.code == code
+        }
+    )
+
 
 # The keys the loader reads, per semantic-model node. Anything else is reported,
 # because a key the loader skips changes nothing in the DDL and would otherwise
 # pass review looking as though it does.
 AUTHORED_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
-    {
-        "semantic_view": frozenset(
-            (
-                "name",
-                "description",
-                "tables",
-                "custom_instructions",
-                "variables",
-                "config",
-                *SCOPE_KEYS,
-            )
-        ),
-        "metric": frozenset(
-            (
-                "name",
-                "expr",
-                "description",
-                "synonyms",
-                "using_relationships",
-                "non_additive_dimensions",
-                "access_modifier",
-                "window",
-                # The 0.3 spelling of access_modifier, an error: SST-VAL122.
-                "visibility",
-            )
-        ),
-        # `synonyms` is not read: a filter cannot carry them (SST-VAL406).
-        "filter": frozenset(("name", "expr", "description", "labels")),
-        # Snowflake has no clause for a description on the next three: it documents
-        # the YAML for its readers and is never published.
-        "custom_instruction": frozenset(
-            (
-                "name",
-                "description",
-                "ai_sql_generation",
-                "ai_question_categorization",
-                # The 0.3 spellings, an error: SST-VAL012, or SST-PRS020 when the 1.0 key is also set.
-                *DEPRECATED_KEYS["custom_instruction"],
-            )
-        ),
-        "verified_query": frozenset(
-            (
-                "name",
-                "description",
-                "question",
-                "sql",
-                "verified_at",
-                "verified_by",
-                "use_as_onboarding_question",
-            )
-        ),
-        # `relationship_type` and `join_type` are read only to report them (SST-VAL211).
-        "relationship": frozenset(
-            (
-                "name",
-                "description",
-                "left_table",
-                "right_table",
-                "relationship_conditions",
-                *INERT_KEYS["relationship"],
-            )
-        ),
-    }
+    {kind.name: kind.node.read_keys() for kind in SEMANTIC_KINDS}
 )
 # Mappings below a node, by the scope that holds them: a block, or each item of a list
-# field.
+# field. A view's own keys under `config:` are its block's settings, which
+# `view_config_diagnostics` checks; only the tag entries are checked here.
 NESTED_KEYS: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType(
     {
-        ("semantic_view", "variables"): frozenset(("name", "data_type", "default_value", "description")),
-        # A view's own keys under `config:` are its block's settings, which
-        # `view_config_diagnostics` checks; only the tag entries are checked here.
-        ("semantic_view", "config"): frozenset(),
-        ("semantic_view.config", "tags"): frozenset(("name", "value")),
-        ("metric", "non_additive_dimensions"): frozenset(("ref", "sort_direction", "null_order")),
-        ("metric", "window"): frozenset(("partition_by", "partition_by_excluding", "order_by", "frame")),
-        ("metric.window", "order_by"): frozenset(("ref", "sort_direction", "null_order")),
+        (scope, item.name): frozenset() if nested.checked_elsewhere else nested.read_keys()
+        for scope, item in _NESTED
+        if (nested := item.nested) is not None
     }
 )
 # Fields whose value is one mapping; every other nested field is a list.
-BLOCKS = frozenset((("metric", "window"), ("semantic_view", "config")))
+BLOCKS = frozenset((scope, item.name) for scope, item in _NESTED if item.node is not None)
 # Blocks whose own keys another check reports, so only what nests in them is checked here.
-_CHECKED_ELSEWHERE = frozenset((("semantic_view", "config"),))
+_CHECKED_ELSEWHERE = frozenset(
+    (scope, item.name) for scope, item in _NESTED if item.node is not None and item.node.checked_elsewhere
+)
 # 0.3 spellings, by the node or entry that carries them. Each is an error naming
 # the 1.0 key: reading the old spelling would keep two dialects alive.
-RENAMED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
-    {
-        ("metric", "non_additive_by"): "non_additive_dimensions",
-        ("metric.non_additive_dimensions", "order"): "sort_direction",
-        ("metric.non_additive_dimensions", "nulls"): "null_order",
-        ("metric.window.order_by", "column"): "ref",
-        ("metric.window.order_by", "direction"): "sort_direction",
-    }
-)
+RENAMED_KEYS = _unread(FieldStatus.RENAMED)
 # Keys an earlier dialect wrote that SST now works out for itself, by the node that carried
 # them, each with what replaced it. Each is an error, so a project still writing one learns
 # the key does nothing rather than reading it as a typo.
-REMOVED_KEYS: Mapping[tuple[str, str], str] = MappingProxyType(
-    {
-        ("metric", "tables"): "a metric's tables are the models its expression names with ref()",
-        ("metric", "derived"): (
-            "a metric is derived when its expression combines other metrics with metric() and names no column"
-        ),
-        ("filter", "tables"): "a filter's tables are the models its expression names with ref()",
-        ("verified_query", "tables"): "a verified query's tables are the models its SQL names with ref()",
-        ("semantic_view", "table_config"): (
-            "a table's synonyms, COMMENT and distinct_range come from its dbt model's "
-            "config.meta.sst.synonyms, description and config.meta.sst.distinct_range"
-        ),
-        ("verified_query", "sql_file"): "a verified query loads its SQL from a file with sql: \"{{ file('<path>') }}\"",
-        ("semantic_view", "enabled"): "a view sets it under config:, as config.enabled",
-        ("semantic_view", "tags"): "a view sets it under config:, as config.tags",
-        ("semantic_view", "max_staleness"): "a view sets it under config:, as config.max_staleness",
-        ("metric.non_additive_dimensions", "dimension"): (
-            "a non-additive entry names its column as ref: \"{{ ref('<model>', '<column>') }}\""
-        ),
-        ("metric.non_additive_dimensions", "table"): (
-            "a non-additive entry names its model in its ref: \"{{ ref('<model>', '<column>') }}\""
-        ),
-    }
-)
+REMOVED_KEYS = _unread(FieldStatus.REMOVED)
 # The folder under the semantic models directory that owns each member type's files.
 TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
     {
@@ -152,7 +85,7 @@ TYPE_FOLDERS: Mapping[str, str] = MappingProxyType(
     }
 )
 # The 0.3 relationship shape, which 1.0 replaced with `relationship_conditions` rather than renamed.
-LEGACY_RELATIONSHIP_KEYS = frozenset(("relationship_columns", "left_column", "right_column"))
+LEGACY_RELATIONSHIP_KEYS = frozenset(key for _, key in _unread(FieldStatus.REMOVED, "SST-PRS021"))
 
 
 def view_config_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:

@@ -10,37 +10,19 @@ from collections.abc import Iterator, Mapping
 from dataclasses import replace
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
-from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, AgentTool
+from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, SEARCH_COLUMN_TYPES, AgentModel, AgentTool
+from snowflake_semantic_tools.domain.model.authored_schema import AGENT_TOOL
 from snowflake_semantic_tools.domain.model.identifier import Identifier
 from snowflake_semantic_tools.domain.model.tool import ToolMember, ToolOwnership
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
 from snowflake_semantic_tools.domain.sql import ident
 
 # The keys every tool type takes; an Analyst tool's `name` defaults to its view's name.
-_COMMON = frozenset(("type", "name", "description", "tool_spec_passthrough"))
-_ENVIRONMENT = frozenset(("warehouse", "query_timeout"))
-TOOL_KEYS: Mapping[str, frozenset[str]] = {
-    "cortex_analyst_text_to_sql": _COMMON | _ENVIRONMENT | {"semantic_view"},
-    "cortex_search": _COMMON
-    | _ENVIRONMENT
-    | {
-        "search_service",
-        "max_results",
-        "title_column",
-        "id_column",
-        "stage_path",
-        "relative_path_column",
-        "filter",
-        "columns",
-        "passthrough",
-    },
-    "generic": _COMMON | _ENVIRONMENT | {"identifier", "input_schema", "passthrough"},
-    "agent_toolset": _COMMON | {"agent", "identifier"},
-    **dict.fromkeys(BUILTIN_AGENT_TOOLS, _COMMON),
-}
+_COMMON = frozenset(item.name for item in AGENT_TOOL.fields if item.read)
+# The keys each tool type takes: the common keys, then the type's own.
+TOOL_KEYS: Mapping[str, frozenset[str]] = AGENT_TOOL.variant_keys()
 # Every key some type takes. A key outside it is not a misplaced key but an unknown one.
-_KNOWN_KEYS = frozenset(key for keys in TOOL_KEYS.values() for key in keys)
-_COLUMN_TYPES = frozenset(("string", "datetime"))
+_KNOWN_KEYS = AGENT_TOOL.read_keys()
 # Parameter type families Snowflake's tool runtime cannot pass a generic tool's argument as.
 _UNCALLABLE_TYPES = frozenset(("ARRAY", "OBJECT", "VARIANT"))
 # JSON Schema input types, by the Snowflake type families each may carry.
@@ -124,7 +106,7 @@ def _descriptor_problem(descriptor: object) -> str | None:
     if not isinstance(descriptor, Mapping):
         return "the descriptor is not a mapping"
     kind = descriptor.get("type")
-    if not isinstance(kind, str) or kind.casefold() not in _COLUMN_TYPES:
+    if not isinstance(kind, str) or kind.casefold() not in SEARCH_COLUMN_TYPES:
         return f"type is {kind!r}, not string or datetime"
     for flag in ("searchable", "filterable"):
         if not isinstance(descriptor.get(flag), bool):
