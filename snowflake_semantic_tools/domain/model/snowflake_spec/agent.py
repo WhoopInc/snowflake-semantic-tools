@@ -189,7 +189,7 @@ TOOL_RESOURCES: Mapping[str, SpecNode] = MappingProxyType(
         ),
     }
 )
-_TOOL_SPEC = SpecNode(
+TOOL_SPEC = SpecNode(
     (
         SpecKey("type", _STRING, "The tool's type.", (_tool("type"),)),
         SpecKey(
@@ -378,7 +378,7 @@ AGENT_SPEC = SpecNode(
             "tools",
             _LIST,
             "The agent's tools, in order.",
-            items=SpecNode((SpecKey("tool_spec", _MAPPING, "The tool.", node=_TOOL_SPEC),)),
+            items=SpecNode((SpecKey("tool_spec", _MAPPING, "The tool.", node=TOOL_SPEC),)),
         ),
         SpecKey(
             "tool_resources",

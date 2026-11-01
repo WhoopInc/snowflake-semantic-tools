@@ -41,8 +41,9 @@ from snowflake_semantic_tools.domain.model.authored import NodePath, SourcePosit
 from snowflake_semantic_tools.domain.model.authored_schema import COWORK_PROFILE, node_patterns
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileModel, CoworkProfileTool, CoworkSubagent
+from snowflake_semantic_tools.domain.model.snowflake_spec import COWORK_SPEC
 from snowflake_semantic_tools.domain.parse.names import name_warnings
-from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, passthrough_diagnostics
+from snowflake_semantic_tools.domain.parse.passthrough import passthrough_diagnostics
 from snowflake_semantic_tools.domain.validate.cowork_profile import cowork_profile_diagnostics
 from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
@@ -174,7 +175,7 @@ def _parse_profile(
     )
     passthrough = read.mapped(spec.get("passthrough"), "spec.passthrough")
     diagnostics.extend(
-        passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
+        passthrough_diagnostics(f"{name}.spec", passthrough, COWORK_SPEC, subject=subject, origin=origin)
     )
     model = CoworkProfileModel(
         name=name,

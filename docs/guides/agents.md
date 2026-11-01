@@ -92,12 +92,15 @@ top-level keys:
 Under `spec:`:
 
 - `instructions`, `tools`, and `skills` are described below.
-- `passthrough` holds keys SST does not model; they are added to the rendered
-  spec last, unvalidated, and reported (`SST-PRS024`, and `SST-VAL014` once per
-  agent). With `snowflake.allow_unknown_keys: false`, each such key is an error
-  instead (`SST-VAL013`), as are a tool's `passthrough` and
-  `tool_spec_passthrough` keys. A key SST renders itself is an error there
-  (`SST-PRS023`).
+- `passthrough` holds keys SST does not model; they are merged into the
+  rendered spec last, unvalidated, and reported (`SST-PRS024`, and `SST-VAL014`
+  once per agent). A mapping merges into a section SST renders, so
+  `passthrough: {models: {fallback: x}}` adds `models.fallback` beside the
+  orchestration model; a key SST renders itself, such as `models.orchestration`
+  or `tools`, is an error there (`SST-PRS023`). `sst import` keeps a live
+  agent's unmodelled keys this way, at whatever depth they sit. With
+  `snowflake.allow_unknown_keys: false`, each such key is an error instead
+  (`SST-VAL013`), as are a tool's `passthrough` and `tool_spec_passthrough` keys.
 
 An agent with only a `name:` is valid. Its spec holds only what the `agents:`
 settings supply, and with no tools it is a warning (`SST-RND010`).

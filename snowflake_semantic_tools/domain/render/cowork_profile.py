@@ -24,6 +24,7 @@ from snowflake_semantic_tools.domain.model.cowork_profile import (
 )
 from snowflake_semantic_tools.domain.render.agent import (
     agent_render_checks,
+    merge_passthrough,
     render_instructions,
     render_skills,
     render_spec_json,
@@ -46,7 +47,7 @@ def render_cowork_profile_spec(resolved: ResolvedCoworkProfile) -> dict[str, obj
     comes first, then each of the profile's built-in tools as an agent's built-in renders, and
     the router's entry holds the subagents in order. Each subagent's `name` is its `source.fqn`,
     the agent routing runs. The instructions and skills appear only when they have content, and
-    the `passthrough` keys go in last, so they replace any section of the same name.
+    the `passthrough` keys go in last, merged into what SST writes, as an agent's are.
 
     Example:
         A profile routing to the agent `DB.S.SALES`, with no instructions, renders:
@@ -74,7 +75,7 @@ def render_cowork_profile_spec(resolved: ResolvedCoworkProfile) -> dict[str, obj
     }
     if model.skills:
         document["skills"] = render_skills(model.skills)
-    document.update(model.passthrough)
+    merge_passthrough(document, model.passthrough)
     return document
 
 

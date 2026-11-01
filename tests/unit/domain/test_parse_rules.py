@@ -6,9 +6,10 @@ from dataclasses import dataclass
 
 from snowflake_semantic_tools.domain.diagnostics import Origin
 from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
+from snowflake_semantic_tools.domain.model.snowflake_spec import AGENT_SPEC
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import identifier_problem, name_warnings
-from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, passthrough_diagnostics
+from snowflake_semantic_tools.domain.parse.passthrough import passthrough_diagnostics
 from snowflake_semantic_tools.domain.parse.records import (
     is_frozen_record,
     mutable_records,
@@ -55,18 +56,17 @@ def test_a_name_valid_only_once_quoted_is_its_own_code() -> None:
     assert already is not None and already.code == "SST-PRS005"
 
 
-def test_a_passthrough_block_names_each_key_sst_renders_then_counts_the_rest() -> None:
-    found = passthrough_diagnostics(
-        "agent:a", {"models": {}, "extra": 1, "other": 2}, AGENT_SPEC_KEYS, subject="agent:a", origin=ORIGIN
-    )
+def test_a_passthrough_block_names_each_path_it_overwrites_then_counts_the_keys_it_adds() -> None:
+    block = {"models": {"orchestration": "x", "fallback": 1}, "extra": 1, "tools": [], "instructions": "x"}
+    found = passthrough_diagnostics("agent:a", block, AGENT_SPEC, subject="agent:a", origin=ORIGIN)
     assert [(item.code, item.context.get("key"), item.context.get("count")) for item in found] == [
-        ("SST-PRS023", "models", None),
+        ("SST-PRS023", "models.orchestration", None),
+        ("SST-PRS023", "tools", None),
+        ("SST-PRS023", "instructions", None),
         ("SST-PRS024", None, 2),
     ]
-    assert (
-        passthrough_diagnostics("agent:a", {"tools": []}, AGENT_SPEC_KEYS, subject="agent:a", origin=ORIGIN)[0].code
-        == "SST-PRS023"
-    )
+    # Mapping into a mapping SST writes adds keys; an empty one adds none.
+    assert passthrough_diagnostics("agent:a", {"models": {}}, AGENT_SPEC, subject="agent:a", origin=ORIGIN) == ()
 
 
 def test_root_keys_no_type_owns_are_reported_one_by_one_or_as_the_whole_document() -> None:

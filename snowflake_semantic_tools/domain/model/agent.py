@@ -53,7 +53,7 @@ class AgentTool:
         agent_ref: The name an agent toolset's `{{ agent('<name>') }}` gives.
         passthrough: Keys added last to a search or generic tool's resources, so they override
             the computed ones; an MCP tool's resources are exactly these.
-        tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+        tool_spec_passthrough: Keys merged last into the rendered `tool_spec`, as `merge_passthrough` merges.
         declared_keys: Every key the entry writes, sorted; validation reports one the type does
             not take.
     """
@@ -147,7 +147,7 @@ class AgentModel:
         enabled: False leaves the agent out of the compiled project.
         meta: Free-form metadata; it counts toward the agent's definition fingerprint.
         tags: `(tag name, value)` pairs, in the order the resolved `tags` setting lists them.
-        passthrough: Keys added last to the rendered spec, so they override the computed ones.
+        passthrough: Keys merged last into the rendered spec, mapping into mapping (`merge_passthrough`).
         evals: None when the agent declares no `evals:`.
         deprecated: The agent is retired from use; no alias may still point at a version of it.
         budget_tokens_documented: A comment on or just above `config.budget_tokens` says it
@@ -202,7 +202,7 @@ class ResolvedAgentTool:
             when empty.
         depends_on: The artifact keys of the project artifacts it uses, such as the semantic
             view an Analyst tool queries; a referenced tool member adds none.
-        tool_spec_passthrough: Keys added last to the rendered `tool_spec`, so they override it.
+        tool_spec_passthrough: Keys merged last into the rendered `tool_spec`, as `merge_passthrough` merges.
         member: The tool member the tool resolved through; None for a tool that names none.
         external: The object the tool calls is one SST does not publish: a referenced tool
             member, or an agent outside the project. Connected validation looks it up.

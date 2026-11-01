@@ -61,7 +61,7 @@ def test_a_bare_profile_renders_its_model_router_and_subagents_only() -> None:
     }
 
 
-def test_every_section_renders_in_order_and_passthrough_replaces_its_namesake() -> None:
+def test_every_section_renders_in_order_and_passthrough_merges_into_its_namesake() -> None:
     model = _profile(
         orchestration_model="claude-4-sonnet",
         orchestration_instructions="Route data questions.",
@@ -69,11 +69,11 @@ def test_every_section_renders_in_order_and_passthrough_replaces_its_namesake() 
         sample_questions=("Who owns pipeline?",),
         tools=(CoworkProfileTool("web_search", None, ORIGIN), CoworkProfileTool("code_execution", "run", ORIGIN)),
         skills=(AgentSkill("semantics", "CORTEX_EXTENSION", "DB.S.SEMANTICS", "SST_ABC", ref="skill"),),
-        passthrough=MappingProxyType({"models": {"orchestration": "override"}, "mcp_servers": []}),
+        passthrough=MappingProxyType({"models": {"fallback": "other"}, "mcp_servers": []}),
     )
     document = render_cowork_profile_spec(ResolvedCoworkProfile(model, (SALES, PARTNER)))
     assert list(document) == ["models", "instructions", "tools", "tool_resources", "skills", "mcp_servers"]
-    assert document["models"] == {"orchestration": "override"}
+    assert document["models"] == {"orchestration": "claude-4-sonnet", "fallback": "other"}
     assert document["instructions"] == {
         "orchestration": "Route data questions.",
         "response": "Be brief.",

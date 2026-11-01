@@ -11,6 +11,7 @@ from snowflake_semantic_tools.domain.model.snowflake_spec.agent import (
     AGENT_SPEC,
     EXECUTION_ENVIRONMENT,
     TOOL_RESOURCES,
+    TOOL_SPEC,
 )
 from snowflake_semantic_tools.domain.model.snowflake_spec.cowork import (
     COWORK_NOT_IN_SPEC,
@@ -34,7 +35,10 @@ from snowflake_semantic_tools.domain.model.snowflake_spec.model import (
     SpecKey,
     SpecNode,
     SpecPath,
+    merges_into,
+    passthrough_split,
     sources,
+    unmodelled,
     walk,
 )
 
@@ -52,6 +56,7 @@ __all__ = [
     "ROUTER_TYPE",
     "SUBAGENT_SOURCE",
     "TOOL_RESOURCES",
+    "TOOL_SPEC",
     "Authored",
     "Derived",
     "Documented",
@@ -64,6 +69,9 @@ __all__ = [
     "SpecNode",
     "SpecPath",
     "docs",
+    "merges_into",
+    "passthrough_split",
     "sources",
+    "unmodelled",
     "walk",
 ]

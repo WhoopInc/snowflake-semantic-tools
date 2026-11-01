@@ -42,8 +42,9 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
     unread_fields,
 )
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings, setting_value
+from snowflake_semantic_tools.domain.model.snowflake_spec import AGENT_SPEC, TOOL_SPEC, SpecNode
 from snowflake_semantic_tools.domain.parse.names import name_warnings
-from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
+from snowflake_semantic_tools.domain.parse.passthrough import passthrough_diagnostics
 from snowflake_semantic_tools.domain.resolve.calls import literal_problem
 from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
@@ -271,9 +272,7 @@ def _parse_agent(
 
     meta = mapped(tree.get("meta"), "meta")
     passthrough = mapped(spec.get("passthrough"), "spec.passthrough")
-    diagnostics.extend(
-        passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
-    )
+    diagnostics.extend(passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC, subject=subject, origin=origin))
     eval_files = parse_eval_files(relative, tree.get("evals"), diagnostics, kind="agent")
     diagnostics.extend(_key_diagnostics(relative, tree, lines, subject))
     origin_of = config_origins(relative, lines)
@@ -412,7 +411,7 @@ def _parse_tool(
         tool_spec_passthrough=_checked_passthrough(
             mapped("tool_spec_passthrough"),
             f"{subject}.tools[{index}].tool_spec_passthrough",
-            TOOL_SPEC_KEYS,
+            TOOL_SPEC,
             subject,
             origin,
             diagnostics,
@@ -435,7 +434,7 @@ def _described(value: object, index: int, subject: str, origin: Origin, diagnost
 def _checked_passthrough(
     block: _Block,
     artifact: str,
-    rendered: frozenset[str],
+    rendered: SpecNode,
     subject: str,
     origin: Origin,
     diagnostics: list[Diagnostic],

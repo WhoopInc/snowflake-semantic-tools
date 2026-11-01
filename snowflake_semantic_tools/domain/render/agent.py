@@ -28,7 +28,7 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
     `models.orchestration` is always present; every other section appears only when it has
     content. A built-in tool, or one with no resources, gets no `tool_resources` entry, and a
     skill without a name renders no `name`, which only a STAGE source has once skills resolve.
-    The `passthrough` keys go in last, so they replace any section of the same name.
+    The `passthrough` keys go in last, merged into what SST writes (`merge_passthrough`).
 
     Example:
         An agent whose one tool is a Cortex Analyst tool over the view `DB.S.SALES` renders:
@@ -63,8 +63,25 @@ def render_agent_spec(model: AgentModel, tools: tuple[ResolvedAgentTool, ...]) -
             document["tool_resources"] = resources
     if model.skills:
         document["skills"] = render_skills(model.skills)
-    document.update(model.passthrough)
+    merge_passthrough(document, model.passthrough)
     return document
+
+
+def merge_passthrough(document: dict[str, object], passthrough: Mapping[str, object]) -> None:
+    """Copy `passthrough` into `document`: a mapping into a mapping key by key, any other value whole.
+
+    A key `document` holds keeps its place; a new one is added after the rest. Loading refuses a
+    passthrough key that would overwrite one SST writes (SST-PRS023), so merging adds keys SST
+    does not write, such as `models.fallback`, and replaces none it does.
+    """
+    for key, value in passthrough.items():
+        held = document.get(key)
+        if isinstance(held, dict) and isinstance(value, Mapping):
+            merged = dict(held)
+            merge_passthrough(merged, value)
+            document[key] = merged
+        else:
+            document[key] = value
 
 
 def render_instructions(
@@ -215,5 +232,5 @@ def render_tool_entry(tool: ResolvedAgentTool) -> dict[str, object]:
     }
     if tool.input_schema:
         spec["input_schema"] = dict(tool.input_schema)
-    spec.update(tool.tool_spec_passthrough)
+    merge_passthrough(spec, tool.tool_spec_passthrough)
     return {"tool_spec": spec}

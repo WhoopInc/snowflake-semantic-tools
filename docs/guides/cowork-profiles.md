@@ -92,7 +92,7 @@ meta:
 | `spec.subagents` | The agents the profile routes to; at least one (SST-VAL871). |
 | `spec.tools` | `web_search` or `code_execution` only (SST-VAL876): a data question belongs on an agent. |
 | `spec.skills` | Skills, pinned as an agent pins them. |
-| `spec.passthrough` | Keys copied into the specification unread, such as `mcp_servers` or `mcp_config`. It cannot set `tools` or `tool_resources` (SST-PRS023). |
+| `spec.passthrough` | Keys merged into the specification unread, such as `mcp_servers`, `mcp_config` or an `orchestration` section. It cannot overwrite a key SST renders, such as `tools` or `tool_resources` (SST-PRS023). |
 | `config` | The profile's own `cowork_profiles:` settings, without their `+`. |
 
 ### Orchestration model

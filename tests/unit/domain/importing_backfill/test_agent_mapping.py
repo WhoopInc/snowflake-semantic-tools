@@ -72,19 +72,25 @@ def test_an_agent_whose_security_matches_its_folder_writes_no_config() -> None:
     assert "config" not in _document(imported)
 
 
-def test_unmodelled_model_orchestration_and_instruction_keys_keep_whole_sections_in_passthrough() -> None:
+def test_unmodelled_model_orchestration_and_instruction_keys_alone_are_kept_in_passthrough() -> None:
     spec = {
         "models": {"orchestration": "auto", "fallback": "other"},
-        "orchestration": {"budget": {"seconds": 5}, "planner": "fast"},
+        "orchestration": {"budget": {"seconds": 5, "steps": 3}, "planner": "fast"},
         "instructions": {"response": "Hi.", "system": "Be terse."},
     }
     imported = import_agent(_live(spec), index(), _placed())
-    assert _spec(imported) == {"passthrough": spec}
-    assert _document(imported)["config"] == {"orchestration_model": "auto"}
-    details = _details(imported)
-    assert any("`models` holds keys SST does not model" in detail for detail in details)
-    assert any("`orchestration` holds planner, which SST does not model for an agent" in detail for detail in details)
-    assert any("`instructions` holds keys SST does not model" in detail for detail in details)
+    # What SST models becomes settings and instructions; only the rest is passed through, so the
+    # file loads (passthrough merges into these sections) and renders the live spec again.
+    assert _spec(imported) == {
+        "instructions": {"response": "Hi."},
+        "passthrough": {
+            "models": {"fallback": "other"},
+            "orchestration": {"budget": {"steps": 3}, "planner": "fast"},
+            "instructions": {"system": "Be terse."},
+        },
+    }
+    assert _document(imported)["config"] == {"orchestration_model": "auto", "budget_seconds": 5}
+    assert not any("passthrough" in detail for detail in _details(imported))
 
 
 def test_a_sample_question_that_is_not_text_is_dropped() -> None:
@@ -292,4 +298,5 @@ def test_a_bare_cowork_profile_keeps_any_orchestration_in_passthrough() -> None:
         "name": "bot",
         "spec": {"passthrough": {"orchestration": {"budget": {"seconds": 5}}}},
     }
-    assert any("which SST does not model for a cowork_profile" in detail for detail in _details(imported))
+    # A profile renders no orchestration section, so the whole of it is kept, and nothing differs.
+    assert not any("passthrough" in detail for detail in _details(imported))

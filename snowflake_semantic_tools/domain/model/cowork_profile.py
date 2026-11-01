@@ -97,7 +97,7 @@ class CoworkProfileModel:
         enabled: False leaves the profile out of the compiled project.
         meta: Free-form metadata; it counts toward the profile's definition fingerprint.
         tags: `(tag name, value)` pairs, in the order the resolved `tags` setting lists them.
-        passthrough: Keys added last to the rendered spec, so they override the computed ones.
+        passthrough: Keys merged last into the rendered spec, mapping into mapping (`merge_passthrough`).
         deprecated: The profile is retired from use; no alias may still point at a version of it.
         folder: The profile file's directory below `project.cowork_profiles_dir`, one segment per
             directory; the `cowork_profiles:` folder routes along it apply to the profile.

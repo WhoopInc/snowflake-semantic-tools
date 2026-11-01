@@ -1211,7 +1211,7 @@ Fix: correct the spelling
 
 `<artifact>: passthrough key '<key>' is already rendered by SST`
 
-Raised when a passthrough or tool_spec_passthrough key duplicates a rendered key.
+Raised when a passthrough or tool_spec_passthrough key would overwrite a key SST renders, by its dotted path; a mapping merges into a section SST renders, so a key it adds there, such as models.fallback, is not one.
 
 Fix: remove the key from passthrough
 

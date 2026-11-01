@@ -8,8 +8,9 @@ an authored file writes, a configuration setting, a constant, or a value SST wor
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from snowflake_semantic_tools.domain.model.authored_schema import ValueKind
 from snowflake_semantic_tools.domain.model.snowflake_spec.docs import DocPage
@@ -143,3 +144,55 @@ def sources(node: SpecNode) -> Iterator[tuple[SpecPath, Source]]:
     for path, item, _ in walk(node):
         for source in item.sources:
             yield path, source
+
+
+def merges_into(item: SpecKey) -> bool:
+    """Whether a passthrough mapping under `item` merges key by key into what SST writes there.
+
+    A mapping SST writes from its own keys does; a list, a named mapping and a plain value
+    are replaced whole, so passthrough there would overwrite what SST writes.
+    """
+    return item.node is not None and not item.named
+
+
+def passthrough_split(node: SpecNode, block: Mapping[Any, object]) -> tuple[list[str], int]:
+    """Split a passthrough block over `node` into the dotted paths it overwrites and how many keys it adds.
+
+    A key the node does not declare is added, unvalidated. A mapping under a key SST writes as
+    a mapping merges into it, key by key; any other value at a key SST writes overwrites it.
+
+    Example:
+        Over an agent's specification, `{"models": {"fallback": "x"}, "tools": []}` overwrites
+        `tools` and adds one key, `models.fallback`.
+    """
+    overwritten: list[str] = []
+    added = 0
+    for key, value in block.items():
+        declared = node.key(str(key))
+        if declared is None:
+            added += 1
+        elif merges_into(declared) and isinstance(value, Mapping) and declared.node is not None:
+            inner, count = passthrough_split(declared.node, value)
+            overwritten += [f"{key}.{path}" for path in inner]
+            added += count
+        else:
+            overwritten.append(str(key))
+    return overwritten, added
+
+
+def unmodelled(node: SpecNode, value: Mapping[Any, object]) -> dict[str, object]:
+    """Return what `value` holds that `node` does not declare, at any depth, as a passthrough block.
+
+    The inverse of `passthrough_split`: copied over what SST writes from `node`, the result
+    restores `value`'s undeclared keys and overwrites none SST writes.
+    """
+    left: dict[str, object] = {}
+    for key, item in value.items():
+        declared = node.key(str(key))
+        if declared is None:
+            left[str(key)] = item
+        elif merges_into(declared) and isinstance(item, Mapping) and declared.node is not None:
+            inner = unmodelled(declared.node, item)
+            if inner:
+                left[str(key)] = inner
+    return left

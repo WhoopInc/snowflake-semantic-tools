@@ -24,10 +24,8 @@ from snowflake_semantic_tools.domain.importing.placement import Destination
 from snowflake_semantic_tools.domain.importing.references import ProjectIndex
 from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
+from snowflake_semantic_tools.domain.model.snowflake_spec import AGENT_SPEC, COWORK_SPEC, unmodelled
 
-# The spec sections SST renders; any other top-level key is kept in `spec.passthrough`.
-_RENDERED_SECTIONS = frozenset(("models", "orchestration", "instructions", "tools", "tool_resources", "skills"))
-_INSTRUCTION_KEYS = frozenset(("orchestration", "response", "sample_questions"))
 _TOOL_SPEC_KEYS = frozenset(("type", "name", "description", "input_schema"))
 _ROUTER_TYPE = "agent_router"
 # The orchestration settings an agent models, by where its spec holds each.
@@ -37,7 +35,6 @@ _ORCHESTRATION_SETTINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("tool_not_accessible", ("tool_not_accessible",)),
     ("analytical_search", ("capabilities", "analytical_search")),
 )
-_ORCHESTRATION_KEYS = frozenset(("budget", "tool_not_accessible", "capabilities"))
 # Search resources a tool writes as its own keys; the rest come from its member or are kept.
 # A tool's id and title columns are `ref()` calls (SST-REF050); its member declares them instead.
 _SEARCH_KEYS = ("max_results", "filter", "stage_path", "relative_path_column")
@@ -171,15 +168,14 @@ def import_agent(live: LiveAgent, index: ProjectIndex, placement: AgentPlacement
     if profile:
         document["profile"] = profile
     config = _location(mapping)
-    passthrough: dict[str, object] = {}
-    _orchestration(mapping, live.spec, config, passthrough, modelled=True)
+    _orchestration(mapping, live.spec, config, modelled=True)
     if live.secure is not None and live.secure != bool(placement.inherited.get("secure", False)):
         config["secure"] = live.secure
     _setting(mapping, config, "alias", live.alias)
     if config:
         document["config"] = config
     spec: dict[str, object] = {}
-    instructions = _instructions(mapping, live.spec, passthrough)
+    instructions = _instructions(mapping, live.spec)
     if instructions:
         spec["instructions"] = instructions
     resources = _mapping_of(live.spec.get("tool_resources"))
@@ -189,7 +185,7 @@ def import_agent(live: LiveAgent, index: ProjectIndex, placement: AgentPlacement
     skills = _skills(mapping, live.spec)
     if skills:
         spec["skills"] = skills
-    passthrough.update({key: value for key, value in live.spec.items() if key not in _RENDERED_SECTIONS})
+    passthrough = unmodelled(AGENT_SPEC, live.spec)
     if passthrough:
         spec["passthrough"] = passthrough
     if spec:
@@ -215,13 +211,12 @@ def import_cowork_profile(live: LiveAgent, index: ProjectIndex, placement: Agent
     if display:
         document["display"] = display
     config = _location(mapping)
-    passthrough: dict[str, object] = {}
-    _orchestration(mapping, live.spec, config, passthrough, modelled=False)
+    _orchestration(mapping, live.spec, config, modelled=False)
     _setting(mapping, config, "alias", live.alias)
     if config:
         document["config"] = config
     spec: dict[str, object] = {}
-    instructions = _instructions(mapping, live.spec, passthrough)
+    instructions = _instructions(mapping, live.spec)
     if instructions:
         spec["instructions"] = instructions
     resources = _mapping_of(live.spec.get("tool_resources"))
@@ -245,7 +240,7 @@ def import_cowork_profile(live: LiveAgent, index: ProjectIndex, placement: Agent
     skills = _skills(mapping, live.spec)
     if skills:
         spec["skills"] = skills
-    passthrough.update({key: value for key, value in live.spec.items() if key not in _RENDERED_SECTIONS})
+    passthrough = unmodelled(COWORK_SPEC, live.spec)
     if passthrough:
         spec["passthrough"] = passthrough
     if spec:
@@ -268,31 +263,17 @@ def _location(mapping: _Mapping) -> dict[str, object]:
     return {"database": database, "schema": schema}
 
 
-def _orchestration(
-    mapping: _Mapping,
-    spec: Mapping[str, object],
-    config: dict[str, object],
-    passthrough: dict[str, object],
-    *,
-    modelled: bool,
-) -> None:
-    """Write the orchestration model and settings into `config`, or the sections into `passthrough`."""
+def _orchestration(mapping: _Mapping, spec: Mapping[str, object], config: dict[str, object], *, modelled: bool) -> None:
+    """Write the orchestration model, and an agent's orchestration settings, into `config`.
+
+    What the spec's `models` and `orchestration` hold beyond these is kept in `spec.passthrough`
+    by `unmodelled`; a CoWork profile models no `orchestration` section, so it is kept whole.
+    """
     models = _mapping_of(spec.get("models"))
-    if set(models) - {"orchestration"}:
-        passthrough["models"] = dict(models)
-        mapping.differs("`models` holds keys SST does not model; the whole section is kept in spec.passthrough")
     _setting(mapping, config, "orchestration_model", models.get("orchestration"))
-    orchestration = _mapping_of(spec.get("orchestration"))
-    unmodelled = set(orchestration) - _ORCHESTRATION_KEYS if modelled else set(orchestration)
-    if unmodelled:
-        passthrough["orchestration"] = dict(orchestration)
-        mapping.differs(
-            f"`orchestration` holds {', '.join(sorted(unmodelled))}, which SST does not model for "
-            f"{_article(mapping.artifact_type)} {mapping.artifact_type}; the whole section is kept in spec.passthrough"
-        )
-        return
     if not modelled:
         return
+    orchestration = _mapping_of(spec.get("orchestration"))
     for key, path in _ORCHESTRATION_SETTINGS:
         _setting(mapping, config, key, _at(orchestration, path))
 
@@ -311,14 +292,10 @@ def _setting(mapping: _Mapping, config: dict[str, object], key: str, live: objec
         config[key] = live
 
 
-def _instructions(mapping: _Mapping, spec: Mapping[str, object], passthrough: dict[str, object]) -> dict[str, object]:
-    """Map the instructions, each long one to a file; a section SST does not model goes in passthrough."""
+def _instructions(mapping: _Mapping, spec: Mapping[str, object]) -> dict[str, object]:
+    """Map the instructions, each long one to a file; a key SST does not model is kept in passthrough."""
     instructions = _mapping_of(spec.get("instructions"))
     if not instructions:
-        return {}
-    if set(instructions) - _INSTRUCTION_KEYS:
-        passthrough["instructions"] = dict(instructions)
-        mapping.differs("`instructions` holds keys SST does not model; the whole section is kept in spec.passthrough")
         return {}
     written: dict[str, object] = {}
     for key in ("orchestration", "response"):
@@ -601,8 +578,3 @@ def _qualified(value: object) -> QualifiedName | None:
         return QualifiedName.parse(value)
     except ValueError:
         return None
-
-
-def _article(word: str) -> str:
-    """Return the indefinite article `word` takes: `an agent`, `a cowork_profile`."""
-    return "an" if word[:1].casefold() in "aeiou" else "a"
