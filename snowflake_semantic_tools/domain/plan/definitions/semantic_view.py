@@ -33,6 +33,15 @@ from snowflake_semantic_tools.domain.model.semantic_view import (
 from snowflake_semantic_tools.domain.plan.member_diff import Definition, Member, Value
 from snowflake_semantic_tools.domain.ports.snowflake.catalog import DescribedMember
 from snowflake_semantic_tools.domain.render.semantic_view import render_window
+from snowflake_semantic_tools.domain.snowflake_yaml.semantic_view import (
+    YamlColumn,
+    YamlMetric,
+    YamlRelationship,
+    YamlSortKey,
+    YamlTable,
+    YamlVerifiedQuery,
+    read_view,
+)
 
 # The order members are listed in, by kind.
 _ORDER = (
@@ -143,136 +152,116 @@ def live_view_from_yaml(document: Mapping[str, Any]) -> Definition:
     Raises:
         ValueError: the document names one member twice, or is not a semantic view's.
     """
-    if not isinstance(document.get("tables"), list):
+    view = read_view(document)
+    if not view.lists_tables:
         raise ValueError("the document holds no `tables` list")
     members: list[Member] = []
-    for table in _items(document.get("tables")):
-        name = str(table.get("name") or "")
+    for table in view.tables:
         members.append(_yaml_table(table))
         members.extend(
-            _constraint(
-                str(item.get("name") or ""),
-                "DISTINCT_RANGE",
-                str(_entry(item.get("distinct_range")).get("start_column") or ""),
-                str(_entry(item.get("distinct_range")).get("end_column") or ""),
-            )
-            for item in _items(table.get("constraints"))
-            if isinstance(item.get("distinct_range"), Mapping)
+            _constraint(item.name, "DISTINCT_RANGE", item.start_column, item.end_column) for item in table.constraints
         )
-        for section in ("facts", "dimensions", "time_dimensions"):
-            members.extend(_yaml_column(section, name, item) for item in _items(table.get(section)))
-        members.extend(_yaml_metric(f"{name}.{item.get('name')}", item) for item in _items(table.get("metrics")))
-    members.extend(_yaml_relationship(item) for item in _items(document.get("relationships")))
-    members.extend(_yaml_metric(str(item.get("name") or ""), item) for item in _items(document.get("metrics")))
+        members.extend(_yaml_column(table.name, column) for column in table.columns)
+        members.extend(_yaml_metric(f"{table.name}.{metric.name}", metric) for metric in table.metrics)
+    members.extend(_yaml_relationship(item) for item in view.relationships)
+    members.extend(_yaml_metric(metric.name, metric) for metric in view.metrics)
     members.extend(
         _variable(
-            str(item.get("name") or ""),
-            str(item.get("data_type") or ""),
-            str(item.get("default_value") if item.get("default_value") is not None else ""),
-            str(item.get("description") or ""),
+            item.name,
+            item.data_type,
+            str(item.default_value) if item.default_value is not None else "",
+            item.description,
         )
-        for item in _items(document.get("variables"))
+        for item in view.variables
     )
-    members.extend(_yaml_query(item) for item in _items(document.get("verified_queries")))
-    instructions = _entry(document.get("module_custom_instructions"))
-    members.extend(
-        Member("instruction", label, (("text", str(instructions.get(label) or "")),)) for _, label in _INSTRUCTIONS
-    )
-    members.append(Member("view", "comment", (("text", unmarked_comment(str(document.get("description") or ""))),)))
-    members.append(_staleness(str(document.get("max_staleness") or "")))
+    members.extend(_yaml_query(item) for item in view.verified_queries)
+    texts = {"sql_generation": view.sql_generation, "question_categorization": view.question_categorization}
+    members.extend(Member("instruction", label, (("text", texts[label]),)) for _, label in _INSTRUCTIONS)
+    members.append(Member("view", "comment", (("text", unmarked_comment(view.description)),)))
+    members.append(_staleness(view.max_staleness))
     return Definition(_sorted(members))
 
 
-def _yaml_table(table: Mapping[str, Any]) -> Member:
-    base = _entry(table.get("base_table"))
-    parts = tuple(str(base.get(key) or "") for key in ("database", "schema", "table"))
-    qualified = QualifiedName(*(Identifier.shown(part) for part in parts)).sql if all(parts) else ""
+def _yaml_table(table: YamlTable) -> Member:
+    qualified = (
+        QualifiedName(*(Identifier.shown(part) for part in table.base_table)).sql if all(table.base_table) else ""
+    )
     return Member(
         "table",
-        _display(str(table.get("name") or "")),
+        _display(table.name),
         (
             ("base_table", qualified),
-            ("primary_key", _upper(_strings(_entry(table.get("primary_key")).get("columns")))),
-            (
-                "unique_keys",
-                tuple(", ".join(_upper(_strings(key.get("columns")))) for key in _items(table.get("unique_keys"))),
-            ),
-            ("synonyms", _strings(table.get("synonyms"))),
-            ("comment", str(table.get("description") or "")),
+            ("primary_key", _upper(table.primary_key)),
+            ("unique_keys", tuple(", ".join(_upper(key)) for key in table.unique_keys)),
+            ("synonyms", table.synonyms),
+            ("comment", table.description),
         ),
     )
 
 
-def _yaml_column(section: str, table: str, item: Mapping[str, Any]) -> Member:
-    labels = {str(label).casefold() for label in _strings(item.get("labels"))}
-    kind = "filter" if "filter" in labels else "fact" if section == "facts" else "dimension"
+def _yaml_column(table: str, column: YamlColumn) -> Member:
+    kind = "filter" if column.is_filter else "fact" if column.section == "facts" else "dimension"
     properties: list[tuple[str, Value]] = [
-        ("expression", str(item.get("expr") or "")),
-        ("synonyms", _strings(item.get("synonyms"))),
-        ("comment", str(item.get("description") or "")),
-        ("sample_values", _strings(item.get("sample_values"))),
+        ("expression", column.expr),
+        ("synonyms", column.synonyms),
+        ("comment", column.description),
+        ("sample_values", column.sample_values),
     ]
     if kind == "dimension":
-        properties.append(("is_enum", "true" if item.get("is_enum") is True else ""))
-    return Member(kind, _display(f"{table}.{item.get('name')}"), tuple(properties))
+        properties.append(("is_enum", "true" if column.is_enum else ""))
+    return Member(kind, _display(f"{table}.{column.name}"), tuple(properties))
 
 
-def _yaml_metric(qualified: str, item: Mapping[str, Any]) -> Member:
-    expression = str(item.get("expr") or "")
+def _yaml_metric(qualified: str, metric: YamlMetric) -> Member:
     properties: list[tuple[str, Value]] = []
-    if _windowed(expression):
-        properties.append(("window_expression", _spaced(expression)))
+    if _windowed(metric.expr):
+        properties.append(("window_expression", _spaced(metric.expr)))
     else:
-        properties.append(("expression", expression))
+        properties.append(("expression", metric.expr))
     properties += [
-        ("using", _upper(_strings(item.get("using_relationships")))),
-        (
-            "non_additive_by",
-            tuple(_yaml_sort_key(entry) for entry in _items(item.get("non_additive_dimensions"))),
-        ),
-        ("synonyms", _strings(item.get("synonyms"))),
-        ("comment", str(item.get("description") or "")),
-        ("access", "private" if str(item.get("access_modifier") or "") == "private_access" else "public"),
+        ("using", _upper(metric.using_relationships)),
+        ("non_additive_by", tuple(_yaml_sort_key(entry) for entry in metric.non_additive_dimensions)),
+        ("synonyms", metric.synonyms),
+        ("comment", metric.description),
+        ("access", "private" if metric.access_modifier == "private_access" else "public"),
     ]
     return Member("metric", _display(qualified), tuple(properties))
 
 
-def _yaml_relationship(item: Mapping[str, Any]) -> Member:
+def _yaml_relationship(item: YamlRelationship) -> Member:
     """A relationship; an ASOF or range one compares its referenced column or bounds, not its columns."""
-    columns = _items(item.get("relationship_columns"))
-    asof = next((str(entry.get("right_column") or "") for entry in columns if entry.get("type") == "asof"), "")
-    ranged = next((_entry(entry.get("right_range")) for entry in columns if entry.get("type") == "range"), None)
+    asof = next((entry.right_column for entry in item.columns if entry.type == "asof"), "")
+    ranged = next((entry for entry in item.columns if entry.type == "range"), None)
     properties: list[tuple[str, Value]] = [
-        ("table", _display(str(item.get("left_table") or ""))),
-        ("columns", _upper(tuple(str(entry.get("left_column") or "") for entry in columns))),
-        ("ref_table", _display(str(item.get("right_table") or ""))),
+        ("table", _display(item.left_table)),
+        ("columns", _upper(tuple(entry.left_column for entry in item.columns))),
+        ("ref_table", _display(item.right_table)),
     ]
     if not asof and ranged is None:
-        properties.append(("ref_columns", _upper(tuple(str(entry.get("right_column") or "") for entry in columns))))
-    bounds = f"{ranged.get('start_column') or ''} AND {ranged.get('end_column') or ''}" if ranged is not None else ""
+        properties.append(("ref_columns", _upper(tuple(entry.right_column for entry in item.columns))))
+    bounds = f"{ranged.range_start} AND {ranged.range_end}" if ranged is not None else ""
     properties += [("asof_column", asof.upper()), ("range", bounds.upper())]
-    return Member("relationship", _display(str(item.get("name") or "")), tuple(properties))
+    return Member("relationship", _display(item.name), tuple(properties))
 
 
-def _yaml_query(item: Mapping[str, Any]) -> Member:
-    verified_at = item.get("verified_at")
+def _yaml_query(item: YamlVerifiedQuery) -> Member:
     return Member(
         "verified_query",
-        _display(str(item.get("name") or "")),
+        _display(item.name),
         (
-            ("question", str(item.get("question") or "")),
-            ("sql", str(item.get("sql") or "")),
-            ("verified_at", "" if verified_at is None else str(verified_at)),
-            ("verified_by", str(item.get("verified_by") or "")),
-            ("onboarding_question", "true" if item.get("use_as_onboarding_question") is True else ""),
+            ("question", item.question),
+            ("sql", item.sql),
+            ("verified_at", "" if item.verified_at is None else str(item.verified_at)),
+            ("verified_by", item.verified_by),
+            ("onboarding_question", "true" if item.use_as_onboarding_question else ""),
         ),
     )
 
 
-def _yaml_sort_key(item: Mapping[str, Any]) -> str:
-    column = f"{item.get('table')}.{item.get('dimension')}".upper()
-    descending = str(item.get("sort_direction") or "").casefold() == "descending"
-    nulls = str(item.get("null_order") or ("first" if descending else "last")).upper()
+def _yaml_sort_key(item: YamlSortKey) -> str:
+    column = f"{item.table}.{item.dimension}".upper()
+    descending = item.sort_direction.casefold() == "descending"
+    nulls = (item.null_order or ("first" if descending else "last")).upper()
     return f"{column} {'DESC' if descending else 'ASC'} NULLS {nulls}"
 
 
@@ -316,18 +305,6 @@ def _windowed(expression: str) -> bool:
 def _spaced(text: str) -> str:
     """Text with each run of whitespace one space, as a window's rendered and live forms compare."""
     return " ".join(text.split())
-
-
-def _items(value: object) -> tuple[Mapping[str, Any], ...]:
-    return tuple(item for item in value if isinstance(item, Mapping)) if isinstance(value, list) else ()
-
-
-def _entry(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _strings(value: object) -> tuple[str, ...]:
-    return tuple(str(item) for item in value) if isinstance(value, list) else ()
 
 
 def _live_member(kind: str | None, parent: str | None, name: str, values: dict[str, list[str]]) -> Member | None:

@@ -45,9 +45,21 @@ from snowflake_semantic_tools.domain.importing.references import ProjectIndex
 from snowflake_semantic_tools.domain.model.dbt import DbtColumn, DbtModel
 from snowflake_semantic_tools.domain.model.identifier import Identifier, QualifiedName
 from snowflake_semantic_tools.domain.model.lifecycle.marker import unmarked_comment
+from snowflake_semantic_tools.domain.snowflake_yaml.semantic_view import (
+    YamlColumn,
+    YamlMetric,
+    YamlRelationship,
+    YamlSortKey,
+    YamlTable,
+    YamlVariable,
+    YamlVerifiedQuery,
+    YamlView,
+    read_view,
+)
 from snowflake_semantic_tools.domain.sql.lexer import LexError
 
-_COLUMN_TYPES = (("facts", "fact"), ("dimensions", "dimension"), ("time_dimensions", "time_dimension"))
+# The column type SST writes for each column section of the document.
+_COLUMN_TYPES = MappingProxyType({"facts": "fact", "dimensions": "dimension", "time_dimensions": "time_dimension"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,36 +115,33 @@ def import_semantic_view(
         SST-IMP015: sample values of PII-tagged columns were dropped.
     """
     view = _View(name, index, placement)
-    tables = list(_items(document.get("tables")))
-    refs = [reference for table in tables if (reference := _table_ref(view, table)) is not None]
+    live = read_view(document)
+    refs = [reference for table in live.tables if (reference := _table_ref(view, table)) is not None]
     if any(item.blocks for item in view.diagnostics):
         return ImportedObject("semantic_view", name, view.name, diagnostics=tuple(view.diagnostics))
-    names = _names(view, document)
-    for table in tables:
+    names = _names(view, live)
+    for table in live.tables:
         _table(view, table, names)
-    for item in _items(document.get("relationships")):
-        _relationship(view, item, names)
-    for table in tables:
-        for item in _items(table.get("metrics")):
-            _metric(view, item, names)
-    for item in _items(document.get("metrics")):
-        _metric(view, item, names)
-    for item in _items(document.get("verified_queries")):
-        _verified_query(view, item, names)
+    for relationship in live.relationships:
+        _relationship(view, relationship, names)
+    for metric in (*(metric for table in live.tables for metric in table.metrics), *live.metrics):
+        _metric(view, metric, names)
+    for query in live.verified_queries:
+        _verified_query(view, query, names)
     body: dict[str, object] = {"name": view.name}
-    description = unmarked_comment(str(document.get("description") or ""))
+    description = unmarked_comment(live.description)
     if description:
         body["description"] = description
     body["tables"] = refs
-    variables = [_variable(item) for item in _items(document.get("variables"))]
+    variables = [_variable(item) for item in live.variables]
     if variables:
         body["variables"] = variables
-    body.update(_column_scope(view, document))
+    body.update(_column_scope(view, live))
     _reach(view)
-    config = _config(view, str(document.get("max_staleness") or ""))
+    config = _config(view, live.max_staleness)
     if config:
         body["config"] = config
-    blocks = _instructions(view, document)
+    blocks = _instructions(view, live)
     if blocks:
         body["custom_instructions"] = blocks
     main = ImportedFile(posixpath.join(view.folder, f"{file_name(view.name)}.yml"), {"semantic_view": body})
@@ -146,11 +155,10 @@ def import_semantic_view(
     )
 
 
-def _table_ref(view: _View, table: Mapping[str, Any]) -> str | None:
+def _table_ref(view: _View, table: YamlTable) -> str | None:
     """Return the `ref()` or `source()` a table is written as, or report that it is neither."""
-    logical = str(table.get("name") or "")
-    base = _entry(table.get("base_table"))
-    parts = tuple(str(base.get(key) or "") for key in ("database", "schema", "table"))
+    logical = table.name
+    parts = table.base_table
     try:
         relation = QualifiedName(*(Identifier.shown(part) for part in parts))
     except ValueError:
@@ -174,7 +182,7 @@ def _table_ref(view: _View, table: Mapping[str, Any]) -> str | None:
     return None
 
 
-def _names(view: _View, document: Mapping[str, Any]) -> ViewNames:
+def _names(view: _View, live: YamlView) -> ViewNames:
     """Return the names the view's expressions use: its tables' models, their columns, and its metrics."""
     columns: dict[str, dict[str, str]] = {}
     for model in view.tables.values():
@@ -183,14 +191,12 @@ def _names(view: _View, document: Mapping[str, Any]) -> ViewNames:
             columns[model] = {column.name.upper(): column.name for column in found.columns}
     table_metrics: dict[tuple[str, str], str] = {}
     metrics: dict[str, str] = {}
-    for table in _items(document.get("tables")):
-        for item in _items(table.get("metrics")):
-            metric = str(item.get("name") or "")
-            table_metrics[(str(table.get("name") or "").upper(), metric.upper())] = metric.casefold()
-            metrics[metric.upper()] = metric.casefold()
-    for item in _items(document.get("metrics")):
-        metric = str(item.get("name") or "")
-        metrics[metric.upper()] = metric.casefold()
+    for table in live.tables:
+        for item in table.metrics:
+            table_metrics[(table.name.upper(), item.name.upper())] = item.name.casefold()
+            metrics[item.name.upper()] = item.name.casefold()
+    for item in live.metrics:
+        metrics[item.name.upper()] = item.name.casefold()
     return ViewNames(
         MappingProxyType({logical: model for logical, model in view.tables.items() if model}),
         MappingProxyType(columns),
@@ -199,42 +205,37 @@ def _names(view: _View, document: Mapping[str, Any]) -> ViewNames:
     )
 
 
-def _table(view: _View, table: Mapping[str, Any], names: ViewNames) -> None:
+def _table(view: _View, table: YamlTable, names: ViewNames) -> None:
     """Map a table's keys, synonyms and comment, and its facts and dimensions, onto its dbt model."""
-    logical = str(table.get("name") or "")
+    logical = table.name
     model_name = view.tables.get(logical.upper(), "")
     model = view.index.dbt_models.get(model_name)
     if model is None:
         return
     meta: list[tuple[str, object]] = []
-    key = _strings(_entry(table.get("primary_key")).get("columns"))
-    _model_key(view, model, meta, "primary_key", _columns(names, logical, key), model.primary_key)
-    unique = tuple(_columns(names, logical, _strings(item.get("columns"))) for item in _items(table.get("unique_keys")))
+    _model_key(view, model, meta, "primary_key", _columns(names, logical, table.primary_key), model.primary_key)
+    unique = tuple(_columns(names, logical, key) for key in table.unique_keys)
     _model_key(view, model, meta, "unique_keys", unique, model.unique_keys)
-    _model_key(view, model, meta, "synonyms", _strings(table.get("synonyms")), model.synonyms)
-    for constraint in _items(table.get("constraints")):
-        span = _entry(constraint.get("distinct_range"))
-        if span:
-            start = names.column(logical, str(span.get("start_column")))
-            end = names.column(logical, str(span.get("end_column")))
+    _model_key(view, model, meta, "synonyms", table.synonyms, model.synonyms)
+    for constraint in table.constraints:
+        if constraint.start_column or constraint.end_column:
+            start = names.column(logical, constraint.start_column)
+            end = names.column(logical, constraint.end_column)
             if model.distinct_range is None:
                 meta.append(("distinct_range", {"start": start, "end": end}))
             else:
                 _model_key(view, model, meta, "distinct_range", (start, end), model.distinct_range)
-    description = _kept(
-        view, model.name, "(model)", "description", str(table.get("description") or ""), model.description
-    )
+    description = _kept(view, model.name, "(model)", "description", table.description, model.description)
     columns: list[ColumnMeta] = []
     dropped = 0
-    for section, column_type in _COLUMN_TYPES:
-        for item in _items(table.get(section)):
-            if "filter" in {str(label).casefold() for label in _strings(item.get("labels"))}:
-                _filter(view, item, names)
-                continue
-            mapped, pii = _column(view, model, logical, item, column_type)
-            dropped += pii
-            if mapped is not None:
-                columns.append(mapped)
+    for item in table.columns:
+        if item.is_filter:
+            _filter(view, item, names)
+            continue
+        mapped, pii = _column(view, model, logical, item)
+        dropped += pii
+        if mapped is not None:
+            columns.append(mapped)
     if dropped:
         view.diagnostics.append(D("SST-IMP015", subject=view.key, artifact=view.key, count=dropped))
     view.edits[model.name] = ModelEdit(
@@ -247,12 +248,11 @@ def _table(view: _View, table: Mapping[str, Any], names: ViewNames) -> None:
     )
 
 
-def _column(
-    view: _View, model: DbtModel, logical: str, item: Mapping[str, Any], column_type: str
-) -> tuple[ColumnMeta | None, int]:
+def _column(view: _View, model: DbtModel, logical: str, item: YamlColumn) -> tuple[ColumnMeta | None, int]:
     """Map one fact or dimension onto its dbt column; None for a computed one, which has no 1.0 form."""
-    name = str(item.get("name") or "")
-    expression = str(item.get("expr") or "")
+    name = item.name
+    expression = item.expr
+    column_type = _COLUMN_TYPES[item.section]
     # Snowflake shows a plain column as `TABLE.NAME`, or as `NAME` alone for some views.
     plain = " ".join(expression.split()).upper()
     if plain not in (f"{logical}.{name}".upper(), name.upper()):
@@ -261,7 +261,7 @@ def _column(
             "from dbt columns, so add it to the model as a column"
         )
         return None, 0
-    if str(item.get("access_modifier") or "") == "private_access":
+    if item.access_modifier == "private_access":
         view.differs(f"{column_type} {logical}.{name} is private, which SST does not publish; it is written public")
     column = model.column(name)
     spelled = column.name if column is not None else name.casefold()
@@ -270,21 +270,21 @@ def _column(
     # A time dimension renders in DIMENSIONS, as live reads it back: one the project types so is kept.
     if not (held_type == "time_dimension" and column_type == "dimension"):
         _column_key(view, model, column, meta, "column_type", column_type)
-    _column_key(view, model, column, meta, "synonyms", _strings(item.get("synonyms")))
+    _column_key(view, model, column, meta, "synonyms", item.synonyms)
     pii = 0
-    samples = _strings(item.get("sample_values"))
+    samples = item.sample_values
     if samples and column is not None and column.pii_tagged:
         pii = 1
     else:
         _column_key(view, model, column, meta, "sample_values", samples)
-    if item.get("is_enum") is True:
+    if item.is_enum:
         _column_key(view, model, column, meta, "is_enum", True)
     description = _kept(
         view,
         model.name,
         spelled,
         "description",
-        str(item.get("description") or ""),
+        item.description,
         column.description if column else None,
     )
     if not meta and description is None:
@@ -292,26 +292,26 @@ def _column(
     return ColumnMeta(spelled, tuple(meta), description), pii
 
 
-def _filter(view: _View, item: Mapping[str, Any], names: ViewNames) -> None:
-    name = str(item.get("name") or "").casefold()
-    expression = _rewritten(view, f"filter {name}", str(item.get("expr") or ""), names)
+def _filter(view: _View, item: YamlColumn, names: ViewNames) -> None:
+    name = item.name.casefold()
+    expression = _rewritten(view, f"filter {name}", item.expr, names)
     if expression is None:
         return
     body: dict[str, object] = {"name": name}
-    if item.get("description"):
-        body["description"] = item["description"]
+    if item.description:
+        body["description"] = item.description
     body["expr"] = expression
     body["labels"] = ["filter"]
     view.member("filter", "filters", name, "filter", body)
 
 
-def _metric(view: _View, item: Mapping[str, Any], names: ViewNames) -> None:
+def _metric(view: _View, item: YamlMetric, names: ViewNames) -> None:
     """Map one metric, a window metric's `OVER (...)` into its `window:` block."""
-    name = str(item.get("name") or "").casefold()
+    name = item.name.casefold()
     body: dict[str, object] = {"name": name}
-    if item.get("description"):
-        body["description"] = item["description"]
-    expression = str(item.get("expr") or "")
+    if item.description:
+        body["description"] = item.description
+    expression = item.expr
     windowed = split_window(expression)
     if windowed is not None:
         aggregate, inside = windowed
@@ -336,39 +336,38 @@ def _metric(view: _View, item: Mapping[str, Any], names: ViewNames) -> None:
         if rewritten is None:
             return
         body["expr"] = rewritten
-    if _strings(item.get("synonyms")):
-        body["synonyms"] = list(_strings(item.get("synonyms")))
-    using = _strings(item.get("using_relationships"))
+    if item.synonyms:
+        body["synonyms"] = list(item.synonyms)
+    using = item.using_relationships
     if using:
         body["using_relationships"] = ["{{ relationship('" + entry.casefold() + "') }}" for entry in using]
-    non_additive = [_sort_entry(names, entry) for entry in _items(item.get("non_additive_dimensions"))]
+    non_additive = [_sort_entry(names, entry) for entry in item.non_additive_dimensions]
     if non_additive:
         body["non_additive_dimensions"] = non_additive
-    if str(item.get("access_modifier") or "") == "private_access":
+    if item.access_modifier == "private_access":
         body["access_modifier"] = "private_access"
     view.member("metric", "metrics", name, "metric", body)
 
 
-def _relationship(view: _View, item: Mapping[str, Any], names: ViewNames) -> None:
+def _relationship(view: _View, item: YamlRelationship, names: ViewNames) -> None:
     """Map a relationship's columns to its conditions: `=`, `>=` for an ASOF column, `BETWEEN` for a range."""
-    name = str(item.get("name") or "").casefold()
-    left, right = str(item.get("left_table") or ""), str(item.get("right_table") or "")
+    name = item.name.casefold()
+    left, right = item.left_table, item.right_table
     left_model, right_model = names.tables.get(left.upper()), names.tables.get(right.upper())
     if left_model is None or right_model is None:
         view.differs(f"relationship {name} joins a table that is no dbt model; it was left out")
         return
     conditions: list[str] = []
-    for column in _items(item.get("relationship_columns")):
-        left_ref = "{{ ref('" + left_model + "', '" + names.column(left, str(column.get("left_column"))) + "') }}"
-        if column.get("type") == "range":
-            span = _entry(column.get("right_range"))
-            start = names.column(right, str(span.get("start_column")))
-            end = names.column(right, str(span.get("end_column")))
+    for column in item.columns:
+        left_ref = "{{ ref('" + left_model + "', '" + names.column(left, column.left_column) + "') }}"
+        if column.type == "range":
+            start = names.column(right, column.range_start)
+            end = names.column(right, column.range_end)
             bounds = (f"{{{{ ref('{right_model}', '{bound}') }}}}" for bound in (start, end))
             conditions.append(f"{left_ref} BETWEEN " + " AND ".join(bounds))
             continue
-        right_ref = "{{ ref('" + right_model + "', '" + names.column(right, str(column.get("right_column"))) + "') }}"
-        operator = ">=" if column.get("type") == "asof" else "="
+        right_ref = "{{ ref('" + right_model + "', '" + names.column(right, column.right_column) + "') }}"
+        operator = ">=" if column.type == "asof" else "="
         conditions.append(f"{left_ref} {operator} {right_ref}")
     body = {
         "name": name,
@@ -379,28 +378,27 @@ def _relationship(view: _View, item: Mapping[str, Any], names: ViewNames) -> Non
     view.member("relationship", "relationships", name, "relationship", body)
 
 
-def _verified_query(view: _View, item: Mapping[str, Any], names: ViewNames) -> None:
-    name = str(item.get("name") or "").casefold()
+def _verified_query(view: _View, item: YamlVerifiedQuery, names: ViewNames) -> None:
+    name = item.name.casefold()
     try:
-        sql = rewrite_tables(str(item.get("sql") or ""), names).text
+        sql = rewrite_tables(item.sql, names).text
     except LexError as exc:
         view.differs(f"verified query {name}'s SQL does not lex ({exc.reason}); it was left out")
         return
-    body: dict[str, object] = {"name": name, "question": str(item.get("question") or ""), "sql": sql}
-    if item.get("use_as_onboarding_question") is True:
+    body: dict[str, object] = {"name": name, "question": item.question, "sql": sql}
+    if item.use_as_onboarding_question:
         body["use_as_onboarding_question"] = True
-    if isinstance(item.get("verified_at"), int):
-        body["verified_at"] = item["verified_at"]
-    if item.get("verified_by"):
-        body["verified_by"] = str(item["verified_by"])
+    if isinstance(item.verified_at, int):
+        body["verified_at"] = item.verified_at
+    if item.verified_by:
+        body["verified_by"] = item.verified_by
     view.member("verified_query", "verified_queries", name, "verified_query", body)
 
 
-def _instructions(view: _View, document: Mapping[str, Any]) -> list[str]:
+def _instructions(view: _View, live: YamlView) -> list[str]:
     """List the blocks another view renders the same text from, else write one block named after the view."""
-    texts = _entry(document.get("module_custom_instructions"))
-    generation = str(texts.get("sql_generation") or "")
-    categorization = str(texts.get("question_categorization") or "")
+    generation = live.sql_generation
+    categorization = live.question_categorization
     if not generation and not categorization:
         return []
     shared = view.index.instructions_for(generation, categorization)
@@ -419,7 +417,7 @@ def _instructions(view: _View, document: Mapping[str, Any]) -> list[str]:
     return ["{{ custom_instructions('" + view.name + "') }}"]
 
 
-def _column_scope(view: _View, document: Mapping[str, Any]) -> dict[str, list[str]]:
+def _column_scope(view: _View, live_view: YamlView) -> dict[str, list[str]]:
     """Return the view's column scope, so it publishes the columns the live view has and no more.
 
     A 1.0 view publishes every typed column of its tables. When the project types a column the
@@ -427,14 +425,9 @@ def _column_scope(view: _View, document: Mapping[str, Any]) -> dict[str, list[st
     drops (`exclude_columns:`); empty when it drops nothing.
     """
     live: set[tuple[str, str]] = set()
-    for table in _items(document.get("tables")):
-        table_model = view.tables.get(str(table.get("name") or "").upper(), "")
-        for section, _ in _COLUMN_TYPES:
-            live.update(
-                (table_model, str(item.get("name") or "").upper())
-                for item in _items(table.get(section))
-                if "filter" not in {str(label).casefold() for label in _strings(item.get("labels"))}
-            )
+    for table in live_view.tables:
+        table_model = view.tables.get(table.name.upper(), "")
+        live.update((table_model, item.name.upper()) for item in table.columns if not item.is_filter)
     kept: list[str] = []
     dropped: list[str] = []
     for model_name in dict.fromkeys(view.tables.values()):
@@ -472,17 +465,17 @@ def _reach(view: _View) -> None:
         )
 
 
-def _variable(item: Mapping[str, Any]) -> dict[str, object]:
-    data_type = str(item.get("data_type") or "").split("(", 1)[0].strip().upper()
-    default: object = item.get("default_value")
+def _variable(item: YamlVariable) -> dict[str, object]:
+    data_type = item.data_type.split("(", 1)[0].strip().upper()
+    default: object = item.default_value
     if isinstance(default, str):
         if data_type == "BOOLEAN" and default.casefold() in ("true", "false"):
             default = default.casefold() == "true"
         elif data_type in ("NUMBER", "INT", "INTEGER", "DECIMAL", "NUMERIC", "FLOAT", "DOUBLE", "REAL"):
             default = _number(default)
-    entry: dict[str, object] = {"name": str(item.get("name") or "").casefold(), "data_type": data_type}
-    if item.get("description"):
-        entry["description"] = item["description"]
+    entry: dict[str, object] = {"name": item.name.casefold(), "data_type": data_type}
+    if item.description:
+        entry["description"] = item.description
     entry["default_value"] = default
     return entry
 
@@ -511,14 +504,14 @@ def _rewritten(view: _View, label: str, expression: str, names: ViewNames) -> st
         return None
 
 
-def _sort_entry(names: ViewNames, entry: Mapping[str, Any]) -> dict[str, object]:
-    table, dimension = str(entry.get("table") or ""), str(entry.get("dimension") or "")
+def _sort_entry(names: ViewNames, entry: YamlSortKey) -> dict[str, object]:
+    table, dimension = entry.table, entry.dimension
     model = names.tables.get(table.upper(), table.casefold())
     written: dict[str, object] = {"ref": "{{ ref('" + model + "', '" + names.column(table, dimension) + "') }}"}
-    if entry.get("sort_direction"):
-        written["sort_direction"] = str(entry["sort_direction"]).casefold()
-    if entry.get("null_order"):
-        written["null_order"] = str(entry["null_order"]).casefold()
+    if entry.sort_direction:
+        written["sort_direction"] = entry.sort_direction.casefold()
+    if entry.null_order:
+        written["null_order"] = entry.null_order.casefold()
     return written
 
 
@@ -625,15 +618,3 @@ def _number(text: str) -> object:
             return float(text)
         except ValueError:
             return text
-
-
-def _items(value: object) -> tuple[Mapping[str, Any], ...]:
-    return tuple(item for item in value if isinstance(item, Mapping)) if isinstance(value, list) else ()
-
-
-def _entry(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _strings(value: object) -> tuple[str, ...]:
-    return tuple(str(item) for item in value) if isinstance(value, list) else ()
