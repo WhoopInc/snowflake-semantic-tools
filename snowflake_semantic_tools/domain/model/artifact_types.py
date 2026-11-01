@@ -83,6 +83,10 @@ class ArtifactType:
         object_types: The object types its objects may be, when there are several.
         object_grant_preservation: How each of `object_types` keeps its grants, when the kinds
             differ; each rendered object's `PublishShape` declares the same.
+        lifecycle: How plan and apply reconcile it; OBJECT unless a lifecycle handler owns it.
+        summary: The type's description on the generated artifact reference page.
+        authored_in: Where its artifacts are authored, as the reference page states it.
+        publishes: The Snowflake objects it publishes, as the reference page states them.
         validation_rules: The rule sets, by `RULE_SETS` name, whose codes validate it.
         dir_key: The `project.` configuration key naming the directory its files are under.
         nested_under: The type inside each of whose artifact folders its own files are; "" for
@@ -135,7 +139,9 @@ class MemberType:
         root_key: The YAML key its declarations are listed under; unique across the registry.
         singular_root: The YAML key a file declaring exactly one member holds it under, as a
             mapping; unique across the registry. None for a type not authored in files.
+        source: Where its members are authored: SST's YAML files or dbt column meta.
         clause_position: Orders its owner's member types, lowest first; unique per owner.
+        attaches_by: How a member finds the semantic views it belongs to.
         owner_type: The artifact type whose artifacts it attaches to.
         ref_function: The template function that names a member of this type; None when none can.
         validation_rules: The rule sets, by `RULE_SETS` name, whose codes validate it.

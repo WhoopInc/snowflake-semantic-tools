@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; a profile's settings follow the
 preview's contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 Loading resolves each profile's `cowork_profiles:` settings through the one precedence chain, as
 it resolves an agent's `agents:` ones; this module turns them into the profile's own fields as

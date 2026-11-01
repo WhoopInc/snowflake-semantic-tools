@@ -16,8 +16,8 @@ Only exact metrics gate, on their thresholds alone. Nothing is published, staged
 written to the eval state table, and no baseline is read, captured or compared. A CoWork
 profile's eval, a Snowflake private preview (PrPr), never runs unpublished
 (`unpublished_refusals`): it would need a temporary profile, which is unmeasured.
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

@@ -39,6 +39,7 @@ class Definition:
     """Every member one side holds of one artifact, in display order.
 
     Attributes:
+        members: Every member this side holds, in display order.
         kinds: The member kinds this side read, when it could read only some, such as an eval's
             config without its questions; None when it read every kind. A kind one side did not
             read is not compared.
@@ -62,6 +63,11 @@ class PropertyDiff:
     """One property a member's two sides disagree on: its value before, and after.
 
     For an added member `before` is None, and for a removed one `after` is.
+
+    Attributes:
+        name: The property's name.
+        before: The property's value on the before side; None when that side lacks it.
+        after: The property's value on the after side; None when that side lacks it.
     """
 
     name: str
@@ -74,6 +80,7 @@ class MemberDiff:
     """One member the two sides disagree on.
 
     Attributes:
+        kind, name: The member's kind and name, as `Member` describes them.
         op: `added` when only the after side holds it, `removed` when only the before side
             does, `changed` when both do and a property both state differs.
         properties: The properties that differ: every property of an added or removed member.

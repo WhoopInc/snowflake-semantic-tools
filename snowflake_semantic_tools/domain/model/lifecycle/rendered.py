@@ -54,6 +54,8 @@ class SmokeProbe:
     Attributes:
         key: What a failure is reported under: a member's key, or the artifact's key with a
             `:view` or `:describe` suffix.
+        kind: What the probe exercises.
+        sql: The query the probe runs.
     """
 
     key: str
@@ -175,6 +177,9 @@ class RenderedArtifact:
     an agent's full definition, replaces `fingerprint` afterwards.
 
     Attributes:
+        key: The artifact key that names the artifact.
+        artifact_type: The type of the artifact, such as a semantic view or an agent.
+        target: The name of the Snowflake object the artifact publishes.
         ddl: The canonical rendered text: every line right-stripped, ending in one newline. It
             is DDL for a semantic view or tool, and a document in `render_dialect` otherwise.
         statements: What apply runs; `for_action` narrows it to the action plan chose.
@@ -183,9 +188,10 @@ class RenderedArtifact:
             `PublishShape` describes them.
         upload_path, upload_content, upload_stage: As `Upload` describes its `path`, `content`,
             and `stage`; all None when nothing is staged.
-        create_statements, update_statements, update_live_statements,
-            update_properties_statements, properties_lead: As `StatementPlan` describes its
-            `create`, `update`, `update_live`, `update_properties`, and `properties_lead`.
+        create_statements, update_statements, update_live_statements: As `StatementPlan` describes
+            its `create`, `update`, and `update_live`.
+        update_properties_statements, properties_lead: As `StatementPlan` describes its
+            `update_properties` and `properties_lead`.
         expected_marker: The ownership marker the write must leave, which apply reads back;
             None skips the check.
         desired_alias, desired_tags, spec_fingerprint: As `DesiredMetadata` describes its

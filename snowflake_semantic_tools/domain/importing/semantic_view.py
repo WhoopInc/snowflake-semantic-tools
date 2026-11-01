@@ -487,7 +487,9 @@ def _config(view: _View, staleness: str) -> dict[str, object]:
         config.update({"database": database, "schema": schema})
     seconds = _seconds(staleness)
     inherited = view.placement.inherited.get("max_staleness")
-    if seconds is not None and str(inherited) != str(seconds):
+    if staleness and seconds is None:
+        view.differs(f"its max_staleness, {staleness}, is not a count of seconds SST can write; it was left out")
+    elif seconds is not None and str(inherited) != str(seconds):
         config["max_staleness"] = seconds
     elif seconds is None and inherited is not None:
         view.differs(

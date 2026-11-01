@@ -23,7 +23,14 @@ from snowflake_semantic_tools.domain.model.lifecycle.rendered import RenderedArt
 
 @dataclass(frozen=True, slots=True)
 class CompositePlan:
-    """The action a composite lifecycle handler chose for its artifact, and what it observed."""
+    """The action a composite lifecycle handler chose for its artifact, and what it observed.
+
+    Attributes:
+        action: The action the handler chose.
+        reason: Why it chose that action.
+        observation: What the handler observed for the artifact.
+        diagnostics: What the handler found wrong while planning; empty when nothing.
+    """
 
     action: Action
     reason: ChangeReason
@@ -36,6 +43,10 @@ class Change:
     """What plan decided for one artifact, and what apply needs to carry it out.
 
     Attributes:
+        key: The key of the artifact the change is for.
+        artifact_type: The type of the artifact, such as a semantic view or an agent.
+        action: What plan decided to do with the artifact.
+        reason: Why plan decided it.
         rendered: The artifact with the statements its action runs; None for a prune, which
             drops what was observed.
         observed: The object plan observed under the key; None when there is none, and for a
@@ -43,6 +54,7 @@ class Change:
         depends_on: The keys of the changes apply must finish first.
         order: The artifact type's position in DDL order, which orders independent changes;
             prunes run in reverse.
+        diagnostics: What plan found wrong with this change; empty when nothing.
         composite_observation: What a composite handler observed; None for any other artifact.
         prune_executable: False for a prune plan reports but apply never executes.
         member_diff: What an update changes, member by member, live object against render; None
@@ -73,7 +85,13 @@ class ChangeSet:
     """A plan: every change in dependency order, for one manifest and one target.
 
     Attributes:
+        manifest_id: The id of the manifest the plan was made from.
+        target: The target the plan applies to.
+        changes: Every change, in dependency order.
+        diagnostics: What plan found wrong.
         observation_at: When plan observed Snowflake, as the observation recorded it.
+        full: Whether the plan covers every artifact; False when `state:modified` narrowed it to
+            what changed.
         plan_id: The content hash of the planned changes; empty when plan produced no
             changes to hash, as for a dependency cycle.
         schemas: The absent schemas apply creates before anything else, with

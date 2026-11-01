@@ -26,8 +26,11 @@ class GrantRow:
     """One row of SHOW GRANTS ON an object.
 
     Attributes:
+        privilege: The privilege granted, such as SELECT or OWNERSHIP.
         granted_to: The grantee's kind as Snowflake shows it, such as ROLE or DATABASE_ROLE.
+        grantee_name: The name of the role or other grantee the privilege is granted to.
         granted_by: The role that made the grant; empty when the row does not say.
+        grant_option: Whether the grantee may grant the privilege on.
     """
 
     privilege: str
@@ -52,6 +55,10 @@ class ShowRow:
     """One object a SHOW command lists, with its names exactly as Snowflake shows them.
 
     Attributes:
+        name, database_name, schema_name: The object's name and the database and schema it is
+            in, exactly as SHOW printed them.
+        owner: The role that owns the object.
+        created_on: When the object was created, as SHOW printed it.
         comment: The object's comment, where an ownership marker lives; None when it has none.
         object_type: The type SHOW listed the object under, such as SEMANTIC VIEW or AGENT.
         is_secure: A procedure's or function's `is_secure`, such as `Y`; None when SHOW lists none.
@@ -88,7 +95,12 @@ class ObservedArtifact:
     """One object in Snowflake that an artifact key names, as plan observed it.
 
     Attributes:
+        key: The artifact key that names the object.
         raw_name: The object's name exactly as SHOW printed it, to report a case mismatch.
+        qualified_name: The object's name, each part unquoted when it can be, else quoted exactly.
+        object_type: The type SHOW listed the object under, such as SEMANTIC VIEW or AGENT.
+        owner: The role that owns the object.
+        created_on: When the object was created, as SHOW printed it.
         comment: The object's comment; None when it has none.
         marker: The ownership marker in the comment; None when the comment carries none.
         grants: Every grant on the object; None when plan did not read them, because the
@@ -150,6 +162,7 @@ class SnowflakeObservation:
     """Every object plan observed in the target, keyed by the artifact key each would carry.
 
     Attributes:
+        artifacts: Each observed object, by the artifact key it would carry.
         fetched_at: When the observation was taken, as the clock reported it; a saved plan
             records it, and the plan id covers it.
     """
@@ -160,7 +173,13 @@ class SnowflakeObservation:
 
 @dataclass(frozen=True, slots=True, order=True)
 class PhysicalResource:
-    """One Snowflake object a composite artifact spans, and whether it exists."""
+    """One Snowflake object a composite artifact spans, and whether it exists.
+
+    Attributes:
+        object_type: The Snowflake object type, such as STAGE or TABLE.
+        qualified_name: The object's name.
+        exists: Whether the object exists in Snowflake.
+    """
 
     object_type: str
     qualified_name: QualifiedName
@@ -175,9 +194,13 @@ class CompositeObservation:
     marker, so the plan goes stale when any observed fact changes.
 
     Attributes:
+        key: The key of the artifact observed.
+        resources: Each Snowflake object the artifact spans, and whether it exists.
+        stage_exists: Whether the handler's stage exists.
         stage_file_format: The file format the handler's stage declares; None when the stage
             is absent or declares none.
         config_path: The staged configuration file the handler reads; None when it has none.
+        config_exists: Whether the staged configuration file exists.
         diagnostics: What the handler found wrong while observing.
         config_size: The staged configuration file's size in bytes; None when it is absent.
         config_md5: The staged configuration file's MD5 hex digest; None when it is absent.
@@ -199,7 +222,12 @@ class CompositeObservation:
 
 @dataclass(frozen=True, slots=True)
 class QueryResult:
-    """The rows a query returned, with its column names in order."""
+    """The rows a query returned, with its column names in order.
+
+    Attributes:
+        columns: The column names, in order; empty when the query returned none.
+        rows: The rows, each one value per column; empty when none returned.
+    """
 
     columns: tuple[str, ...] = ()
     rows: tuple[tuple[object, ...], ...] = ()
@@ -210,6 +238,7 @@ class ExecutionError:
     """The error that stopped a script, as the driver reported it.
 
     Attributes:
+        message: The error message.
         sqlstate: The SQLSTATE code; None when the driver gave none.
         errno: Snowflake's error number; None when the driver gave none.
     """
@@ -224,6 +253,7 @@ class ExecResult:
     """What running a script returned: whether every statement succeeded, and what ran.
 
     Attributes:
+        ok: Whether every statement succeeded.
         query_ids: One id per statement that ran; on failure, the ids of the statements that
             ran before it, which the caller must treat as a partial write.
         error: What stopped the script; None when it succeeded.

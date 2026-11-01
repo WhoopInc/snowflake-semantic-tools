@@ -25,6 +25,10 @@ class OwnershipMarker:
     Both digests are stored lowercase, so markers compare equal whatever case a comment
     spelled them in.
 
+    Attributes:
+        manifest_id: The id of the manifest that published the object.
+        fingerprint: The fingerprint of what that manifest published.
+
     Raises:
         ValueError: either value is not a 64-character hexadecimal digest.
     """

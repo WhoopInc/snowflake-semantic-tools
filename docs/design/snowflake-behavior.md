@@ -14,6 +14,12 @@ probe for whether the server agrees**. The documentation is the cheapest source
 of a statement to try. Only running it shows whether the server accepts it, keeps
 it, and answers queries over it.
 
+A key of an agent's or a CoWork profile's specification that the docs do not cover cites
+its entry here, by heading, as `Measured` evidence in the specification tables
+(`domain/model/snowflake_spec/`); a test fails when a cited heading is missing, so rename an
+entry there too. The [Snowflake specification reference](../reference/snowflake-spec.md) links
+each such key to its entry.
+
 ## How to read an entry
 
 Each behavior is a `###` heading with four fields:

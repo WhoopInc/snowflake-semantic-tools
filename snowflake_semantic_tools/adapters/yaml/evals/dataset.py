@@ -4,8 +4,8 @@ A question, ground truth, or expected invocation of the wrong shape is reported 
 its place as an empty value, so every later row keeps its index. A row of a CoWork profile's
 eval names the subagents it expects with `ground_truth_subagents`; CoWork profiles are a
 Snowflake private preview (PrPr) feature:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

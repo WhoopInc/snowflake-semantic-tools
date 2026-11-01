@@ -17,7 +17,15 @@ def test_docs_writes_checks_and_reports_drift(tmp_path: Path) -> None:
     written = CliRunner().invoke(cli, ["docs", "--project-dir", str(tmp_path)])
     assert written.exit_code == 0, written.output
     pages = sorted(path.name for path in (tmp_path / "docs" / "reference").iterdir())
-    assert pages == ["artifacts.md", "cli.md", "config.md", "coverage.md", "error-codes.md", "files.md"]
+    assert pages == [
+        "artifacts.md",
+        "cli.md",
+        "config.md",
+        "coverage.md",
+        "error-codes.md",
+        "files.md",
+        "snowflake-spec.md",
+    ]
     assert "wrote docs/reference/cli.md" in written.output
     assert CliRunner().invoke(cli, ["docs", "--project-dir", str(tmp_path), "--check"]).exit_code == 0
 

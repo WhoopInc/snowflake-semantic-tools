@@ -391,8 +391,8 @@ def read_attachments(
     """Read the account's CoWork object and the agents attached to it, when a profile wants attaching.
 
     Snowflake private preview (PrPr): CoWork profiles, as these pages describe them:
-    https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-    https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+    `snowflake_docs.COWORK_PROFILES`
+    `snowflake_docs.COWORK_ROUTING`
 
     Two reads at most, once for the whole plan: SHOW SNOWFLAKE INTELLIGENCES, then SHOW AGENTS IN
     the object it lists. A plan whose rendered artifacts want no attaching, such as one of

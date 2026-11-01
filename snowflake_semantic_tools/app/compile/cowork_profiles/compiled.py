@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; a profile publishes as the
 preview's contract describes, on these pages:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 A profile is an AGENT object, so it publishes through the agent's own programs
 (`staged_agent`); it is not a `CompiledAgent`, so nothing that reads agents reads profiles. Its

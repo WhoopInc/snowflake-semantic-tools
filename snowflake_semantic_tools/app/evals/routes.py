@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; a profile's eval follows the
 preview's contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 An evaluation run of a profile leaves its spans in SNOWFLAKE.LOCAL.AI_OBSERVABILITY_EVENTS:
 one root span per record, and one span per routing call, whose

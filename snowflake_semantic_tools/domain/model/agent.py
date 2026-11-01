@@ -27,7 +27,13 @@ SEARCH_COLUMN_TYPES = frozenset(("string", "datetime"))
 
 @dataclass(frozen=True, slots=True)
 class AgentProfile:
-    """An agent's `profile:` block: its display name, avatar, and color, each None when unset."""
+    """An agent's `profile:` block: its display name, avatar, and color, each None when unset.
+
+    Attributes:
+        display_name: The name shown for the agent; None when unset.
+        avatar: The agent's avatar; None when unset.
+        color: The agent's color; None when unset.
+    """
 
     display_name: str | None = None
     avatar: str | None = None
@@ -38,9 +44,13 @@ class AgentProfile:
 class AgentTool:
     """One `spec.tools:` entry of an agent, as authored, before it resolves.
 
+    Authored keys: `authored_schema.AGENT_TOOL`.
+
     Attributes:
         type: The tool type as written; resolution reports one it does not know.
+        origin: Where the entry was read from.
         name: None when unset, as an Analyst tool must leave it.
+        description: The tool's description as written; None when unset.
         semantic_view: The name an Analyst tool's `{{ semantic_view('<name>') }}` gives.
         backing: The member name the `{{ tool('<name>') }}` call that is the whole of
             `search_service:` or `identifier:` gives, an agent toolset's over an `agent`
@@ -51,6 +61,14 @@ class AgentTool:
         columns: A search tool's own `columns:` entries, as written, which replace its
             member's; resolution reads each against its member as it reads the columns above.
         agent_ref: The name an agent toolset's `{{ agent('<name>') }}` gives.
+        warehouse: The warehouse the tool runs on, as written; None when unset.
+        query_timeout: The tool's own query timeout, in seconds; None when unset, so the compile context's applies.
+            Validation reports one that is zero or less.
+        max_results: The most results a search tool returns; None when unset.
+        stage_path: A search tool's stage path, as written; resolution resolves it. None when unset.
+        filter: A search tool's filter mapping as written; empty when none.
+        input_schema: A generic tool's input schema as written; empty when none. Resolution requires
+            its `type` to be `object` and checks it against the backing member's signature.
         passthrough: Keys added last to a search or generic tool's resources, so they override
             the computed ones; an MCP tool's resources are exactly these.
         tool_spec_passthrough: Keys merged last into the rendered `tool_spec`, as `merge_passthrough` merges.
@@ -95,6 +113,14 @@ class AgentSkill:
     `ref` names the resolver its `source.path` used: `skill` or `plugin` for extensions this
     project publishes, `extension` for a consumed one. `name` is empty when omitted, which only
     a plugin allows.
+
+    Attributes:
+        name: The skill's name; empty when omitted.
+        source_type: The `source.type` value as written, such as `STAGE` or `CORTEX_EXTENSION`.
+        path: The name the `source.path` call gives, or empty when it is not a call.
+        version: The literal `source.version`; empty when unset or given by a variable.
+        ref: The function the `source.path` call used; "extension" when there is no call.
+        version_var: The variable a templated `source.version` names; None for a literal version.
     """
 
     name: str
@@ -110,6 +136,7 @@ class AgentEvalFiles:
     """An agent's `evals:` block, or a CoWork profile's: the eval dataset and config, by name.
 
     Attributes:
+        origin: Where the `evals:` block was read from.
         dataset: The name `{{ eval_dataset('<name>') }}` gives; None when the value is missing
             or not that one call, which loading reports.
         config: The name `{{ eval_config('<name>') }}` gives; None as for `dataset`.
@@ -133,17 +160,29 @@ class AgentModel:
     budget, `tool_not_accessible`, `analytical_search`, alias, `secure`, `allow_auto_model`, and
     tags. Until it does, each holds its default.
 
+    Authored keys: `authored_schema.AGENT`.
+
     Attributes:
+        name: The agent's name.
+        origin: Where the agent file was read from.
         source_files: The `agent.yml` and each instruction file it reads, relative to the
             project root, in the order they were read.
         orchestration_model: "auto" when no setting names one.
         allow_auto_model: The agent keeps `auto` deliberately, so SST-VAL560 does not warn; False
             unless a setting says true.
+        comment: The agent's `comment:` as written; None when unset.
         secure: None until compile resolves it; then False when no setting says true.
+        profile: The agent's `profile:` block; every value None when it has none.
+        budget_seconds, budget_tokens: The orchestration budget a setting gives; None when unset.
+        tool_not_accessible: The value a `tool_not_accessible` setting gives; None when unset.
         analytical_search: None when unset, which is not the same as False.
         orchestration_instructions: The instruction text, or the content of the file its
             `{{ file('<path>') }}` names; None when unset or the file cannot be used.
         response_instructions: As `orchestration_instructions`, for the response instructions.
+        sample_questions: The agent's sample questions, in authored order; empty when none.
+        tools: The agent's `spec.tools:` entries as authored, in order.
+        skills: The agent's `skills:` entries; compile replaces them with the resolved ones.
+        alias: The alias a setting gives the agent; None when unset.
         enabled: False leaves the agent out of the compiled project.
         meta: Free-form metadata; it counts toward the agent's definition fingerprint.
         tags: `(tag name, value)` pairs, in the order the resolved `tags` setting lists them.
@@ -197,9 +236,12 @@ class ResolvedAgentTool:
     """One agent tool after resolution, ready to render into the spec's `tools` and `tool_resources`.
 
     Attributes:
+        type: The tool type.
         name: The name the agent calls the tool by.
+        description: The tool's description.
         resources: The tool's `tool_resources` entry; never rendered for a built-in tool, nor
             when empty.
+        input_schema: The tool's input schema; empty when it has none.
         depends_on: The artifact keys of the project artifacts it uses, such as the semantic
             view an Analyst tool queries; a referenced tool member adds none.
         tool_spec_passthrough: Keys merged last into the rendered `tool_spec`, as `merge_passthrough` merges.
@@ -226,6 +268,8 @@ class ResolvedAgent:
     Attributes:
         model: The agent with its inherited defaults filled and its skills resolved.
         tools: The tools that resolved, in authored order; one that could not is absent.
+        diagnostics: What resolving the tools, agent-wide rules, and skills reported.
+        external_dependencies: Artifact keys kept apart from `depends_on`; empty by default.
         skill_dependencies: The artifact keys of this project's skills and plugins it pins,
             first reference first, each once.
     """

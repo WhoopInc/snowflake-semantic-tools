@@ -8,7 +8,8 @@ How to use SST is in the [concepts](../concepts.md) and the guides under
 
 **Pages**
 
-- [Architecture](architecture.md): the rings, the pipeline, and how an artifact type plugs in.
+- [Architecture](architecture.md): the rings, the pipeline, how an artifact type plugs in, and the
+  Snowflake specification tables SST renders and imports agents by.
 - [Snowflake behavior](snowflake-behavior.md): what Snowflake does that the engine compensates for.
 - [dbt compatibility](dbt-compatibility.md): the seam between SST and dbt.
 - [Diagnostics](diagnostics.md): how problems are coded, ranked, and reported.

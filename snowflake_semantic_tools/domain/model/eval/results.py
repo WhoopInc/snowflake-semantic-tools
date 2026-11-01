@@ -18,7 +18,10 @@ class EvalMetricResult:
     """One metric's result on one question in one attempt.
 
     Attributes:
+        question_key: The key of the dataset question the result answers.
+        metric_name: The name of the metric scored.
         score: None when none was reported.
+        passed: Whether the score passed the metric.
         explanation: Why the scorer gave that score, as it said it; None when it gave no reason.
         threshold: The band the score had to fall in to pass; None when the metric has none.
     """
@@ -63,6 +66,9 @@ class EvalResultRow:
     """One question's results in one attempt, one entry per metric.
 
     Attributes:
+        question_key: The key of the dataset question the row answers.
+        input_query: The question text sent to the agent.
+        metrics: The question's metric results, one per metric.
         index: The question's 1-based position in the eval's dataset; None when unknown.
         answer: The agent's reply text; None when not read.
         error: Why the agent answered with an error instead of a reply; None when it replied.
@@ -105,8 +111,11 @@ class EvalRunAttempt:
         attempt: 1 for the first attempt; a retry's run name carries its number as `_R<n>`.
         terminal_status: The run's final status, or `START_FAILED` or `STATUS_FAILED` when
             it could not be started or polled.
+        run_name: The attempt's run name.
         rows: The results, read only from a completed attempt; `()` otherwise.
+        cost: The attempt's time and token totals; all zero when not read.
         retrieval_error: Why starting, polling or reading the attempt failed; None when nothing did.
+        status_details: The details read with the attempt's final status; `()` when none were.
         agent_version: The concrete version the run resolved the agent to; None when unknown.
         agent_spec_fingerprint: The `sst-spec:` fingerprint that version's comment carries; None
             when it carries none, as for a version committed outside SST, or it was not read.
@@ -131,6 +140,8 @@ class EvalBaselineMetric:
     """Whether one metric passed on one question, in each captured attempt.
 
     Attributes:
+        question_key: The key of the dataset question.
+        metric_name: The name of the metric.
         passed_attempts: One flag per captured attempt, in attempt order.
         score_range: The metric's threshold as `(min, max)` at capture; None without one.
     """
@@ -146,12 +157,19 @@ class EvalBaselineRecord:
     """A captured baseline, and the identity a later run must share to be compared with it.
 
     Attributes:
+        eval_key: The artifact key of the eval the baseline belongs to.
+        dataset_fingerprint: The fingerprint of the rendered dataset at capture; a run with another
+            one is not compared.
+        config_fingerprint: The fingerprint of the rendered eval config at capture; likewise.
         agent_version: The one immutable `VERSION$<n>` every captured attempt ran against.
         metric_versions: `(metric, version)` pairs, sorted; a custom metric's version is
             `custom:<judge model>`.
+        metrics: Whether each metric passed on each question, per captured attempt.
         run_names: The captured attempts' run names, in attempt order.
+        captured_at: When the baseline was captured, as an ISO 8601 UTC timestamp.
         expires_at: From this timestamp on, the baseline no longer gates a run.
         reason: Why it was captured; never empty.
+        tier: The eval's tier at capture, `blocking` or `report`; `report` when unset.
         gate_policy: `(metric, gated)` pairs, sorted.
         agent_spec_fingerprint: The `sst-spec:` fingerprint of that version's specification, from
             its comment, when every captured attempt read the same one; None otherwise, and for
@@ -179,7 +197,12 @@ class EvalGateState:
     """The latest gate outcome for one eval, as persisted.
 
     Attributes:
+        eval_key: The artifact key of the eval gated.
+        tier: The eval's tier, `blocking` or `report`.
+        regression_count: How many regressions the gate found.
+        regressions: The regressions the gate found.
         unresolved: True when a blocking eval failed its gate or produced no comparison.
+        evaluated_at: When the gate was evaluated, as the clock's ISO 8601 timestamp.
         run_names: The run name of every attempt the gated run made, in attempt order.
     """
 
@@ -194,7 +217,12 @@ class EvalGateState:
 
 @dataclass(frozen=True, slots=True)
 class EvalRegression:
-    """A gated metric that passed a question in every baseline attempt and failed it in a current one."""
+    """A gated metric that passed a question in every baseline attempt and failed it in a current one.
+
+    Attributes:
+        question_key: The key of the dataset question that regressed.
+        metric_name: The name of the metric that regressed.
+    """
 
     question_key: str
     metric_name: str
@@ -205,6 +233,8 @@ class EvalGateVerdict:
     """The gate's decision on one run.
 
     Attributes:
+        tier: The eval's tier, `blocking` or `report`.
+        regressions: The regressions found; `()` when none were.
         passed: False when no comparison was made, whatever the tier, and for a blocking eval
             with a regression.
         reason: Why no comparison was made, such as `baseline_absent`; None when one was.

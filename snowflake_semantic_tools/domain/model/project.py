@@ -21,6 +21,9 @@ class ParsedView:
     """One `semantic_views:` entry as authored, before members attach to it.
 
     Attributes:
+        name: The view's name as authored.
+        origin: Where the entry is declared.
+        source_path: The path of the file that declares the entry.
         source: The entry's YAML mapping, as authored.
         declared_tables: The casefolded dbt model names its `tables:` list names; empty when the
             list cannot be read.
@@ -44,6 +47,7 @@ class ParsedMember:
     Attributes:
         type_name: The member type's registry name, such as `metric`.
         name: As authored, or `<model>.<column>` for a fact or dimension.
+        origin: Where the member is declared.
         source: The record it was parsed into, whose type depends on `type_name`.
         declared_tables: The tables it needs a view to hold; None when it declares none, so its
             tables are the models its `ref()` calls name.
@@ -67,7 +71,13 @@ class ParsedMember:
 
 @dataclass(frozen=True, slots=True)
 class ParsedProject:
-    """Every semantic view and member of a project, unresolved, with what parsing reported."""
+    """Every semantic view and member of a project, unresolved, with what parsing reported.
+
+    Attributes:
+        views: The parsed semantic views.
+        members: The parsed members of every type.
+        diagnostics: What parsing reported.
+    """
 
     views: tuple[ParsedView, ...]
     members: tuple[ParsedMember, ...]
@@ -87,10 +97,12 @@ class ResolvedProject:
     """The views built from a parsed project, with the views each member attached to.
 
     Attributes:
+        views: The views that built.
         attachment: Each member's key, mapped to the keys of the views it attaches to, sorted;
             a member that attaches nowhere, a poisoned one included, maps to ().
         custom_instruction_names: By casefolded view key, the casefolded names of the custom
             instructions the view attaches, sorted.
+        diagnostics: What resolving reported.
     """
 
     views: tuple[SemanticView, ...]
@@ -108,6 +120,8 @@ class SemanticViewProject:
     A view a diagnostic kept from building is absent rather than partly built.
 
     Attributes:
+        views: The views that built.
+        diagnostics: Every diagnostic of the load.
         disabled: The casefolded names of the views the project declares with `enabled: false`,
             directly or through a folder route; none of them is published.
     """

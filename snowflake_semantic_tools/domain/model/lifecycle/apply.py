@@ -59,6 +59,8 @@ class ApplyOptions:
     Attributes:
         parallelism: How many independent changes run at once, unless the policy is STOP_ALL,
             which runs them one at a time.
+        on_failure: What apply does after a change fails.
+        retry: How apply retries a statement that failed with a transient error.
         allow_prune: Whether a planned prune executes; without it the prune is skipped.
         break_stale_lock: Whether to take over a state lock whose holder has expired.
         temporary: Whether the run publishes session-scoped temporary artifacts, which a
@@ -107,6 +109,9 @@ class ClassifiedError:
     """A failure apply classified, with the diagnostic code it reports.
 
     Attributes:
+        code: The diagnostic code the failure is reported under.
+        message: The failure's message.
+        kind: The class of the failure, such as a missing privilege or a transient fault.
         retryable: Whether retrying the same statements may succeed.
         sqlstate: The SQLSTATE the failure carried; None when it carried none.
         value: What the failure names besides the artifact, such as the path, version, or
@@ -126,10 +131,15 @@ class ApplyOutcome:
     """How one change ended when apply ran it.
 
     Attributes:
+        key: The key of the artifact the change was for.
+        action: The action plan chose for the artifact.
+        status: How the change ended: applied, skipped, or failed.
         attempts: How many times the statements ran; 0 when they never did.
         duration_ms: How long the change took, in milliseconds.
         ddl: The rendered text of the artifact; empty when there is none, as for a prune.
         error: Why the change failed; None unless the status is FAILED.
+        grants: What apply learned about the object's explicit grants after replacing it;
+            NOT_APPLICABLE when nothing was replaced.
         write_succeeded: Whether anything was written, even if the change then failed; state
             keeps the object as SST's when it was.
         component_fingerprints: What a composite handler verified it published; empty when
@@ -166,6 +176,9 @@ class ApplyResult:
     """The result of one apply run: every outcome, the diagnostics, and whether state was written.
 
     Attributes:
+        outcomes: How each change ended, one outcome per change.
+        diagnostics: What the run found wrong.
+        run_id: The id of the run, which state records with its outcomes.
         started_at, finished_at: When the run started and finished, as the clock reported it.
         state_written: Whether the run recorded its outcomes in state.
         interrupted: Whether an interrupt stopped the run part way through its changes; the

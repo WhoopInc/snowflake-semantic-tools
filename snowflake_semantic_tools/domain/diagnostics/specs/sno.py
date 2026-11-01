@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Precheck, Severity, spec
+from snowflake_semantic_tools.domain.snowflake_docs import COWORK_PROFILES
 
 TITLE: str = "Snowflake"
 
@@ -357,7 +358,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "They were measured read as ACCOUNTADMIN; what a narrower role needs, and whether the "
             "router attributes are redacted without READ UNREDACTED AI OBSERVABILITY EVENTS TABLE, "
             "is not measured. "
-            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
+            f"{COWORK_PROFILES.url}"
         ),
         precheck=Precheck.RUNTIME,
     ),

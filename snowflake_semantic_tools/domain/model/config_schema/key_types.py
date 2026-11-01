@@ -69,9 +69,14 @@ class ConfigKey:
     unprefixed folder route or group key inside a routed block.
 
     Attributes:
+        path: The key's dotted path from the file's root, such as `project.agents_dir`.
+        kind: The type of value the key takes.
         summary: The reference-page description; for a removed key, why it was removed.
+        status: Whether SST reads the key, reads it under a new name, or no longer reads it.
         default: The default as the reference prints it, or None when the key has none.
+        choices: An `ENUM` key's allowed values; empty for any other kind.
         minimum, maximum: Inclusive lower and upper bounds of an integer value; None for no bound on that side.
+        children: Which undeclared children a block accepts.
         replacement: For a removed key, the reason its diagnostic gives; for a deprecated key, the key it is read as.
         code: The code reported instead of the generic one: a removed key's dedicated
             code, or the code for a value outside `choices` or bounds.

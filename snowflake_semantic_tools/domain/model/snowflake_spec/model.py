@@ -13,12 +13,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from snowflake_semantic_tools.domain.model.authored_schema import ValueKind
-from snowflake_semantic_tools.domain.model.snowflake_spec.docs import DocPage
+from snowflake_semantic_tools.domain.snowflake_docs import DocPage
 
 
 @dataclass(frozen=True, slots=True)
 class Authored:
     """A key an authored file writes: the file kind, and the key's dotted path, list entries left out.
+
+    Attributes:
+        kind: The authored file kind that writes the key, such as `agent`.
+        path: The key's dotted path in that file, list entries left out.
 
     Example:
         `Authored("agent", "spec.tools.semantic_view")` is each `spec.tools:` entry's `semantic_view:`.
@@ -30,7 +34,12 @@ class Authored:
 
 @dataclass(frozen=True, slots=True)
 class Setting:
-    """A configuration setting: the `sst_config.yml` block, and the key without its `+`."""
+    """A configuration setting: the `sst_config.yml` block, and the key without its `+`.
+
+    Attributes:
+        block: The `sst_config.yml` block that holds the setting.
+        key: The setting's key, without its `+`.
+    """
 
     block: str
     key: str
@@ -38,14 +47,22 @@ class Setting:
 
 @dataclass(frozen=True, slots=True)
 class Fixed:
-    """A value SST always writes."""
+    """A value SST always writes.
+
+    Attributes:
+        value: The value written.
+    """
 
     value: str
 
 
 @dataclass(frozen=True, slots=True)
 class Derived:
-    """A value SST works out, with how."""
+    """A value SST works out, with how.
+
+    Attributes:
+        note: How SST works the value out.
+    """
 
     note: str
 
@@ -55,14 +72,22 @@ Source = Authored | Setting | Fixed | Derived
 
 @dataclass(frozen=True, slots=True)
 class Documented:
-    """Snowflake documents the key on `page`."""
+    """Snowflake documents the key on `page`.
+
+    Attributes:
+        page: The documentation page that describes the key.
+    """
 
     page: DocPage
 
 
 @dataclass(frozen=True, slots=True)
 class Measured:
-    """An undocumented key SST measured; `section` is the `snowflake-behavior.md` heading that records it."""
+    """An undocumented key SST measured; `section` is the `snowflake-behavior.md` heading that records it.
+
+    Attributes:
+        section: The `snowflake-behavior.md` heading that records the measurement.
+    """
 
     section: str
 

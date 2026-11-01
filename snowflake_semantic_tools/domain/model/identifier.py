@@ -51,6 +51,10 @@ class Identifier:
     `value` is the name without its quotes: exactly as written when quoted, upper-cased by
     `parse` when not. Equality and ordering compare `value` and `quoted` as stored, so `"ABC"`
     and `ABC` differ although both name the object `ABC`; compare `folded` to match objects.
+
+    Attributes:
+        value: The name without its quotes.
+        quoted: Whether the name was authored double-quoted, so it keeps its exact case.
     """
 
     value: str
@@ -109,6 +113,9 @@ class QualifiedName:
 
     Equality and ordering compare the parts as stored, quoting included, so two spellings of
     one object can differ; compare `folded` to ask whether two names resolve to one object.
+
+    Attributes:
+        database, schema, name: The object's database, its schema, and its own name.
     """
 
     database: Identifier
@@ -168,7 +175,11 @@ class QualifiedName:
 
 @dataclass(frozen=True, slots=True, order=True)
 class SchemaScope:
-    """A database and schema: the scope objects are listed in and statements run in."""
+    """A database and schema: the scope objects are listed in and statements run in.
+
+    Attributes:
+        database, schema: The scope's database and schema.
+    """
 
     database: Identifier
     schema: Identifier
@@ -207,6 +218,7 @@ class TargetIdentity:
     Attributes:
         name: The `profiles.yml` target name, such as `dev`.
         account_locator: The profile's `account` as written; "" when it sets none.
+        database, schema: The profile's database and schema.
         role: The profile's role as written; None when it sets none.
         warehouse: The profile's warehouse as written; None when it sets none.
     """

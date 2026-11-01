@@ -8,8 +8,8 @@ permanent. An eval of an agent the run publishes as temporary is skipped, since 
 gone once the run's session ends and the eval could never run against it.
 
 A CoWork profile is skipped too. CoWork profiles are a Snowflake private preview (PrPr), as
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles and
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES` and
+`snowflake_docs.COWORK_ROUTING`
 describe them. A temporary profile, a TEMPORARY agent with an agent_router tool, has not been
 measured on Snowflake, and a permanent profile would route to agents that end with the run's
 session, so a temporary run publishes none.

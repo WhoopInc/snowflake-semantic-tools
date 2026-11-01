@@ -20,6 +20,7 @@ class TagPattern:
     """One `governance.sensitive_tags` entry: a tag by its three-part name, or every tag of a schema.
 
     Attributes:
+        database, schema: The database and schema the tag, or every tag matched, belongs to.
         name: The tag; None for `<database>.<schema>.*`, which matches every tag in the schema.
     """
 

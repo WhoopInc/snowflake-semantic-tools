@@ -56,10 +56,13 @@ def listed_by_cortex_code(target: QualifiedName) -> bool:
 class SharedCocoProfile:
     """The `shared/` layer every profile carries: instructions first, then rules, then skills.
 
+    Authored keys: `authored_schema.COCO_SHARED_PROFILE`.
+
     Attributes:
         prompt: The layer's `AGENTS.md`; None when it has none or it cannot be read.
         rules: `(file name, text)` for each `rules/*.md`, in file-name order.
         skills: The skill names its `coco_profile.yml` lists, as authored.
+        origin: Where the layer was read from.
         source_files: The manifest, `AGENTS.md`, then the rules, each when present.
     """
 
@@ -78,13 +81,18 @@ class CocoProfileModel:
     route of its folder, then the block root -- and its `enabled` from them; compile sets
     `published_name` from `+name_suffix`.
 
+    Authored keys: `authored_schema.COCO_PROFILE`.
+
     Attributes:
+        name: The profile's name.
+        origin: Where the profile's manifest was read from.
         comment: The `description:`, which becomes the AGENT's comment.
         orchestration_model: The `model:`; None leaves `models.orchestration` unset.
         prompt: The folder's `AGENTS.md`; None when it has none or it cannot be read.
         skills: Each `skills:` entry as a `skill()` entry, then each `plugins:` entry as a
             `plugin()` entry, as an agent's skills are authored.
         source_files: The manifest, then `AGENTS.md` when present, relative to the project root.
+        enabled: False leaves the profile out of the compiled project.
         settings: Each `coco_profiles:` setting the profile resolved, by key without its `+`.
         published_name: The AGENT's name: the profile's, with its `+name_suffix`.
     """
@@ -108,7 +116,12 @@ class CocoProfileModel:
 
 @dataclass(frozen=True, slots=True)
 class CocoProfileCatalog:
-    """Every profile a project declares, in folder order, and the shared layer they carry."""
+    """Every profile a project declares, in folder order, and the shared layer they carry.
+
+    Attributes:
+        profiles: The profiles, in folder order.
+        shared: The `shared/` layer; None when the project has none.
+    """
 
     profiles: tuple[CocoProfileModel, ...]
     shared: SharedCocoProfile | None

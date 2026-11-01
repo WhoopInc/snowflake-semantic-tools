@@ -6,8 +6,8 @@ is read and checked -- one with `questions:` is a dataset, any other a config --
 pair the agent names is published, so older versions can stay beside it. A CoWork profile's
 `evals:` block is read the same way, from the `evals/` folder beside its `cowork_profile.yml`;
 CoWork profiles are a Snowflake private preview (PrPr) feature:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 The custom metrics load first, then each agent's eval files in agent order, then each
 profile's; the static validator runs last, over the whole catalog, so its diagnostics follow

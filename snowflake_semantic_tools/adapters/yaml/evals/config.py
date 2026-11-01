@@ -6,8 +6,8 @@ block root, and fills in what stands in for an unset value -- `metrics`, `metric
 `judge_model` -- before validation. `metrics.routing` lists the metrics SST scores a CoWork
 profile's router by, which are never rendered into the config Snowflake runs; CoWork profiles
 are a Snowflake private preview (PrPr) feature:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

@@ -12,7 +12,11 @@ from snowflake_semantic_tools.domain.model.identifier import Identifier
 
 @dataclass(frozen=True, slots=True)
 class DbtTarget:
-    """The resolved dbt target -- what `{{ target.database }}` stands for."""
+    """The resolved dbt target -- what `{{ target.database }}` stands for.
+
+    Attributes:
+        database, schema: The target's database and schema, as the dbt profile resolves them.
+    """
 
     database: str
     schema: str
@@ -27,6 +31,33 @@ class DbtColumn:
     """One dbt model column after dbt has resolved patches and inheritance.
 
     A quoted column keeps its exact case wherever SST names it; any other is upper-cased.
+
+    Authored keys: `authored_schema.DBT_COLUMN_META`.
+
+    Attributes:
+        name: The column's name as the manifest records it.
+        description: The column's description, stripped; None when empty.
+        data_type: dbt's own `data_type`, else `meta.sst.data_type`; None when neither is written.
+        column_type: `meta.sst.column_type` as written, such as `fact` or `dimension`; None when unset.
+        synonyms: `meta.sst.synonyms`; empty when none.
+        sample_values: `meta.sst.sample_values`; empty when none.
+        is_enum: `meta.sst.is_enum`; None when the column declares none, so nobody has said whether its
+            values are complete.
+        excluded: `meta.sst.exclude`: the column is left out of every view; False when unset.
+        unknown_meta_keys: The `meta.sst` keys SST does not read, sorted; reported where a view uses the
+            model.
+        declared_data_type: A `meta.sst.data_type` that disagrees with dbt's own; None when they agree or
+            either is absent.
+        declared_keys: The `meta.sst` keys the column writes, so an absent key and an empty value differ.
+        native_data_type: dbt's own `data_type`, which a contract enforces; None when only
+            `meta.sst.data_type` is written.
+        pii_tagged: Whether the column carries `pii_tags` in its meta, of any privacy category.
+        governance_tags: `meta.sst.governance_tags` as written: the sensitive tags enrich recorded.
+        access_modifier: `meta.sst.access_modifier` as written; None when the column writes none.
+        quoted: dbt's `quote: true`: the column was created quoted, so its name is case-sensitive.
+        wrong_types: `meta.sst` values of the wrong type, as `(field, expected, found)`; each reads as
+            unset and is reported where a view uses the model.
+        unstorable: Published text that holds what Snowflake cannot store, as `(field, problem)`.
     """
 
     name: str
@@ -82,6 +113,44 @@ class DbtModel:
 
     All three are relations `ref()` resolves, so a view uses any of them as a table alike;
     `resource_type` says which it is.
+
+    Authored keys: `authored_schema.DBT_MODEL_META`.
+
+    Attributes:
+        unique_id: dbt's id for the node, such as `model.jaffle.orders`.
+        name: The model's dbt name.
+        relation_name: The relation dbt builds, stripped and upper-cased.
+        primary_key: `config.meta.sst.primary_key`'s columns; empty when the model declares none.
+        unique_keys: `config.meta.sst.unique_keys`, one column tuple per key; empty when none.
+        columns: The model's columns, in manifest order.
+        original_file_path: The model's SQL file as the manifest records it; None when absent.
+        patch_path: The YAML file that patches the model, with dbt's `<package>://` prefix; None when
+            absent.
+        forbidden_location_keys: Which of `database` and `schema` the model writes in `meta.sst`, where
+            they are not allowed; empty when neither.
+        description: The model's description, stripped; None when empty.
+        legacy_key_fields: Key fields written in a 0.3 form; they are reported, not read.
+        unknown_meta_keys: The `meta.sst` keys SST does not read, sorted; reported where a view uses the
+            model.
+        key_test_columns: Casefolded columns a `unique`, `unique_combination_of_columns` or
+            `relationships` test names.
+        package_name: The dbt package that defines the model; None when the manifest does not say.
+        raw_relation_name: `relation_name` exactly as dbt rendered it, quotes and case included.
+        patch_file: `patch_path` relative to the project root, without dbt's `<package>://` prefix.
+        checksum: dbt's `checksum.checksum` of the model's SQL file; None when the manifest records none.
+        has_contract: Whether the model declares an enforced contract.
+        test_count: How many dbt tests are attached to the model.
+        materialized: `config.materialized`, such as `table` or `incremental`; None when the manifest
+            does not say.
+        synonyms: `meta.sst.synonyms`: what every view that uses the model calls its table besides its
+            name.
+        distinct_range: `meta.sst.distinct_range` as its `(start, end)` columns; None when the model
+            declares none, or one that is not a mapping naming both.
+        malformed_distinct_range: The model writes `meta.sst.distinct_range`, but not as a mapping naming
+            a start and an end.
+        wrong_types, unstorable: As `DbtColumn.wrong_types` and `DbtColumn.unstorable`, for the model's
+            own fields.
+        resource_type: dbt's `resource_type`: `model`, `snapshot` or `seed`.
     """
 
     unique_id: str
@@ -141,7 +210,16 @@ class DbtModel:
 
 @dataclass(frozen=True, slots=True)
 class DbtSource:
-    """One dbt source table: `source('<source_name>', '<name>')`, and the relation it reads."""
+    """One dbt source table: `source('<source_name>', '<name>')`, and the relation it reads.
+
+    Attributes:
+        unique_id: dbt's id for the source table, such as `source.jaffle.raw.orders`.
+        source_name, name: The source's name and the table's name, as `source()` takes them.
+        relation_name: The relation it reads, as dbt rendered it; None when the manifest records none.
+        description: The source table's `description`, the table's COMMENT in every view that uses it.
+        synonyms: The source table's `meta.sst.synonyms`; empty when none.
+        package: The dbt package that declares it; None when the manifest does not say.
+    """
 
     unique_id: str
     source_name: str
@@ -180,7 +258,20 @@ class DbtNode:
 
 @dataclass(frozen=True, slots=True)
 class DbtCatalog:
-    """All dbt models visible to one parsed target."""
+    """All dbt models visible to one parsed target.
+
+    Attributes:
+        schema_version: The manifest's `dbt_schema_version`; empty when it records none.
+        dbt_version: The dbt version that wrote the manifest; None when it does not say.
+        project_name: The root dbt project's name; None when the manifest does not say.
+        models: The models, snapshots and seeds that have a relation, in unique-id order.
+        relationless_models: Models left out because they have no relation, such as ephemeral ones.
+        unreadable_models: Why each model with no relation has none, by casefolded name: its
+            materialization, such as `ephemeral`, or `disabled` for a model dbt disabled.
+        sources: The declared dbt sources, in sorted unique-id order.
+        nodes: dbt's graph: every model, seed, snapshot, source, test and exposure, in unique-id order.
+        diagnostics: What reading the manifest found wrong with nodes SST skipped or with the project.
+    """
 
     schema_version: str
     dbt_version: str | None

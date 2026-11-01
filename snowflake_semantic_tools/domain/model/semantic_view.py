@@ -49,6 +49,15 @@ class Column:
     and for a filter it is a predicate such as `ORDERS.ORDER_STATE = 'completed'`.
 
     Attributes:
+        table: The logical name of the table the column belongs to, upper-cased.
+        name: The column's name, upper-cased unless dbt quotes it.
+        kind: Which clause the column renders into; a filter renders as a dimension.
+        expr: The expression after `AS`: the column reference, or a filter's predicate.
+        comment: The column's description, rendered as its COMMENT; None when it has none.
+        synonyms: The names rendered in `WITH SYNONYMS`; empty when none.
+        sample_values: The values rendered in `SAMPLE_VALUES`; empty when none, and always empty for a
+            sensitive column or one whose values look like personal data.
+        is_enum: Whether the column renders `IS_ENUM`; never true when its sample values are withheld.
         data_type: The type the dbt manifest declares for the column, as written; None for a
             filter and for a column that declares none. Not rendered: connected validation
             types the column by it when the warehouse cannot describe the table.
@@ -79,6 +88,16 @@ class Table:
     it resolves to. They differ in case only for now -- role-playing, which would
     let one physical table appear under two logical names, is not supported in 1.0,
     so a view cannot contain the same physical table twice.
+
+    Attributes:
+        logical_name: The upper-cased name members qualify against.
+        fqn: The fully qualified physical table, the dbt model's relation name.
+        primary_key: The columns rendered in `PRIMARY KEY (...)`; empty when the model declares none.
+        unique_keys: Each column set rendered as its own `UNIQUE (...)`; empty when none.
+        synonyms: The names rendered in `WITH SYNONYMS`; empty when none.
+        comment: The model's description, rendered as the table's COMMENT; None when it has none.
+        distinct_range: The start and end columns of the table's `DISTINCT RANGE` constraint; None when
+            the model declares no range.
     """
 
     logical_name: str
@@ -92,7 +111,17 @@ class Table:
 
 @dataclass(frozen=True, slots=True)
 class Relationship:
-    """One entry inside `RELATIONSHIPS (...)`, including temporal modifiers."""
+    """One entry inside `RELATIONSHIPS (...)`, including temporal modifiers.
+
+    Attributes:
+        name: The relationship's name, upper-cased.
+        from_table, to_table: The logical names of the referencing and the referenced table, upper-cased.
+        from_columns, to_columns: The paired join columns on each side, in the same order.
+        asof_index: The position in `to_columns` of the column rendered with `ASOF`; None for a
+            relationship that is not ASOF.
+        range_bounds: The start and end columns of the referenced table that replace `to_columns` with
+            `BETWEEN ... EXCLUSIVE`; None for a relationship that is not a range.
+    """
 
     name: str
     from_table: str
@@ -110,6 +139,12 @@ class Variable:
     Declares a name a metric or filter `expr` may use as a bare identifier.
     `data_type` has matched Snowflake's type grammar, and `default` is the SQL literal the
     loader made of the YAML value -- `False` into `FALSE`, not `False`.
+
+    Attributes:
+        name: The variable's name, unique in the view whatever its case.
+        data_type: The variable's SQL type.
+        default: The SQL literal rendered after `DEFAULT`.
+        comment: The variable's description, rendered as its COMMENT; None when it has none.
     """
 
     name: str
@@ -124,6 +159,11 @@ class SortKey:
 
     `descending` and `nulls_first` are None when the author left them unstated, so
     the DDL says exactly what was written and Snowflake's defaults decide the rest.
+
+    Attributes:
+        expr: The expression ordered by.
+        descending: True renders `DESC`, False `ASC`, None neither.
+        nulls_first: True renders `NULLS FIRST`, False `NULLS LAST`, None neither.
     """
 
     expr: AuthoredExpression
@@ -138,6 +178,12 @@ class Window:
     At most one of `partition_by` and `partition_excluding` is set: EXCLUDING
     partitions by every dimension a query requests except those named. `frame` is a
     frame clause the loader has already checked against Snowflake's grammar.
+
+    Attributes:
+        partition_by: The expressions rendered after `PARTITION BY`; empty when none.
+        partition_excluding: The expressions rendered after `PARTITION BY EXCLUDING`; empty when none.
+        order_by: The keys rendered after `ORDER BY`; empty when none.
+        frame: The frame clause rendered last; None when the window has none.
     """
 
     partition_by: tuple[AuthoredExpression, ...] = ()
@@ -152,6 +198,19 @@ class Metric:
 
     `table` is None for a cross-table metric, which renders unqualified -- for
     example `REVENUE_PER_CUSTOMER AS DIV0(...)` drawing on two tables at once.
+
+    Attributes:
+        name: The metric's name.
+        expr: The expression after `AS`; for a window function metric, the call the window applies to.
+        table: The logical name of the table the metric qualifies against; None for a cross-table metric.
+        comment: The metric's description, rendered as its COMMENT; None when it has none.
+        synonyms: The names rendered in `WITH SYNONYMS`; empty when none.
+        using_relationships: The relationships rendered in `USING (...)`; empty when none.
+        non_additive_by: The keys rendered in `NON ADDITIVE BY (...)`, in significant order; empty when
+            the metric is additive.
+        access_modifier: `public_access` by default; `private_access` renders the metric `PRIVATE` and
+            leaves it out of smoke probes.
+        window: The `OVER (...)` of a window function metric; None for any other metric.
     """
 
     name: str
@@ -178,6 +237,14 @@ class VerifiedQuery:
 
     NOT `VERIFIED QUERIES (...)`, which appears in no grammar. `verified_at` is a
     Unix timestamp supplied by the loader; domain never asks a clock for it.
+
+    Attributes:
+        name: The query's name.
+        question: The natural-language question rendered as `QUESTION`.
+        sql: The query as authored, rendered as `SQL` inside a string literal.
+        verified_at: The Unix timestamp rendered as `VERIFIED_AT`; None leaves it out.
+        verified_by: Who verified the query, rendered as `VERIFIED_BY`; None leaves it out.
+        onboarding_question: The value rendered as `ONBOARDING_QUESTION`; None leaves it out.
     """
 
     name: str
@@ -190,7 +257,12 @@ class VerifiedQuery:
 
 @dataclass(frozen=True, slots=True)
 class Tag:
-    """One entry inside `WITH TAG (...)`. `name` is already fully qualified."""
+    """One entry inside `WITH TAG (...)`. `name` is already fully qualified.
+
+    Attributes:
+        name: The tag's fully qualified name.
+        value: The tag's value, rendered as a string literal.
+    """
 
     name: str
     value: str
@@ -214,6 +286,12 @@ class ViewScope:
     kind. Names are upper-cased: a column is `TABLE.COLUMN` under its logical table, a metric
     or a relationship its name. A filter is a dimension the scope never removes: filters are
     attached by their own tables, not listed.
+
+    Attributes:
+        columns, metrics, relationships: The include lists, one per kind; None admits every member of
+            that kind.
+        exclude_columns, exclude_metrics, exclude_relationships: The exclude lists, one per kind; empty
+            removes nothing.
     """
 
     columns: tuple[str, ...] | None = None
@@ -252,7 +330,31 @@ class SemanticView:
     golden was verified against Snowflake in -- see `domain/render/semantic_view.py`
     for the authority on that order and for what is deliberately absent from it.
 
+    Authored keys: `authored_schema.SEMANTIC_KINDS`.
+
     Attributes:
+        fqn: The view's fully qualified name under the target database and schema.
+        tables: The view's tables, one per model or source it reads.
+        relationships: The view's attached relationships.
+        variables: The view's variables, in declaration order.
+        columns: The facts, dimensions and filters the view holds.
+        metrics: The view's attached metrics.
+        comment: The view's description, rendered as its COMMENT; None when it has none.
+        ai_sql_generation, ai_question_categorization: The text of each AI clause, composed by the loader
+            from the attached custom instructions; None when no instruction supplies it.
+        custom_instruction_names: The names of the custom instructions composed into the AI text.
+        verified_queries: The entries rendered in `AI_VERIFIED_QUERIES`; empty when none.
+        max_staleness: The `MAX_STALENESS` value, such as `3600 seconds`; None when unset.
+        tags: The entries rendered in `WITH TAG`; empty when none.
+        or_replace, if_not_exists: Which CREATE modifier renders; `or_replace` also renders
+            `COPY GRANTS`. Setting both is a caller's bug.
+        source_path: The project-relative path of the view's own file; None when not loaded from one.
+        source_files: Every project file the view is built from, sorted: its own file, its members'
+            files, verified query SQL files and its models' dbt files.
+        referenced_models: The lower-cased names of the dbt models the view's tables read, sorted.
+        ownership_marker: The marker text compile appends to the COMMENT when publishing; None
+            otherwise.
+        scope: Which of its tables' members the view exposes.
         member_origins: Where each attached member is declared, by member key such as
             `metric:order_count`; a member the loader recorded no origin for is absent. Not
             rendered and not compared: it locates a connected check's finding.
@@ -262,6 +364,8 @@ class SemanticView:
         table_models: The dbt model each table reads, by the table's logical name; a `source()`
             table has none. Not rendered and not compared: the connected tag check (SST-VAL338)
             reads what each model's YAML records.
+        facts, dimensions: `columns` split by kind on construction: the facts, and everything else,
+            filters included.
     """
 
     fqn: str

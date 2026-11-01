@@ -1,10 +1,12 @@
 """The Snowflake documentation pages that define what SST writes and reads, one constant per page.
 
 Every link to Snowflake's documentation in the package comes from here, so a page that moves
-is one edit. Each page below was found with the Snowflake documentation search except the two
-CoWork pages: they are preview pages the public search does not index, and SST has cited them
-since the feature shipped. Snowflake documents these contracts in prose, with no machine-readable
-schema, so the pages are cited for readers; nothing is validated against them.
+is one edit. It imports nothing of the package, so any module may cite a page: a docstring by
+its constant's name, a message by its `url`. Each page below was found with the Snowflake
+documentation search except the two CoWork pages: they are preview pages the public search does
+not index, and SST has cited them since the feature shipped. Snowflake documents these contracts
+in prose, with no machine-readable schema, so the pages are cited for readers; nothing is
+validated against them.
 """
 
 from __future__ import annotations

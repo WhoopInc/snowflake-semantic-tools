@@ -67,6 +67,8 @@ class ToolColumn:
             defined member and as written on a referenced one.
         description: "" when unset.
         type: The column's type as written; "" when unset.
+        searchable: The column is searchable through the service.
+        filterable: The column can be filtered on through the service.
     """
 
     name: str
@@ -84,21 +86,30 @@ class ToolMember:
     An optional field the entry leaves out is None or empty. Validation, not construction,
     checks which fields a member's type and ownership need.
 
+    Authored keys: `authored_schema.TOOL_MEMBER`.
+
     Attributes:
+        name: The member's name, which `{{ tool('<name>') }}` matches ignoring case.
         type: The `type:` as written; validation reports one that is not a `ToolKind` value.
         ownership: REFERENCE when the entry writes `relations:`, else DEFINE.
+        origin: Where the entry was read from.
         source_file: The tools file that declares it, relative to the project root.
+        description: The member's description as written; None when unset.
         on_model: The dbt model `on:` names with `{{ ref('<model>') }}`; None when `on:` is
             absent or is not one such call.
         search_column: The column `search_column:`, or else `on.search_column`, names.
         attribute_columns: The columns `attribute_columns:`, or else `on.attributes`, names.
         title_column, id_column, relative_path_column: The column each names.
+        columns: A search service's `columns:` entries, in authored order.
+        signature: A procedure's or function's parameters, in authored order.
         warehouse, target_lag, embedding_model, execute_as: What the DDL renders; None as loaded,
             and filled when the member compiles, from its resolved settings.
         where: A predicate appended to a search service's query, its template calls resolved:
             a column ref becomes the bare column name.
         refresh_mode: How a search service refreshes, `AUTO`, `FULL` or `INCREMENTAL` as
             written; None leaves it to Snowflake, which refreshes incrementally where it can.
+        language, runtime_version, handler: A routine's language, runtime version, and handler as
+            written; None when unset.
         body_file: The file `body:`'s `{{ file() }}` names, relative to the project root; None
             when `body:` names none.
         body: The text of `body_file`, its `ref()`, `source()` and `var()` calls replaced by
@@ -106,6 +117,9 @@ class ToolMember:
         body_relations: Each relation a `ref()` or `source()` in the body names, by the key the
             manifest records it under: a model's name or a source's `<source>.<table>`,
             casefolded.
+        returns: A routine's return type as written; None when unset.
+        packages, imports, external_access_integrations: A routine's names for each, as written;
+            empty when none.
         secrets: Each secret variable's name, mapped to the three-part name of its secret.
         relations: For a referenced member, each target's name mapped to the three-part name
             of the existing object on that target.

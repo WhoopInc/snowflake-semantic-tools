@@ -70,6 +70,7 @@ class Field:
         summary: What the key does, as the reference page and the JSON Schema describe it;
             for a renamed or removed key, what it was.
         required: Whether a node without the key is reported.
+        also: The other value kinds SST accepts for the key besides `kind`; empty when none.
         choices: An `ENUM` key's values, taken from the constant its check uses.
         open_choices: The project may extend `choices`, so a value outside them is not an
             error the table can decide.

@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; attaching follows the preview's
 contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 CoWork shows a profile only once it is attached to the account's one CoWork object, the
 SNOWFLAKE INTELLIGENCE object. Plan reads that object and what is attached to it once

@@ -3,8 +3,8 @@
 CoWork profiles are a Snowflake private preview (PrPr) feature. A profile is a Cortex Agent whose
 one router tool hands each question to one of the agents it lists; these values follow the
 preview's contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations
@@ -19,8 +19,6 @@ from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from snowflake_semantic_tools.domain.model.setting import Setting
 
-COWORK_PROFILES_DOC = "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
-COWORK_ROUTING_DOC = "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing"
 # The tools a profile may carry beside its router; every other tool belongs on an agent.
 COWORK_PROFILE_TOOLS = frozenset(("web_search", "code_execution"))
 # The name SST gives the profile's one `agent_router` tool, and its `tool_resources` entry.
@@ -46,6 +44,7 @@ class CoworkSubagent:
         reference: The template function the entry's `agent:` calls: `agent` for an agent this
             project publishes, `tool` for an `agent` tool member.
         name: The name that call gives, as written.
+        origin: Where the entry was read from.
         display_name: None when unset, which leaves the agent's own to apply.
         description: None when unset, as for `display_name`.
         sample_questions: None when the entry writes none, so the agent's own apply; `()` when
@@ -67,6 +66,7 @@ class CoworkProfileTool:
     Attributes:
         type: The tool type as written; validation reports one a profile does not carry.
         name: None when unset.
+        origin: Where the entry was read from.
     """
 
     type: str
@@ -83,9 +83,14 @@ class CoworkProfileModel:
     a setting gives (the orchestration model, `allow_auto_model`, alias, tags, and `attach`) hold
     their defaults until compile sets them.
 
+    Authored keys: `authored_schema.COWORK_PROFILE`.
+
     Attributes:
+        name: The profile's name.
+        origin: Where the profile file was read from.
         source_files: The `cowork_profile.yml` and each instruction file it reads, relative to
             the project root, in the order they were read.
+        comment: The profile's `comment:` as written; None when unset.
         display: The `display:` block, read as an agent's `profile:` block is.
         orchestration_model: "auto" when no setting names one.
         allow_auto_model: The profile keeps `auto` deliberately, so SST-VAL560 does not warn;
@@ -93,7 +98,11 @@ class CoworkProfileModel:
         orchestration_instructions: The instruction text, or the content of the file its
             `{{ file('<path>') }}` names; None when unset or the file cannot be used.
         response_instructions: As `orchestration_instructions`, for the response instructions.
+        sample_questions: The profile's sample questions, in authored order; empty when none.
         subagents: In authored order; an entry that could not be read is absent.
+        tools: The profile's `spec.tools:` entries as authored, in order.
+        skills: The profile's skill entries; compile replaces them with the resolved ones.
+        alias: The alias a setting gives the profile; None when unset.
         enabled: False leaves the profile out of the compiled project.
         meta: Free-form metadata; it counts toward the profile's definition fingerprint.
         tags: `(tag name, value)` pairs, in the order the resolved `tags` setting lists them.

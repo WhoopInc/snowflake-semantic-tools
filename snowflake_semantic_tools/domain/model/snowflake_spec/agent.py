@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import MappingProxyType
 
+from snowflake_semantic_tools.domain import snowflake_docs as docs
 from snowflake_semantic_tools.domain.model.authored_schema import ValueKind
-from snowflake_semantic_tools.domain.model.snowflake_spec import docs
 from snowflake_semantic_tools.domain.model.snowflake_spec.model import (
     Authored,
     Derived,

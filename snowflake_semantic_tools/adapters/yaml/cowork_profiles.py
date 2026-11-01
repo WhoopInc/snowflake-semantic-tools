@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; a profile file is read to the
 preview's contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 A profile file is found and read as an agent file is, and shares its instructions, skills,
 passthrough, and `config:` with one (`agent_fields`); its `display:` block is read as an

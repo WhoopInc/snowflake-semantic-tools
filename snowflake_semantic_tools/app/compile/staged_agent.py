@@ -7,7 +7,7 @@ artifact that carries them; each kind supplies its key, specification, and metad
 decides what a specification holds.
 
 CoWork profiles are a Snowflake private preview (PrPr):
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+`snowflake_docs.COWORK_PROFILES`
 """
 
 from __future__ import annotations

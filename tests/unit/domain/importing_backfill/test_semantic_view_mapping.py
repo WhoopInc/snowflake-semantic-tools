@@ -240,8 +240,14 @@ def test_staleness_is_written_only_when_it_differs_from_the_folders_and_is_repor
 
     assert config("60", max_staleness=60) == (None, [])
     assert config("90", max_staleness=60) == ({"max_staleness": 90}, [])
-    assert config("5 minutes") == (None, [])
-    assert config("a b c") == (None, [])
+    # A staleness that is not a count of seconds cannot be written, so it is reported, not dropped.
+    for unreadable in ("5 minutes", "a b c"):
+        written, details = config(unreadable)
+        assert written is None
+        assert details == [
+            f"semantic_view:orders_view: its max_staleness, {unreadable}, "
+            "is not a count of seconds SST can write; it was left out"
+        ]
     _, details = config("", max_staleness=60)
     assert any("its folder sets max_staleness 60, which the live view does not set" in d for d in details)
 

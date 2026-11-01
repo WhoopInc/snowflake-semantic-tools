@@ -41,6 +41,10 @@ class Registry:
 
     A registry `RegistryBuilder.freeze` returns has passed every integrity check, and its maps
     are read-only.
+
+    Attributes:
+        artifacts: Every artifact type, by name.
+        members: Every member type, by name.
     """
 
     artifacts: Mapping[str, ArtifactType]
@@ -543,7 +547,7 @@ ARTIFACT_REGISTRY = build_registry(
             dir_key="agents_dir",
             routed_block="agents",
         ),
-        # Snowflake private preview (PrPr): https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
+        # Snowflake private preview (PrPr): `snowflake_docs.COWORK_PROFILES`
         ArtifactType(
             name="cowork_profile",
             root_key=None,

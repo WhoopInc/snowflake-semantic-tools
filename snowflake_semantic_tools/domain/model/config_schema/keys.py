@@ -21,6 +21,7 @@ from snowflake_semantic_tools.domain.model.eval import DEFAULT_EVAL_CONFIG_STAGE
 from snowflake_semantic_tools.domain.model.lifecycle.drift import DRIFT_CHECK_FULL, DRIFT_CHECKS
 from snowflake_semantic_tools.domain.model.skill import DEFAULT_VERSION_PREFIX
 from snowflake_semantic_tools.domain.model.tool import EXECUTE_AS
+from snowflake_semantic_tools.domain.snowflake_docs import COWORK_PROFILES
 
 _key = ConfigKey
 
@@ -414,7 +415,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "cowork_profiles",
         _BLOCK,
         "Defaults for Snowflake CoWork profiles (Snowflake private preview; "
-        "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles), overridable "
+        f"{COWORK_PROFILES.url}), overridable "
         "per folder and by a profile's own `config:`.",
         children=ChildPolicy.ROUTES,
     ),
@@ -456,7 +457,7 @@ CONFIG_SCHEMA: tuple[ConfigKey, ...] = (
         "Attach each profile published to SNOWFLAKE_INTELLIGENCE.PROFILES to the account's CoWork object, "
         "and again when it was detached by hand; false leaves it unattached, and never detaches one "
         "(Snowflake private preview; "
-        "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles).",
+        f"{COWORK_PROFILES.url}).",
         default="true",
     ),
     _key(

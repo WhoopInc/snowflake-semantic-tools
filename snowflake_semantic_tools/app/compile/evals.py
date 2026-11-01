@@ -3,8 +3,8 @@
 An eval compiles into the schema of what it evaluates: an agent, or a CoWork profile. CoWork
 profiles are a Snowflake private preview (PrPr) feature; a profile's eval follows the preview's
 contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

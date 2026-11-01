@@ -86,7 +86,11 @@ def eval_status_is_provisional(status: str) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class ThresholdRange:
-    """A metric's pass band; a None bound leaves that side open."""
+    """A metric's pass band; a None bound leaves that side open.
+
+    Attributes:
+        min, max: The lowest and highest passing score; None leaves that side open.
+    """
 
     min: float | None = None
     max: float | None = None
@@ -97,6 +101,7 @@ class EvalInvocation:
     """One expected tool call in a row's `ground_truth_invocations`.
 
     Attributes:
+        origin: Where the entry starts in its file.
         tool_name: The agent's resolved, trace-facing tool name, matched exactly (case
             included); None when omitted.
         tool_input: Prose describing the intended call, not SQL; None when omitted.
@@ -116,6 +121,7 @@ class EvalSubagentRef:
     Snowflake private preview (PrPr): CoWork profiles.
 
     Attributes:
+        origin: Where the entry starts in its file.
         function: The template function the entry calls, `agent` or `tool`.
         name: The name that call gives, as written.
     """
@@ -135,13 +141,16 @@ class EvalGroundTruth:
     """What one dataset row expects of the agent.
 
     Attributes:
+        origin: Where the row's ground truth starts in its file.
         invocations: None when `ground_truth_invocations` is absent; `()` when it is an
             empty list, which is still an expectation: that no tool is called.
         output: `ground_truth_output`, the rubric a reply is judged against.
+        required_filters: The filters the generated query must apply; `()` when none are listed.
         subagents: None when `ground_truth_subagents` is absent; `()` when it is an empty list,
             which is still an expectation: that a CoWork profile declines the question.
         immutable: Declared together with `immutable_reason`, and both are required when
             `output` contains a number in digits.
+        immutable_reason: Why the expected answer does not change; None when unset.
         extra: Keys the parser does not model, passed through into the rendered dataset.
     """
 
@@ -168,7 +177,13 @@ class EvalGroundTruth:
 
 @dataclass(frozen=True, slots=True)
 class EvalQuestion:
-    """One dataset row; `question` is None when missing, `ground_truth` when absent or malformed."""
+    """One dataset row; `question` is None when missing, `ground_truth` when absent or malformed.
+
+    Attributes:
+        origin: Where the row starts in its file.
+        question: The question asked of the agent; None when missing.
+        ground_truth: What the row expects; None when absent or malformed.
+    """
 
     origin: Origin
     question: str | None
@@ -181,10 +196,15 @@ class EvalDataset:
 
     The file names no agent: it belongs to the agent whose `evals/` folder holds it.
 
+    Authored keys: `authored_schema.EVAL_DATASET`.
+
     Attributes:
+        origin: Where the file's content starts.
+        source_file: The project file it was read from.
         name: The name `{{ eval_dataset() }}` references it by; None when absent. Never
             rendered.
         description: For reviewers only; never rendered into anything sent to Snowflake.
+        questions: The dataset's rows, in file order.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets; eval
             objects always live in the agent's schema, so each is rejected.
     """
@@ -199,7 +219,12 @@ class EvalDataset:
 
 @dataclass(frozen=True, slots=True)
 class EvalColumnMapping:
-    """The source table's column names for the question and its ground truth."""
+    """The source table's column names for the question and its ground truth.
+
+    Attributes:
+        query_text: The column holding each question; `input_query` by default.
+        ground_truth: The column holding each expected answer; `ground_truth` by default.
+    """
 
     query_text: str = "input_query"
     ground_truth: str = "ground_truth"
@@ -214,6 +239,7 @@ class EvalDatasetConfig:
             absent; `never` creates nothing and requires the dataset to exist already.
         name_template: The DATASET name template; None when unset, which validation rejects.
         source_table_template: The source table name template; None when unset, likewise.
+        column_mapping: The source table's column names; the defaults when unset.
     """
 
     mint: str | None = None
@@ -227,10 +253,12 @@ class EvalSystemMetric:
     """One Snowflake system metric an eval config enables.
 
     Attributes:
+        origin: Where the entry starts in its file.
         name: None when omitted; an unknown name is reported, not dropped.
         version: None when neither the metric nor its eval's `metric_version` setting names one;
             the loader fills an unset one from that setting.
         gate: Whether the metric gates the eval; None reads as ungated.
+        threshold: The pass band; None when unset.
         judge_model: Must stay None: a system metric's judge comes with its version.
     """
 
@@ -250,6 +278,7 @@ class EvalRoutingMetric:
     Snowflake runs; SST computes it from the run's router spans.
 
     Attributes:
+        origin: Where the entry starts in its file.
         name: None when omitted; the parser reports a name other than `routing_accuracy`.
         gate: Whether the metric gates the eval; None reads as ungated, as a system metric's.
         threshold: The pass band, within [0, 1]; None when unset.
@@ -267,6 +296,8 @@ class EvalRunConfig:
 
     Attributes:
         name_template: The run name template; None uses the runner's default template.
+        label: A label shown with the run; None when unset.
+        description: What the run checks; None when unset.
         variant: Why the run happened; fills the `variant` token, and None reads as "ci".
         accept_statuses: Terminal statuses the author accepts; only COMPLETED passes.
     """
@@ -284,10 +315,16 @@ class EvalConfig:
 
     Like a dataset, the file names no agent: its folder says which agent it belongs to.
 
+    Authored keys: `authored_schema.EVAL_CONFIG`.
+
     Attributes:
+        origin: Where the file's content starts.
+        source_file: The project file it was read from.
         dataset: None when the `dataset:` block is absent or not a mapping; likewise `run`
             for its block.
+        system_metrics: The Snowflake system metrics the config enables.
         custom_metric_names: The names the `eval_metric()` references give, as written.
+        run: The `run:` block; None when absent or not a mapping.
         forbidden_keys: Which of `database`, `schema` and `enabled` the file sets.
         name: The name `{{ eval_config() }}` references it by; None when absent. Never
             rendered.
@@ -321,7 +358,11 @@ class EvalConfig:
 
 @dataclass(frozen=True, slots=True)
 class EvalScoreRanges:
-    """A judge's three score bands, each an inclusive `(low, high)` pair of integers."""
+    """A judge's three score bands, each an inclusive `(low, high)` pair of integers.
+
+    Attributes:
+        min_score, median_score, max_score: The lowest, middle and highest band.
+    """
 
     min_score: tuple[int, int]
     median_score: tuple[int, int]
@@ -332,11 +373,19 @@ class EvalScoreRanges:
 class CustomEvalMetric:
     """A custom LLM-judge metric; it creates no Snowflake object and is inlined into eval configs.
 
+    Authored keys: `authored_schema.EVAL_METRIC`.
+
     Attributes:
+        origin: Where the entry starts in its file.
+        source_file: The project file it was read from.
+        name: The name eval configs reference it by, compared casefolded.
+        description: What the metric judges; None when unset.
         model: The judge model; the loader fills an absent one from `evals.+judge_model`.
             None, when neither sets one, and `auto` are rejected.
         score_ranges: None when absent or malformed; the parser reports why.
+        prompt: The judge's prompt; None when absent.
         gate_default: Whether every eval that uses the metric gates on it.
+        threshold_default: The pass band every eval that uses the metric applies; None when unset.
         enabled: False leaves the metric out of rendered eval configs.
         meta: Free-form annotations, never rendered.
     """
@@ -377,10 +426,14 @@ class EvalDefaults:
         eval_tier: Whether a regression blocks, `blocking` or `report`; unset reads as `report`.
         metrics: The system metrics, ungated, of a config whose `metrics:` block has no
             `system` key; only system metric names, each once.
+        metric_version: The version of each system metric that names none.
         judge_model: The judge model of a custom metric that sets no `model`.
         agent_version: `committed`, `alias:<name>` or `VERSION$<n>`: the version a run targets.
+        retry: The retries per run; unset retries none.
         concurrency: At the block root, how many runs a suite starts at once and the most an
             eval may ask; on an eval, what it asks.
+        baseline_runs: The completed attempts a baseline needs; unset needs 1.
+        min_dataset_rows: The fewest questions a dataset may have; unset checks none.
         retention: The class recorded with each run, `audit` or `decision`.
         candidate_models: The orchestration models a comparison runs beside the pinned one, in
             the order the setting lists them, each once compared casefolded; `()` names none.
@@ -410,6 +463,9 @@ class ResolvedEval:
 
     Attributes:
         evaluated: The agent, or the CoWork profile, the eval evaluates; `subject` reads it.
+        dataset: The eval's dataset.
+        config: The eval's run config.
+        custom_metrics: The custom metrics the config names that the catalog has.
         settings: Each `evals:` setting the eval resolved -- its config's `config:`, then the
             folder routes over its subject's folder, then the block root -- by key without its
             `+`, with where its value came from.
@@ -517,6 +573,9 @@ class EvalCatalog:
     """Every eval and custom metric in a project, with the `evals:` block root's settings.
 
     Attributes:
+        evals: Every eval in the project.
+        metrics: Every custom metric in the project.
+        defaults: The `evals:` block root's settings.
         diagnostics: Reported about the catalog so far; validation returns these first, then its own.
     """
 

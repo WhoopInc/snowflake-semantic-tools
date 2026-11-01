@@ -9,8 +9,8 @@ Each value is the document's own text, or empty when the key is missing or empty
 not a mapping is skipped, as is any key read here does not name. Only a variable's default and
 a verified query's timestamp keep their type, since each reader converts them its own way.
 
-The document's keys are Snowflake's semantic view YAML (`docs.SEMANTIC_VIEW_YAML`), read back by
-`docs.READ_YAML_FROM_SEMANTIC_VIEW`. Only the parsed mapping is read here; parsing the text is
+The document's keys are Snowflake's semantic view YAML (`snowflake_docs.SEMANTIC_VIEW_YAML`), read back by
+`snowflake_docs.READ_YAML_FROM_SEMANTIC_VIEW`. Only the parsed mapping is read here; parsing the text is
 the adapter's (`adapters.bounded_yaml`).
 """
 

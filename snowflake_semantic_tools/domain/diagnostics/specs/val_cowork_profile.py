@@ -2,8 +2,8 @@
 
 CoWork profiles are a Snowflake private preview (PrPr) feature; these codes follow the preview's
 contract, as these pages describe it:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 
 A profile's subagent list and the tools it carries beside its router, the agents it routes to,
 where it publishes beside the project's agents, and what a profile's eval may expect and score.
@@ -12,6 +12,7 @@ where it publishes beside the project's agents, and what a profile's eval may ex
 from __future__ import annotations
 
 from snowflake_semantic_tools.domain.diagnostics.core import ErrorSpec, Severity, spec
+from snowflake_semantic_tools.domain.snowflake_docs import COWORK_PROFILES, COWORK_ROUTING
 
 TITLE: str = "Validation"
 
@@ -26,7 +27,7 @@ SPECS: tuple[ErrorSpec, ...] = (
         condition="a CoWork profile compiles; reported once per compiled profile",
         note=(
             "Snowflake private preview: "
-            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles . "
+            f"{COWORK_PROFILES.url} . "
             "SST renders the CoWork profile to the preview's contract as measured, the agent_router tool and "
             "its subagent list included, and Snowflake may change that contract before general "
             "availability."
@@ -93,7 +94,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Snowflake private preview. A subagent entry without all of name, display_name, "
             "description, and source makes the CoWork profile drop its whole subagent list, with no error, "
             "and the router chooses between agents by their descriptions. "
-            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing"
+            f"{COWORK_ROUTING.url}"
         ),
     ),
     spec(
@@ -115,7 +116,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "Snowflake private preview. A CoWork profile routes data questions to its agents; analyst, "
             "search, and chart tools belong on an agent. SST renders the profile's agent_router "
             "tool itself, so `spec.tools` cannot declare one either. "
-            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing"
+            f"{COWORK_ROUTING.url}"
         ),
     ),
     spec(
@@ -161,8 +162,7 @@ SPECS: tuple[ErrorSpec, ...] = (
             "SNOWFLAKE_INTELLIGENCE.PROFILES"
         ),
         note=(
-            "Snowflake private preview. CoWork treats every agent in that schema as a profile. "
-            "https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles"
+            f"Snowflake private preview. CoWork treats every agent in that schema as a profile. {COWORK_PROFILES.url}"
         ),
     ),
     spec(

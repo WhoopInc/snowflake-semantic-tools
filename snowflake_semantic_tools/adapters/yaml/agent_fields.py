@@ -4,8 +4,8 @@ An `agent.yml` and a `cowork_profile.yml` are found the same way, one per folder
 their instructions, sample questions, skills, reference fields, published text, and the check
 for keys a block does not model; each loader keeps what only its own kind writes. CoWork
 profiles are a Snowflake private preview (PrPr) feature, read to the preview's contract:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

@@ -6,8 +6,8 @@ metadata, except one in Snowflake's `ground_truth_` vocabulary, which is an expe
 renderer cannot express (`eval_render_checks`). A CoWork profile's eval, a Snowflake private
 preview (PrPr), renders the subagents a row expects as the qualified names the profile's
 router gives them on the target, which custom judges read through `{{ground_truth}}`:
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/about-cowork-profiles
-https://docs.snowflake.com/en/LIMITEDACCESS/snowflake-cortex/set-up-cowork-profile-routing
+`snowflake_docs.COWORK_PROFILES`
+`snowflake_docs.COWORK_ROUTING`
 """
 
 from __future__ import annotations

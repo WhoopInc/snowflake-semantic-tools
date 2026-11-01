@@ -13,6 +13,7 @@ import re
 
 import pytest
 
+from snowflake_semantic_tools.domain import snowflake_docs as docs
 from snowflake_semantic_tools.domain.model.authored_schema import FILE_KINDS, Field, FieldStatus, Node
 from snowflake_semantic_tools.domain.model.config_schema import CHILDREN, KeyStatus
 from snowflake_semantic_tools.domain.model.snowflake_spec import (
@@ -28,7 +29,6 @@ from snowflake_semantic_tools.domain.model.snowflake_spec import (
     Measured,
     Setting,
     SpecNode,
-    docs,
     sources,
     walk,
 )
@@ -44,38 +44,6 @@ TABLES: dict[str, tuple[SpecNode, ...]] = {
 _BLOCKS = {"agent": "agents", "cowork_profile": "cowork_profiles"}
 _PASSTHROUGH = {"agent": AGENT_PASSTHROUGH, "cowork_profile": COWORK_PASSTHROUGH}
 _NOT_IN_SPEC = {"agent": AGENT_NOT_IN_SPEC, "cowork_profile": COWORK_NOT_IN_SPEC}
-# Package modules that still paste a docs link, moved to `docs` constants in a later step; only shrinks.
-_PASTED_LINKS = frozenset(
-    (
-        "adapters/yaml/agent_fields.py",
-        "adapters/yaml/cowork_profiles.py",
-        "adapters/yaml/evals/catalog.py",
-        "adapters/yaml/evals/config.py",
-        "adapters/yaml/evals/dataset.py",
-        "app/apply/temporary.py",
-        "app/compile/cowork_profiles/__init__.py",
-        "app/compile/cowork_profiles/compiled.py",
-        "app/compile/cowork_profiles/settled.py",
-        "app/compile/cowork_profiles/subagents.py",
-        "app/compile/evals.py",
-        "app/compile/staged_agent.py",
-        "app/evals/inline.py",
-        "app/evals/routes.py",
-        "app/observe.py",
-        "domain/diagnostics/specs/sno.py",
-        "domain/diagnostics/specs/val_cowork_profile.py",
-        "domain/evaluate/routing.py",
-        "domain/model/config_schema/keys.py",
-        "domain/model/cowork_profile.py",
-        "domain/model/eval/subject.py",
-        "domain/model/registry.py",
-        "domain/plan/attach.py",
-        "domain/render/cowork_profile.py",
-        "domain/render/eval.py",
-        "domain/validate/cowork_profile.py",
-        "domain/validate/eval_subject.py",
-    )
-)
 
 
 def _field(kind: str, path: str) -> Field | None:
@@ -172,10 +140,8 @@ def test_no_package_module_but_docs_pastes_a_docs_link() -> None:
         for path in PACKAGE.rglob("*.py")
         if "docs.snowflake.com" in path.read_text(encoding="utf-8")
     }
-    pasting.discard("domain/model/snowflake_spec/docs.py")
-    assert sorted(pasting - _PASTED_LINKS) == []
-    # The allowlist only shrinks: a module that no longer pastes a link leaves it.
-    assert sorted(_PASTED_LINKS - pasting) == []
+    # A docstring names a page by its constant; a message builds the link from its `url`.
+    assert sorted(pasting) == ["domain/snowflake_docs.py"]
 
 
 # Pages cited for a statement or another table rather than a key here: CREATE AGENT and ALTER

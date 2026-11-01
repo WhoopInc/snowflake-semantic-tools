@@ -830,7 +830,7 @@ sst docs [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--check` | flag |  | Write nothing; exit 2 when a committed reference page is out of date. |
-| `--only` | errors\|coverage\|artifacts\|cli\|config\|files, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`, `files` (the authored-file keys). Defaults to all of them. |
+| `--only` | errors\|coverage\|artifacts\|cli\|config\|files\|spec, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`, `files` (the authored-file keys), `spec` (the Snowflake specification keys). Defaults to all of them. |
 | `--output-dir` | DIRECTORY |  | Write the pages here instead of `docs/reference`. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 instead of 2 when there are differences. |
 

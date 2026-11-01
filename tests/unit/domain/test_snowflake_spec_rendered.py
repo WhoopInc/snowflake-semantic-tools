@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from snowflake_semantic_tools.domain import snowflake_docs
 from snowflake_semantic_tools.domain.importing import agent as importer
 from snowflake_semantic_tools.domain.model.snowflake_spec import (
     AGENT_SPEC,
@@ -21,7 +22,9 @@ from snowflake_semantic_tools.domain.model.snowflake_spec import (
     ROUTER_RESOURCES,
     TOOL_RESOURCES,
     SpecNode,
+    walk,
 )
+from snowflake_semantic_tools.domain.render.spec_reference import render_snowflake_spec
 
 GOLDEN = Path(__file__).resolve().parents[2] / "golden" / "expected"
 
@@ -78,3 +81,17 @@ def test_the_importer_splits_a_search_tools_resources_as_the_table_declares_them
     assert not own & member
     declared = TOOL_RESOURCES["cortex_search"].names - {"search_service", "execution_environment"}
     assert own | member == declared
+
+
+def test_the_spec_reference_page_lists_every_key_and_every_page_cited() -> None:
+    page = render_snowflake_spec(generated="")
+    for table in (AGENT_SPEC, COWORK_SPEC, *TOOL_RESOURCES.values()):
+        for path, _, _ in walk(table):
+            # A list's entries are `[]` and a named mapping's `<name>` on the page, `*` in a path.
+            assert any(_spelled(path, spelling) in page for spelling in ("[]", ".<name>")), path
+    for doc_page in snowflake_docs.PAGES:
+        assert doc_page.url in page, doc_page.title
+
+
+def _spelled(path: tuple[str, ...], spelling: str) -> str:
+    return "`" + ".".join(path).replace(".*", spelling) + "`"

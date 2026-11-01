@@ -26,7 +26,11 @@ VISIBILITY: Mapping[str, str] = MappingProxyType({"public": "public_access", "pr
 
 @dataclass(frozen=True, slots=True)
 class SourcePosition:
-    """Where a YAML node starts in its file, as a 1-based line and a 1-based column."""
+    """Where a YAML node starts in its file, as a 1-based line and a 1-based column.
+
+    Attributes:
+        line, col: The 1-based line and column the node starts at.
+    """
 
     line: int
     col: int
@@ -91,6 +95,8 @@ class NonAdditiveDef:
         dimension, table: The column and the model the entry's `{{ ref('<model>', '<column>') }}`
             names; `table` is None only for a record not read from a file, whose dimension is
             on the metric's own table.
+        descending: True for `descending`, False for `ascending`, None when the sort is unstated.
+        nulls_first: True for nulls `first`, False for `last`, None when unstated.
     """
 
     dimension: str
@@ -119,7 +125,12 @@ NULL_ORDERS: Mapping[str, bool] = MappingProxyType({"first": True, "last": False
 
 @dataclass(frozen=True, slots=True)
 class WindowOrderDef:
-    """One `window.order_by` entry: a `{{ ref() }}` or `{{ metric() }}` call and its sort."""
+    """One `window.order_by` entry: a `{{ ref() }}` or `{{ metric() }}` call and its sort.
+
+    Attributes:
+        ref: The entry's call, as written.
+        descending, nulls_first: The entry's sort, as in `NonAdditiveDef`; None when unstated.
+    """
 
     ref: str
     descending: bool | None = None
@@ -128,7 +139,15 @@ class WindowOrderDef:
 
 @dataclass(frozen=True, slots=True)
 class WindowDef:
-    """A metric's `window:` block as authored, with its references unresolved."""
+    """A metric's `window:` block as authored, with its references unresolved.
+
+    Attributes:
+        partition_by: The `partition_by` calls, as written; empty when none.
+        partition_excluding: The `partition_by_excluding` calls, as written; empty when none.
+        order_by: The `order_by` entries; empty when none.
+        frame: The canonical frame clause; None when absent or not a frame (SST-PRS124).
+        has_frame: Whether the block writes a `frame`, even one that is not a frame.
+    """
 
     partition_by: tuple[str, ...] = ()
     partition_excluding: tuple[str, ...] = ()

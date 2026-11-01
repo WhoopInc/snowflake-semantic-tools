@@ -228,6 +228,33 @@ included.
 
 Drawn from: [domain/model/registry.py](../../snowflake_semantic_tools/domain/model/registry.py), [domain/ports/lifecycle.py](../../snowflake_semantic_tools/domain/ports/lifecycle.py), [app/lifecycle/composite.py](../../snowflake_semantic_tools/app/lifecycle/composite.py), [app/plan.py](../../snowflake_semantic_tools/app/plan.py), [tests/helpers/goldens.py](../../tests/helpers/goldens.py), [domain/render/reference_docs.py](../../snowflake_semantic_tools/domain/render/reference_docs.py), [domain/model/authored_schema/](../../snowflake_semantic_tools/domain/model/authored_schema/__init__.py).
 
+## The Snowflake contract
+
+What SST writes into an agent's or a CoWork profile's specification is declared once, as
+tables in `domain/model/snowflake_spec/`: each key, its kind, what fills it, and its evidence.
+Snowflake documents these specifications in prose, with no schema to validate against, so the
+evidence is either the page that documents a key, a `DocPage` in `domain/snowflake_docs.py`, or
+the section of [snowflake-behavior.md](snowflake-behavior.md) that measured an undocumented one.
+
+The tables are read, not just cited:
+
+- **Loading** refuses a passthrough key that would overwrite one SST writes (`SST-PRS023`), by
+  its dotted path. Passthrough merges into what SST renders, mapping into mapping, so a key it
+  adds inside a section SST writes, such as `models.fallback`, is allowed.
+- **Import** keeps in passthrough exactly what a live specification holds beyond the tables, at
+  whatever depth it sits, and takes its tool, resource and setting keys from them; it imports
+  every reference agent and profile back to the payload it compiled to.
+- **The [Snowflake specification reference](../reference/snowflake-spec.md)** is generated
+  from them, with each key's evidence as a link.
+
+The renderer keeps its own functions, because its output is compared byte for byte with the
+goldens; a test holds it to the tables instead, failing when a golden holds a path no table
+declares. A semantic view is rendered as DDL, not as a specification, so it has no such table;
+its live side, the YAML `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW` returns, is read by one reader in
+`domain/snowflake_yaml/semantic_view.py`, which `sst plan` and `sst import` both read through.
+
+Drawn from: [domain/model/snowflake_spec/](../../snowflake_semantic_tools/domain/model/snowflake_spec/__init__.py), [domain/snowflake_docs.py](../../snowflake_semantic_tools/domain/snowflake_docs.py), [domain/parse/passthrough.py](../../snowflake_semantic_tools/domain/parse/passthrough.py), [domain/importing/agent.py](../../snowflake_semantic_tools/domain/importing/agent.py), [domain/snowflake_yaml/semantic_view.py](../../snowflake_semantic_tools/domain/snowflake_yaml/semantic_view.py), [domain/render/spec_reference.py](../../snowflake_semantic_tools/domain/render/spec_reference.py).
+
 ## The compile pipeline
 
 `CompileProject` reads the project only through `ProjectInputs`, so it touches

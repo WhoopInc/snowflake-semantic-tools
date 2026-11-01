@@ -107,3 +107,44 @@ def test_documented_codes_stop_at_the_next_section() -> None:
         "Check.\n\nDiagnostics:\n    SST-VAL102: one.\n    continued text.\n\nReturns:\n    SST-VAL999 is prose."
     )
     assert docstring_rules.documented_codes(docstring) == ["SST-VAL102"]
+
+
+def _model_violations(source: str, path: str = "snowflake_semantic_tools/domain/model/m.py") -> set[str]:
+    tree = ast.parse(source)
+    index = docstring_rules.ClassIndex(node for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
+    return set(docstring_rules.module_violations(path, tree, index))
+
+
+_MODEL = '''"""M."""
+from dataclasses import dataclass
+from typing import ClassVar
+
+
+@dataclass(frozen=True)
+class Row:
+    """A row.
+
+    Authored keys: `authored_schema.{table}`.
+
+    Attributes:
+        name, kind: What it is.
+        {listed}
+    """
+
+    name: str
+    kind: str
+    origin: str
+    LIMIT: ClassVar[int] = 3
+'''
+
+
+def test_a_model_dataclass_lists_each_field_it_declares_and_cites_only_tables_that_exist() -> None:
+    complete = _MODEL.format(table="AGENT", listed="origin: Where it starts.")
+    assert _model_violations(complete) == set()
+    # An entry's continuation line names nothing; a `ClassVar` is no field.
+    unlisted = _MODEL.format(table="AGENT", listed="other: Not a field.\n            origin: indented deeper.")
+    assert _model_violations(unlisted) == {"docstring-fields snowflake_semantic_tools/domain/model/m.py::Row"}
+    unknown = _MODEL.format(table="NO_SUCH_TABLE", listed="origin: Where it starts.")
+    assert _model_violations(unknown) == {"docstring-authored snowflake_semantic_tools/domain/model/m.py::Row"}
+    # Outside the model and API packages a dataclass documents only what its fields do not say.
+    assert _model_violations(unlisted, "snowflake_semantic_tools/app/m.py") == set()

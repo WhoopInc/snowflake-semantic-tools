@@ -27,7 +27,12 @@ DEFAULT_VERSION_PREFIX = "SST_"
 
 @dataclass(frozen=True, slots=True)
 class SkillFile:
-    """One authored file, addressed relative to the skill folder."""
+    """One authored file, addressed relative to the skill folder.
+
+    Attributes:
+        path: The file's path relative to the skill folder.
+        content: The file's raw bytes.
+    """
 
     path: str
     content: bytes
@@ -60,11 +65,16 @@ class SkillFile:
 class Skill:
     """One authored skill folder. `name` is the folder name; the frontmatter must agree.
 
+    Authored keys: `authored_schema.SKILL_FRONT_MATTER`.
+
     Attributes:
+        name: The skill's folder name.
         directory: The folder, relative to the project root.
         declared_name: The frontmatter `name`; None when the frontmatter declares none.
+        description: The frontmatter `description`; None when unset.
         body: The Markdown after the frontmatter; blank when the skill gives no instructions.
         files: Every published file of the folder, `SKILL.md` included, by path relative to it.
+        origin: The first line of the skill's `SKILL.md`.
         folder: The folder below `project.skills_dir`, one segment per directory, its own name
             last; the `skills:` folder routes along it apply to the skill.
         config: The frontmatter's `config:` block: the `skills:` settings the skill sets for
@@ -113,9 +123,16 @@ class Skill:
 class Plugin:
     """One plugin manifest: a named group of project skills published as one extension.
 
+    Authored keys: `authored_schema.PLUGIN`.
+
     Attributes:
+        name: The plugin's name, which is its folder's.
         directory: The plugin folder, relative to the project root; its name is the plugin's.
+        manifest_file: The manifest file's path.
+        description: The manifest's `description`; None when unset.
+        owner_team: The manifest's `owner_team`; None when unset.
         members: The skill names the manifest lists, in its order and with any repeats.
+        origin: The first line of the manifest file.
         folder: The folder below `project.plugins_dir`, one segment per directory, its own name
             last; the `plugins:` folder routes along it apply to the plugin.
         config: The manifest's `config:` block, as `Skill.config` is the skill's.
@@ -147,6 +164,8 @@ class SkillCatalog:
     """Every skill folder and plugin manifest of a project, as loaded.
 
     Attributes:
+        skills: Every skill folder loaded; empty when none.
+        plugins: Every plugin manifest loaded; empty when none.
         diagnostics: What loading reported; validation reports these first, unchanged.
     """
 
@@ -161,7 +180,12 @@ class SkillCatalog:
 
 @dataclass(frozen=True, slots=True)
 class BundleEntry:
-    """One file of a bundle, at its published path."""
+    """One file of a bundle, at its published path.
+
+    Attributes:
+        path: The file's published path within the bundle.
+        content: The file's raw bytes.
+    """
 
     path: str
     content: bytes
@@ -183,6 +207,8 @@ class SkillBundle:
 
     Attributes:
         kind: The extension type, `SKILL` or `PLUGIN`.
+        name: The skill or plugin name the bundle is built for.
+        entries: The bundle's files; their order does not change the digest.
     """
 
     kind: str
