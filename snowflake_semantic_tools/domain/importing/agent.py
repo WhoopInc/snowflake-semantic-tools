@@ -467,7 +467,11 @@ def _subagent(mapping: _Mapping, entry: object) -> dict[str, object]:
 
 
 def _skills(mapping: _Mapping, spec: Mapping[str, object]) -> list[object]:
-    """Map each skill a spec loads to the project's extension that publishes it."""
+    """Map each skill a spec loads to the project's extension that publishes or consumes it.
+
+    One the project consumes (`extensions:`) is written as `{{ extension('<name>') }}`, with the
+    version the live agent pins, since another project publishes it.
+    """
     written: list[object] = []
     for entry in _list(spec.get("skills")):
         skill = _mapping_of(entry)
@@ -493,10 +497,25 @@ def _skills(mapping: _Mapping, spec: Mapping[str, object]) -> list[object]:
                 written.append(item)
                 break
         else:
+            consumed = mapping.index.extensions.get(extension.folded)
+            if consumed is not None:
+                written.append(_consumed_skill(consumed, live_name, source.get("version")))
+                continue
             reference = "{{ skill('" + (live_name or artifact_name(extension)) + "') }}"
             written.append({"source": {"type": "CORTEX_EXTENSION", "path": reference}})
             mapping.unresolved("skill", extension.sql, reference)
     return written
+
+
+def _consumed_skill(entry: str, live_name: str, version: object) -> dict[str, object]:
+    """Write a skill from an extension the project consumes, keeping the name and version the agent sets.
+
+    SST names a skill it publishes itself; one another project publishes keeps its authored name.
+    """
+    source: dict[str, object] = {"type": "CORTEX_EXTENSION", "path": "{{ extension('" + entry + "') }}"}
+    if isinstance(version, str) and version:
+        source["version"] = version
+    return {**({"name": live_name} if live_name else {}), "source": source}
 
 
 def _stage_skill(mapping: _Mapping, live_name: str, path: str) -> dict[str, object]:

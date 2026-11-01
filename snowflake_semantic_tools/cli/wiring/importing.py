@@ -21,6 +21,7 @@ from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.emit import emit_document
 from snowflake_semantic_tools.adapters.yaml.format import keep_canonical
 from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle
+from snowflake_semantic_tools.app.compile.extensions import consumed_extensions
 from snowflake_semantic_tools.app.importing import ImportSetup, artifact_directories, project_index
 from snowflake_semantic_tools.cli.runner import WriteFailure
 from snowflake_semantic_tools.cli.wiring.compile import compile_result
@@ -41,8 +42,10 @@ def import_setup(
     result = compile_result(paths, target_name, manifest_path)
     inputs = project_inputs(paths, target_name, manifest_path)
     config = resolved_config(paths, target_name).tree
+    # Unresolvable entries are reported by the compile; the import maps to those that resolve.
+    extensions, _ = consumed_extensions(config, profile.identity)
     index = project_index(
-        result, inputs.dbt_catalog(), inputs.tool_catalog(), target_name, artifact_directories(config)
+        result, inputs.dbt_catalog(), inputs.tool_catalog(), target_name, artifact_directories(config), extensions
     )
     project_dir = paths.project_dir
     return ImportSetup(

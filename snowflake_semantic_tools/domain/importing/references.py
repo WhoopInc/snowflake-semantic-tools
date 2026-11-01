@@ -64,6 +64,8 @@ class ProjectIndex:
         view_models: The dbt models each compiled view's tables are, by the view's name.
         instruction_sets: Each compiled view's rendered `(AI_SQL_GENERATION,
             AI_QUESTION_CATEGORIZATION)` text, and the custom instruction blocks it lists for them.
+        extensions: Each extension `extensions:` declares the project consumes, by its entry
+            name, keyed by the name it resolves to on the target.
     """
 
     target_name: str
@@ -76,6 +78,7 @@ class ProjectIndex:
     members: Mapping[str, frozenset[str]] = field(default_factory=lambda: MappingProxyType({}))
     view_models: Mapping[str, frozenset[str]] = field(default_factory=lambda: MappingProxyType({}))
     instruction_sets: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
+    extensions: Mapping[Folded, str] = field(default_factory=lambda: MappingProxyType({}))
 
     def instructions_for(self, generation: str, categorization: str) -> tuple[str, ...] | None:
         """Return the blocks a compiled view renders exactly these two texts from; None when none does."""

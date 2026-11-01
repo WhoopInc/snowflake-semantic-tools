@@ -250,6 +250,26 @@ def test_skills_resolve_to_project_skills_or_plugins_and_report_what_the_project
     assert any("skill 'known' is read from the stage path" in detail for detail in details)
 
 
+def test_a_skill_from_an_extension_the_project_consumes_keeps_its_name_and_pinned_version() -> None:
+    spec = {
+        "skills": [
+            {"name": "glossary", "source": {"type": "CORTEX_EXTENSION", "path": "DB.P.GLOSSARY", "version": "V$3"}},
+            {"source": {"type": "CORTEX_EXTENSION", "path": "db.p.glossary"}},
+        ]
+    }
+    project = index(extensions={QualifiedName.parse("DB.P.GLOSSARY").folded: "partner-glossary"})
+    imported = import_agent(_live(spec), project, _placed())
+    # Another project publishes it, so it is not a skill this project compiles (SST-IMP012).
+    assert _spec(imported)["skills"] == [
+        {
+            "name": "glossary",
+            "source": {"type": "CORTEX_EXTENSION", "path": "{{ extension('partner-glossary') }}", "version": "V$3"},
+        },
+        {"source": {"type": "CORTEX_EXTENSION", "path": "{{ extension('partner-glossary') }}"}},
+    ]
+    assert imported.diagnostics == () and imported.dependencies == ()
+
+
 def test_a_cowork_profile_maps_routed_agents_builtin_tools_and_what_it_cannot_render() -> None:
     spec = {
         "instructions": {"response": "Be brief."},

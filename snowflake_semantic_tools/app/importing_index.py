@@ -32,12 +32,15 @@ def project_index(
     tools: ToolCatalog,
     target_name: str,
     directories: Mapping[str, str],
+    extensions: Mapping[str, QualifiedName] | None = None,
 ) -> ProjectIndex:
     """Index the project's compiled names on the target, for an import to map live names to.
 
     Args:
         directories: Each artifact type's directory, as `sst_config.yml` sets it, which an
             artifact's folder is read below.
+        extensions: The extensions the project consumes, as `consumed_extensions` resolves
+            them for the target.
     """
     placed: list[Placed] = []
     for item in result.compiled:
@@ -86,6 +89,7 @@ def project_index(
             for item in result.compiled
             if isinstance(item, CompiledView) and item.view.custom_instruction_names
         ),
+        MappingProxyType({name.folded: entry for entry, name in (extensions or {}).items()}),
     )
 
 
