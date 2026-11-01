@@ -17,11 +17,11 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.domain.diagnostics import Diagnostic
 from snowflake_semantic_tools.domain.model.agent import ResolvedAgentTool
 from snowflake_semantic_tools.domain.model.cowork_profile import (
-    ROUTER_NAME,
     CoworkProfileModel,
     ResolvedCoworkProfile,
     ResolvedSubagent,
 )
+from snowflake_semantic_tools.domain.model.snowflake_spec import ROUTER_NAME, ROUTER_TYPE, SUBAGENT_SOURCE
 from snowflake_semantic_tools.domain.render.agent import (
     agent_render_checks,
     merge_passthrough,
@@ -33,9 +33,6 @@ from snowflake_semantic_tools.domain.render.agent import (
 )
 from snowflake_semantic_tools.domain.state import canonical_json
 
-# The tool type that makes an agent a profile, and the source type of each agent it routes to.
-ROUTER_TYPE = "agent_router"
-SUBAGENT_SOURCE = "DATA_AGENT"
 # The router every profile renders first, as the checks an agent's tools get read it.
 _ROUTER_TOOL = ResolvedAgentTool(ROUTER_TYPE, ROUTER_NAME, "")
 

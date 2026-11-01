@@ -13,11 +13,12 @@ from itertools import combinations
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS, AgentModel, ResolvedAgentTool
+from snowflake_semantic_tools.domain.model.snowflake_spec import TOOL_RESOURCES
 
 NEAR_DUPLICATE_RATIO = 0.9
 # Tool types an instruction may name generically ("the cortex_search tool") without
 # naming a tool; a built-in's type is also its name, so it is not among them.
-_GENERIC_TYPES = frozenset(("cortex_analyst_text_to_sql", "cortex_search", "generic", "agent_toolset"))
+_GENERIC_TYPES = frozenset(TOOL_RESOURCES)
 _NAMED_TOOL = re.compile(
     r"`(?P<quoted>[A-Za-z][A-Za-z0-9_]*)`\s+tool\b|\b(?P<snake>[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+)\s+tool\b|"
     r"\btool\s+[`'\"](?P<after>[A-Za-z][A-Za-z0-9_]*)[`'\"]",

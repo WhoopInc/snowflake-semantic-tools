@@ -12,6 +12,7 @@ from collections.abc import Mapping
 from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.authored_schema import ValueKind
+from snowflake_semantic_tools.domain.model.cowork_profile import ROUTER_NAME as ROUTER_NAME
 from snowflake_semantic_tools.domain.model.snowflake_spec import docs
 from snowflake_semantic_tools.domain.model.snowflake_spec.agent import instructions_key, skills_key
 from snowflake_semantic_tools.domain.model.snowflake_spec.model import (
@@ -29,7 +30,6 @@ _KIND = "cowork_profile"
 _STRING, _MAPPING, _LIST = ValueKind.STRING, ValueKind.MAPPING, ValueKind.LIST
 # The router's tool type and name, and the source type each subagent's entry names.
 ROUTER_TYPE = "agent_router"
-ROUTER_NAME = "router"
 SUBAGENT_SOURCE = "DATA_AGENT"
 
 

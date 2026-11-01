@@ -116,6 +116,11 @@ class SpecNode:
         """The key named `name`; None when the node has none."""
         return next((item for item in self.keys if item.name == name), None)
 
+    @property
+    def names(self) -> frozenset[str]:
+        """The names of its keys."""
+        return frozenset(item.name for item in self.keys)
+
 
 SpecPath = tuple[str, ...]
 # The segment a named mapping's or a list's entry takes in a `SpecPath`.
@@ -144,6 +149,11 @@ def sources(node: SpecNode) -> Iterator[tuple[SpecPath, Source]]:
     for path, item, _ in walk(node):
         for source in item.sources:
             yield path, source
+
+
+def settings(node: SpecNode) -> tuple[tuple[str, SpecPath], ...]:
+    """Each setting a key below `node` comes from, with the key's path, in the order SST writes them."""
+    return tuple((source.key, path) for path, source in sources(node) if isinstance(source, Setting))
 
 
 def merges_into(item: SpecKey) -> bool:

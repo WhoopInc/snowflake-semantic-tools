@@ -24,23 +24,24 @@ from snowflake_semantic_tools.domain.importing.placement import Destination
 from snowflake_semantic_tools.domain.importing.references import ProjectIndex
 from snowflake_semantic_tools.domain.model.agent import BUILTIN_AGENT_TOOLS
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
-from snowflake_semantic_tools.domain.model.snowflake_spec import AGENT_SPEC, COWORK_SPEC, unmodelled
-
-_TOOL_SPEC_KEYS = frozenset(("type", "name", "description", "input_schema"))
-_ROUTER_TYPE = "agent_router"
-# The orchestration settings an agent models, by where its spec holds each.
-_ORCHESTRATION_SETTINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("budget_seconds", ("budget", "seconds")),
-    ("budget_tokens", ("budget", "tokens")),
-    ("tool_not_accessible", ("tool_not_accessible",)),
-    ("analytical_search", ("capabilities", "analytical_search")),
+from snowflake_semantic_tools.domain.model.snowflake_spec import (
+    AGENT_SPEC,
+    COWORK_SPEC,
+    ROUTER_TYPE,
+    TOOL_RESOURCES,
+    TOOL_SPEC,
+    settings,
+    unmodelled,
 )
+
+# The orchestration settings an agent models, by where its spec holds each.
+_ORCHESTRATION_SETTINGS = tuple((key, path[1:]) for key, path in settings(AGENT_SPEC) if path[0] == "orchestration")
 # Search resources a tool writes as its own keys; the rest come from its member or are kept.
 # A tool's id and title columns are `ref()` calls (SST-REF050); its member declares them instead.
 _SEARCH_KEYS = ("max_results", "filter", "stage_path", "relative_path_column")
 _MEMBER_KEYS = ("id_column", "title_column", "columns_and_descriptions")
-_SEARCH_RESOURCES = frozenset(("search_service", "execution_environment", *_SEARCH_KEYS, *_MEMBER_KEYS))
-_GENERIC_RESOURCES = frozenset(("identifier", "type", "execution_environment"))
+_SEARCH_RESOURCES = TOOL_RESOURCES["cortex_search"].names
+_GENERIC_RESOURCES = TOOL_RESOURCES["generic"].names
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +84,7 @@ class AgentPlacement:
 
 def is_cowork_profile(spec: Mapping[str, object]) -> bool:
     """Report whether a spec is a CoWork profile's: its tools include an `agent_router`."""
-    return any(_tool_spec(tool).get("type") == _ROUTER_TYPE for tool in _list(spec.get("tools")))
+    return any(_tool_spec(tool).get("type") == ROUTER_TYPE for tool in _list(spec.get("tools")))
 
 
 class _Mapping:
@@ -226,7 +227,7 @@ def import_cowork_profile(live: LiveAgent, index: ProjectIndex, placement: Agent
         tool_spec = _tool_spec(tool)
         tool_type = str(tool_spec.get("type") or "")
         tool_name = str(tool_spec.get("name") or tool_type)
-        if tool_type == _ROUTER_TYPE:
+        if tool_type == ROUTER_TYPE:
             router = _mapping_of(resources.get(tool_name))
             subagents.extend(_subagent(mapping, entry) for entry in _list(router.get("subagents")))
         elif tool_type in BUILTIN_AGENT_TOOLS:
@@ -338,7 +339,7 @@ def _agent_tool(mapping: _Mapping, tool: object, resources: Mapping[str, object]
     else:
         mapping.differs(f"tool '{name}' of type '{tool_type}' is not one SST renders; it was left out")
         return None
-    extra = {key: value for key, value in tool_spec.items() if key not in _TOOL_SPEC_KEYS}
+    extra = {key: value for key, value in tool_spec.items() if key not in TOOL_SPEC.names}
     if extra:
         entry["tool_spec_passthrough"] = extra
     return entry
