@@ -5,12 +5,18 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from snowflake_semantic_tools.adapters.yaml.cowork_profiles import load_cowork_profiles
 from snowflake_semantic_tools.domain.diagnostics import Origin
+from snowflake_semantic_tools.domain.importing.agent import AgentPlacement, LiveAgent, import_cowork_profile
+from snowflake_semantic_tools.domain.importing.placement import Destination
+from snowflake_semantic_tools.domain.importing.references import Placed
 from snowflake_semantic_tools.domain.model.agent import AgentProfile, AgentSkill
 from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileTool, CoworkSubagent
+from snowflake_semantic_tools.domain.model.identifier import QualifiedName
 from tests.helpers.diagnostic_filters import codes, only
+from tests.helpers.import_fakes import index
 
 FILE = "cowork_profiles/company/everyone/cowork_profile.yml"
 ONE_SUBAGENT = "spec:\n  subagents:\n    - agent: \"{{ agent('sales') }}\"\n"
@@ -192,3 +198,20 @@ def test_a_config_key_the_block_does_not_take_is_reported(tmp_path: Path) -> Non
     _, diagnostics = load_cowork_profiles(tmp_path)
     diagnostic = only(diagnostics, "SST-CFG053")
     assert (diagnostic.origin, diagnostic.subject) == (Origin(FILE, 6, 14), "cowork_profile:everyone")
+
+
+def test_an_imported_profile_reads_back_with_its_subagent_questions(tmp_path: Path) -> None:
+    """The router stores a subagent's questions as text; the file writes each as a `question:` map."""
+    spec = {
+        "tools": [{"tool_spec": {"type": "agent_router", "name": "router"}}],
+        "tool_resources": {
+            "router": {"subagents": [{"source": {"fqn": "DB.S.SALES", "sample_questions": ["What closed?"]}}]}
+        },
+    }
+    live = LiveAgent(QualifiedName.parse("DB.S.EVERYONE"), "Front door.", {}, False, spec)
+    project = index(Placed("agent", "sales", QualifiedName.parse("DB.S.SALES"), ()))
+    imported = import_cowork_profile(live, project, AgentPlacement("cowork_profiles", "tools", Destination(()), {}))
+    _write(tmp_path, yaml.safe_dump(imported.files[0].document, sort_keys=False))
+    [profile], diagnostics = load_cowork_profiles(tmp_path)
+    assert "SST-PRS118" not in codes(diagnostics)
+    assert [item.sample_questions for item in profile.subagents] == [("What closed?",)]

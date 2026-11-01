@@ -272,7 +272,7 @@ def test_a_cowork_profile_maps_routed_agents_builtin_tools_and_what_it_cannot_re
     assert document["spec"] == {
         "instructions": {"response": "Be brief."},
         "subagents": [
-            {"agent": "{{ agent('helper') }}", "display_name": "Helper", "sample_questions": ["How?"]},
+            {"agent": "{{ agent('helper') }}", "display_name": "Helper", "sample_questions": [{"question": "How?"}]},
             {"agent": "{{ tool('far') }}", "description": "Far away."},
             {"display_name": "Nobody"},
         ],

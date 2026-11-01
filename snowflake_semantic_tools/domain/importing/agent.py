@@ -481,7 +481,8 @@ def _subagent(mapping: _Mapping, entry: object) -> dict[str, object]:
     for key in ("display_name", "description"):
         if subagent.get(key):
             written[key] = subagent[key]
-    questions = [str(item) for item in _list(source.get("sample_questions")) if item]
+    # The router stores a subagent's questions as text; the file writes each as an agent's are.
+    questions = [{"question": str(item)} for item in _list(source.get("sample_questions")) if item]
     if questions:
         written["sample_questions"] = questions
     return written

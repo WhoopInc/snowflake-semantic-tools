@@ -137,7 +137,11 @@ def test_a_profile_routes_to_project_agents_and_references_the_rest() -> None:
     imported = import_cowork_profile(_agent(spec), project, _placed())
     subagents = (imported.files[0].document or {})["spec"]["subagents"]  # type: ignore[index]
     assert subagents == [
-        {"agent": "{{ agent('sales_agent') }}", "display_name": "Sales", "sample_questions": ["Revenue?"]},
+        {
+            "agent": "{{ agent('sales_agent') }}",
+            "display_name": "Sales",
+            "sample_questions": [{"question": "Revenue?"}],
+        },
         {"agent": "{{ tool('delivery_agent') }}", "description": "Delivery."},
     ]
     assert imported.files[1].path == "tools/sales/delivery_agent/delivery_agent.yml"
