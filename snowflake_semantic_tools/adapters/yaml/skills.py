@@ -28,9 +28,12 @@ from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.text_checks import read_authored_text
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored_schema import PLUGIN
+from snowflake_semantic_tools.domain.model.authored import NodePath
+from snowflake_semantic_tools.domain.model.authored_schema import PLUGIN, SKILL_FRONT_MATTER
 from snowflake_semantic_tools.domain.model.skill import SKILL_FILE, Plugin, Skill, SkillCatalog, SkillFile
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
+from snowflake_semantic_tools.domain.validate.undeclared_keys import undeclared_key_diagnostics
 
 PLUGIN_FILES = ("plugin.yml", "plugin.yaml")
 _NONE: Mapping[str, object] = MappingProxyType({})
@@ -172,6 +175,7 @@ def _load_skill(project_dir: Path, folder: Path, nested: tuple[Path, ...], diagn
     frontmatter, body = _frontmatter(raw, skill_md, subject, diagnostics)
     item_config = frontmatter.get("config")
     diagnostics.extend(item_config_diagnostics("skills", item_config, subject=subject, origin_of=_at(skill_md)))
+    diagnostics.extend(_front_matter_keys(frontmatter, skill_md, subject))
     return Skill(
         name=name,
         directory=directory,
@@ -202,6 +206,30 @@ def _at(file: str) -> Callable[[str], Origin]:
         return Origin(file, 1)
 
     return origin_of
+
+
+def _front_matter_keys(frontmatter: Mapping[str, object], skill_md: str, subject: str) -> list[Diagnostic]:
+    """Report each undeclared front-matter key, then each loose value of another kind.
+
+    The front matter is read without positions, so each is placed at the file's first line.
+
+    Diagnostics:
+        SST-PRS132: as `undeclared_key_diagnostics` reports it.
+        SST-PRS131: as `loose_value_diagnostics` reports it.
+    """
+
+    def origin_of(path: NodePath) -> Origin:
+        del path
+        return Origin(skill_md, 1)
+
+    return [
+        *undeclared_key_diagnostics(
+            SKILL_FRONT_MATTER.node, frontmatter, (), artifact=subject, subject=subject, origin_of=origin_of
+        ),
+        *loose_value_diagnostics(
+            SKILL_FRONT_MATTER.node, frontmatter, (), artifact=subject, subject=subject, origin_of=origin_of
+        ),
+    ]
 
 
 def _frontmatter(raw: bytes, file: str, subject: str, diagnostics: list[Diagnostic]) -> tuple[dict[str, object], str]:

@@ -12,7 +12,11 @@ from collections.abc import Mapping
 from snowflake_semantic_tools.adapters.yaml.documents import ParsedYaml
 from snowflake_semantic_tools.adapters.yaml.fields import checked_strings, optional_int, optional_string
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
+from snowflake_semantic_tools.domain.model.authored import NodePath
+from snowflake_semantic_tools.domain.model.authored_schema import FileKind
 from snowflake_semantic_tools.domain.model.eval import ThresholdRange
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
+from snowflake_semantic_tools.domain.validate.undeclared_keys import undeclared_key_diagnostics
 
 
 def parse_threshold(
@@ -201,3 +205,22 @@ def origin_at(parsed: ParsedYaml, path: tuple[str | int, ...], source_file: str)
 
 def _number(value: object) -> float | None:
     return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+
+
+def table_key_diagnostics(kind: FileKind, source_file: str, parsed: ParsedYaml) -> list[Diagnostic]:
+    """Report each key the eval file does not declare, then each loose value of another kind.
+
+    Diagnostics:
+        SST-PRS132: as `undeclared_key_diagnostics` reports it.
+        SST-PRS131: as `loose_value_diagnostics` reports it.
+    """
+
+    def origin_of(path: NodePath) -> Origin:
+        return origin_at(parsed, path, source_file)
+
+    return [
+        *undeclared_key_diagnostics(kind.node, parsed.tree, (), artifact=source_file, origin_of=origin_of),
+        *loose_value_diagnostics(
+            kind.node, parsed.tree, (), artifact=source_file, subject=source_file, origin_of=origin_of
+        ),
+    ]

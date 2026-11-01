@@ -24,9 +24,11 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     removed_agent_key,
     required_string,
     string_tuple,
+    table_key_diagnostics,
 )
 from snowflake_semantic_tools.adapters.yaml.fields import optional_string
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
+from snowflake_semantic_tools.domain.model.authored_schema import EVAL_CONFIG
 from snowflake_semantic_tools.domain.model.config_schema import CONFIG_FILE, resolve_settings
 from snowflake_semantic_tools.domain.model.eval import (
     EVAL_KNOWN_TERMINAL_STATUSES,
@@ -167,6 +169,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
         Every code `required_call` lists, for a `metrics.custom` entry that is not one
             `eval_metric()` reference.
         SST-CFG044: the file declares a `sweep:` block, which this release does not run.
+        SST-PRS132, SST-PRS131: as `table_key_diagnostics` reports them.
     """
     source_file, parsed = loaded
     tree = parsed.tree
@@ -201,6 +204,7 @@ def parse_config(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic]) 
     run = _parse_run(source_file, parsed, tree.get("run"), diagnostics)
     _reject_sweep(source_file, parsed, tree.get("sweep"), diagnostics)
     diagnostics.extend(_moved_settings(source_file, parsed))
+    diagnostics.extend(table_key_diagnostics(EVAL_CONFIG, source_file, parsed))
     return EvalConfig(
         origin,
         source_file,

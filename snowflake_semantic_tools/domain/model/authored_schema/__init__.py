@@ -13,8 +13,13 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.model.authored_schema.agents import AGENT, AGENT_TOOL, COWORK_PROFILE
 from snowflake_semantic_tools.domain.model.authored_schema.dbt_meta import DBT_COLUMN_META, DBT_MODEL_META
-from snowflake_semantic_tools.domain.model.authored_schema.evals import EVAL_METRIC
-from snowflake_semantic_tools.domain.model.authored_schema.extensions import COCO_PROFILE, COCO_SHARED_PROFILE, PLUGIN
+from snowflake_semantic_tools.domain.model.authored_schema.evals import EVAL_CONFIG, EVAL_DATASET, EVAL_METRIC
+from snowflake_semantic_tools.domain.model.authored_schema.extensions import (
+    COCO_PROFILE,
+    COCO_SHARED_PROFILE,
+    PLUGIN,
+    SKILL_FRONT_MATTER,
+)
 from snowflake_semantic_tools.domain.model.authored_schema.field_types import (
     READ_STATUSES,
     Field,
@@ -45,10 +50,13 @@ FILE_KINDS: Mapping[str, FileKind] = MappingProxyType(
             TOOL_MEMBER,
             AGENT,
             COWORK_PROFILE,
+            SKILL_FRONT_MATTER,
             PLUGIN,
             COCO_PROFILE,
             COCO_SHARED_PROFILE,
             EVAL_METRIC,
+            EVAL_DATASET,
+            EVAL_CONFIG,
             DBT_MODEL_META,
             DBT_COLUMN_META,
         )
@@ -64,12 +72,15 @@ __all__ = [
     "CREATION_KEYS",
     "DBT_COLUMN_META",
     "DBT_MODEL_META",
+    "EVAL_CONFIG",
+    "EVAL_DATASET",
     "EVAL_METRIC",
     "FILE_KINDS",
     "MOVED_TOOL_KEYS",
     "PLUGIN",
     "READ_STATUSES",
     "SEMANTIC_KINDS",
+    "SKILL_FRONT_MATTER",
     "TOOL_COLUMN_KEYS",
     "TOOL_MEMBER",
     "TOOL_MEMBER_KEYS",

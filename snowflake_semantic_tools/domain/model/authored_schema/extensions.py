@@ -1,4 +1,4 @@
-"""The key tables of a plugin, a CoCo profile, and the shared layer every CoCo profile carries."""
+"""The key tables of a skill's front matter, a plugin, a CoCo profile, and the shared CoCo layer."""
 
 from __future__ import annotations
 
@@ -34,6 +34,35 @@ PLUGIN = FileKind(
                 items=_TEMPLATE,
             ),
             Field("config", _MAPPING, "The plugin's own `plugins:` settings.", config_block="plugins"),
+        )
+    ),
+)
+# The front matter of a `SKILL.md`. Besides what SST reads, the keys skills in the wild write for
+# their agent (its tools, a parent skill, its categories, trigger phrases) and the open skill format's
+# optional keys are accepted, so a working skill raises nothing.
+SKILL_FRONT_MATTER = FileKind(
+    "skill",
+    "A skill's front matter: its name, the description agents choose it by, and its settings.",
+    "the front matter of `SKILL.md` in a folder of the skills directory",
+    Node(
+        (
+            Field("name", _STRING, "The skill's name; the folder names it, and this must match.", required=True),
+            Field(
+                "description",
+                _STRING,
+                "What the skill does and when to use it, which agents read to choose it.",
+                required=True,
+            ),
+            Field("config", _MAPPING, "The skill's own `skills:` settings.", config_block="skills"),
+            Field("tools", ValueKind.ANY, "The tools the skill expects its agent to have."),
+            Field("parent_skill", _STRING, "The skill this one belongs to."),
+            Field("category", _STRING, "A category the skill is filed under."),
+            Field("categories", ValueKind.ANY, "The categories the skill is filed under."),
+            Field("triggers", ValueKind.ANY, "Phrases that suggest the skill."),
+            Field("license", _STRING, "The skill's license."),
+            Field("allowed-tools", ValueKind.ANY, "The tools the skill may use."),
+            Field("compatibility", _STRING, "What the skill needs to run."),
+            Field("metadata", _MAPPING, "Free-form metadata about the skill."),
         )
     ),
 )

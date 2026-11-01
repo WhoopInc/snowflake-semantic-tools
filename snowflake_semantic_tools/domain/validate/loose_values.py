@@ -57,7 +57,7 @@ def _matches(field: Field, value: object) -> bool:
     return any(_is(kind, value) for kind in (field.kind, *field.also))
 
 
-def _label(path: NodePath) -> str:
+def field_label(path: NodePath) -> str:
     """Write a path inside a declaration as a diagnostic names a field: `columns[0].type`."""
     text = ""
     for part in path:
@@ -101,7 +101,7 @@ def loose_value_diagnostics(
                 D(
                     "SST-PRS131",
                     artifact=artifact,
-                    field=_label(where[begin:]),
+                    field=field_label(where[begin:]),
                     found=_found(held),
                     expected=_EXPECTED[item.kind],
                     subject=subject,

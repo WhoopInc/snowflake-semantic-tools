@@ -27,8 +27,8 @@ from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS
 from snowflake_semantic_tools.domain.validate.agent_tool import TOOL_KEYS
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import AUTHORED_KEYS, NESTED_KEYS
 
-# Kinds `REFERENCE_FIELDS` names that no table declares yet.
-_UNDECLARED = frozenset(("eval_config", "eval_dataset"))
+# `REFERENCE_FIELDS` paths that leave out where the field nests, with where it does.
+_NESTED_AT = {"eval_dataset.ground_truth_subagents": "eval_dataset.questions.ground_truth.ground_truth_subagents"}
 
 
 def _nodes(node: Node) -> Iterator[Node]:
@@ -128,9 +128,7 @@ def _resolved(path: str) -> Field:
 
 @pytest.mark.parametrize("path", sorted(REFERENCE_FIELDS))
 def test_every_reference_field_is_a_declared_key(path: str) -> None:
-    if path.split(".", 1)[0] in _UNDECLARED:
-        pytest.skip("its kind's table is not declared yet")
-    found = _resolved(path)
+    found = _resolved(_NESTED_AT.get(path, path))
     takes = found.items if found.kind is ValueKind.LIST else (found.node or found.kind)
     # A block, such as an agent's instructions, whose keys take the calls, or a node a bare call stands for.
     assert takes is ValueKind.TEMPLATE or isinstance(takes, Node), path

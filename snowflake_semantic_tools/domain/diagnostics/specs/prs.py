@@ -560,6 +560,21 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-PRS132",
+        Severity.WARNING,
+        "Unknown field in a skill or eval file",
+        "{artifact}: unknown field '{field}'{detail}",
+        "remove the field, or correct its spelling",
+        condition=(
+            "a skill's front matter, an eval dataset or an eval config writes a key its table does not "
+            "declare; the message names the declared key it is a near miss of, when there is one"
+        ),
+        note=(
+            "These files were not checked for unknown keys before, so an unknown key is a warning "
+            "rather than the error a near miss is elsewhere: a project that passed keeps passing."
+        ),
+    ),
+    spec(
         "SST-PRS900",
         Severity.ERROR,
         "Parser returned a non-frozen record",

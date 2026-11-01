@@ -21,8 +21,10 @@ from snowflake_semantic_tools.adapters.yaml.evals.readers import (
     removed_agent_key,
     required_string,
     string_tuple,
+    table_key_diagnostics,
 )
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
+from snowflake_semantic_tools.domain.model.authored_schema import EVAL_DATASET
 from snowflake_semantic_tools.domain.model.eval import (
     EvalDataset,
     EvalGroundTruth,
@@ -60,6 +62,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
         SST-PRS018: a question or an expected invocation is not a mapping, or an expected
             subagent is not a string.
         SST-PRS019: a ground truth's `immutable` is not a boolean.
+        SST-PRS132, SST-PRS131: as `table_key_diagnostics` reports them.
         Every code `required_call` lists, for an expected subagent that is not one `agent()` or
             `tool()` call.
     """
@@ -90,6 +93,7 @@ def parse_dataset(loaded: tuple[str, ParsedYaml], diagnostics: list[Diagnostic])
             _parse_question(source_file, parsed, index, value, diagnostics)
             for index, value in enumerate(questions_value)
         )
+    diagnostics.extend(table_key_diagnostics(EVAL_DATASET, source_file, parsed))
     return EvalDataset(
         origin,
         source_file,

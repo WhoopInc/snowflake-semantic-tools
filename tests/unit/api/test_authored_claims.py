@@ -48,7 +48,11 @@ _FILES = {
     "plugin": "plugins/**/plugin.yml",
     "coco_profile": "coco_profiles/*/coco_profile.yml",
     "eval_metric": "eval_metrics/*.yml",
+    "eval_dataset": "agents/**/evals/*.yml",
+    "eval_config": "agents/**/evals/*.yml",
 }
+# An evals folder holds both kinds: a dataset is the file that lists `questions:`.
+_HOLDS = {"eval_dataset": True, "eval_config": False}
 # A value of each kind's wrong type.
 _WRONG: Mapping[ValueKind, object] = {
     ValueKind.STRING: {"x": 1},
@@ -137,7 +141,7 @@ def _claims() -> list[Claim]:
         for file in sorted(FIXTURE.glob(pattern)):
             relative = file.relative_to(FIXTURE).as_posix()
             tree = load_editable(file.read_text(encoding="utf-8"), relative).root
-            if not isinstance(tree, Mapping):
+            if not isinstance(tree, Mapping) or _HOLDS.get(name, "questions" in tree) != ("questions" in tree):
                 continue
             for start, declaration in _declarations(tree, kind):
                 for node, mapping, path in _present(kind.node, declaration, start):

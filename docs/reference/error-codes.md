@@ -18,7 +18,7 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 52 codes
 - [Discovery (DIS)](#discovery-dis) -- 16 codes
-- [Parsing (PRS)](#parsing-prs) -- 60 codes
+- [Parsing (PRS)](#parsing-prs) -- 61 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
@@ -1592,6 +1592,18 @@ Raised when a field SST reads without checking its kind, such as a description, 
 Fix: write {expected}
 
 Note: Such a field is read as text, as a flag or as unset whatever it holds, so a mapping written as a description is published as its Python form, and one written as a flag reads as true.
+
+### SST-PRS132
+
+**Unknown field in a skill or eval file** (warning)
+
+`<artifact>: unknown field '<field>'<detail>`
+
+Raised when a skill's front matter, an eval dataset or an eval config writes a key its table does not declare; the message names the declared key it is a near miss of, when there is one.
+
+Fix: remove the field, or correct its spelling
+
+Note: These files were not checked for unknown keys before, so an unknown key is a warning rather than the error a near miss is elsewhere: a project that passed keeps passing.
 
 ### SST-PRS900
 
