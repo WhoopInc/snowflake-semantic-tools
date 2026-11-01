@@ -18,7 +18,7 @@ cannot be downgraded by any setting.
 - [Registry (REG)](#registry-reg) -- 24 codes
 - [Configuration (CFG)](#configuration-cfg) -- 52 codes
 - [Discovery (DIS)](#discovery-dis) -- 16 codes
-- [Parsing (PRS)](#parsing-prs) -- 59 codes
+- [Parsing (PRS)](#parsing-prs) -- 60 codes
 - [Loading (LOD)](#loading-lod) -- 25 codes
 - [References (REF)](#references-ref) -- 38 codes
 - [Membership (MEM)](#membership-mem) -- 19 codes
@@ -1580,6 +1580,18 @@ Raised when a procedure or function member's `signature:` entry writes `required
 Fix: remove `required:`, and list the parameter in the calling tool's input_schema.required
 
 Note: SST renders no DEFAULT for a parameter, so Snowflake requires every argument; a call that leaves one out matches no signature (000944).
+
+### SST-PRS131
+
+**Field holds a value of another kind** (warning)
+
+`<artifact>: '<field>' is <found>, not <expected>`
+
+Raised when a field SST reads without checking its kind, such as a description, a search column's flags or an agent's display block, holds a value of another kind.
+
+Fix: write {expected}
+
+Note: Such a field is read as text, as a flag or as unset whatever it holds, so a mapping written as a description is published as its Python form, and one written as a flag reads as true.
 
 ### SST-PRS900
 

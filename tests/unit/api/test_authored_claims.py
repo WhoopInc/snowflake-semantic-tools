@@ -3,9 +3,8 @@
 For each field a table declares, at the first reference file holding it, a session overlay
 writes one edit and checks that validation reports something it did not before: the field
 removed when it is required, a value outside its choices when it is an enum, and a value of
-the wrong kind. `LENIENT` names the fields SST reads without checking their kind today, so a
-value of the wrong kind there is read as text or truthiness; each must still be silent, so the
-list only shrinks.
+the wrong kind. A field the table marks `loose` SST reads without checking its kind, so a value
+of another kind there must be reported as SST-PRS131, not merely change something.
 """
 
 from __future__ import annotations
@@ -30,6 +29,7 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
     FileKind,
     Node,
     ValueKind,
+    walk,
 )
 from tests.helpers.reference_project import DBT_MANIFEST, FIXTURE, project_copy
 
@@ -60,43 +60,8 @@ _WRONG: Mapping[ValueKind, object] = {
     ValueKind.LIST: {"x": 1},
     ValueKind.MAPPING: [1],
 }
-# Fields whose value SST reads without checking its kind, by `<kind>:<field>`: text read with
-# `str()`, so a mapping is published as its repr; flags read for truthiness; and agent and
-# CoWork display and tool settings read as optional, so a wrong value reads as unset.
-LENIENT: frozenset[str] = frozenset(
-    (
-        # Descriptions and question text, read with str().
-        "custom_instruction:description",
-        "custom_instruction:ai_question_categorization",
-        "custom_instruction:ai_sql_generation",
-        "filter:description",
-        "metric:description",
-        "relationship:description",
-        "semantic_view:variables.description",
-        "verified_query:description",
-        "verified_query:question",
-        "tool:description",
-        "tool:columns.description",
-        "tool:columns.type",
-        "cowork_profile:comment",
-        "cowork_profile:spec.subagents.description",
-        # Flags read for truthiness, and lists read as empty when they are not one.
-        "tool:columns.filterable",
-        "tool:columns.searchable",
-        "tool:on.attributes",
-        # Display blocks and tool settings read as optional.
-        "agent:profile",
-        "agent:profile.avatar",
-        "agent:profile.color",
-        "agent:profile.display_name",
-        "cowork_profile:display",
-        "cowork_profile:display.color",
-        "cowork_profile:display.display_name",
-        "agent:spec.tools.max_results",
-        "agent:spec.tools.query_timeout",
-        "agent:spec.tools.warehouse",
-    )
-)
+# A loose field holding another kind is reported with this code; any other claim with any code.
+_LOOSE_CODE = "SST-PRS131"
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,6 +75,7 @@ class Claim:
     path: NodePath
     key: str
     value: object
+    declared: Field
 
     @property
     def id(self) -> str:
@@ -181,7 +147,7 @@ def _claims() -> list[Claim]:
                             continue
                         field = f"{where}.{item.name}" if where else item.name
                         for claim, value in _edits(item):
-                            made = Claim(name, field, claim, relative, path, item.name, value)
+                            made = Claim(name, field, claim, relative, path, item.name, value, item)
                             found.setdefault(made.id, made)
     return sorted(found.values(), key=lambda made: made.id)
 
@@ -221,13 +187,16 @@ def _codes_of(session: ProjectSession, file: str, data: bytes) -> Counter[str]:
 @pytest.mark.parametrize("claim", CLAIMS, ids=lambda claim: claim.id)
 def test_sst_reports_what_the_table_claims(session: ProjectSession, claim: Claim) -> None:
     plain, edited = _edited(session.project_dir, claim)
-    reported = bool(_codes_of(session, claim.file, edited) - _codes_of(session, claim.file, plain))
-    lenient = f"{claim.kind}:{claim.field}" in LENIENT and claim.claim == "kind"
-    if lenient:
-        assert not reported, f"{claim.id} is reported now: drop it from LENIENT"
+    new = _codes_of(session, claim.file, edited) - _codes_of(session, claim.file, plain)
+    if claim.declared.loose and claim.claim == "kind":
+        # What SST then reads (an unset description, say) may draw its own report too.
+        assert _LOOSE_CODE in new, f"{claim.file}: {claim.id} reports {sorted(new)}"
     else:
-        assert reported, f"{claim.file}: SST reports nothing for {claim.id}"
+        assert new, f"{claim.file}: SST reports nothing for {claim.id}"
 
 
-def test_every_lenient_field_is_one_a_table_declares() -> None:
-    assert {f"{claim.kind}:{claim.field}" for claim in CLAIMS if claim.claim == "kind"} >= LENIENT
+def test_every_loose_field_is_probed_somewhere() -> None:
+    """A field one node shares with another, such as a display block's, is the same field wherever it sits."""
+    loose = {id(item) for name in _FILES for _, _, item in walk(FILE_KINDS[name].node) if item.loose}
+    probed = {id(claim.declared) for claim in CLAIMS if claim.declared.loose and claim.claim == "kind"}
+    assert loose == probed

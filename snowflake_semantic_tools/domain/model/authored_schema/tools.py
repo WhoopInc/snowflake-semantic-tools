@@ -27,7 +27,7 @@ _ON = Node(
     (
         Field("table", _TEMPLATE, "The model the service's query selects from, as a `ref()` call."),
         Field("search_column", _TEMPLATE, "The column the service indexes."),
-        Field("attributes", _LIST, "Attribute columns the service exposes for filtering.", items=_TEMPLATE),
+        Field("attributes", _LIST, "Attribute columns the service exposes for filtering.", items=_TEMPLATE, loose=True),
     ),
     open=True,
     shorthand=_TEMPLATE,
@@ -65,10 +65,10 @@ _CREATION = (
 _COLUMN = Node(
     (
         Field("column", _TEMPLATE, "The column the entry adds and describes.", required=True),
-        Field("description", _STRING, "What the column holds, as search tools describe it."),
-        Field("type", _STRING, "The column's search type, `string` or `datetime`."),
-        Field("searchable", _BOOLEAN, "Whether search tools search the column."),
-        Field("filterable", _BOOLEAN, "Whether search tools may filter on the column."),
+        Field("description", _STRING, "What the column holds, as search tools describe it.", loose=True),
+        Field("type", _STRING, "The column's search type, `string` or `datetime`.", loose=True),
+        Field("searchable", _BOOLEAN, "Whether search tools search the column.", loose=True),
+        Field("filterable", _BOOLEAN, "Whether search tools may filter on the column.", loose=True),
     )
 )
 _PARAMETER = Node(
@@ -101,7 +101,12 @@ TOOL_MEMBER = FileKind(
                 required=True,
                 choices=tuple(kind.value for kind in ToolKind),
             ),
-            Field("description", _STRING, "The object's comment, and the description of a tool that sets none."),
+            Field(
+                "description",
+                _STRING,
+                "The object's comment, and the description of a tool that sets none.",
+                loose=True,
+            ),
             *_CREATION,
             Field("search_column", _TEMPLATE, "The column a search service indexes; wins over `on.search_column`."),
             Field("title_column", _TEMPLATE, "The default title column of search tools over the member."),

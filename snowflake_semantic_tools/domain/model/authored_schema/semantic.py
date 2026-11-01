@@ -42,7 +42,9 @@ def _name(member: str) -> Field:
 
 
 def _documents(member: str) -> Field:
-    return Field("description", _STRING, f"Documents the {member} for readers of the YAML; it is never published.")
+    return Field(
+        "description", _STRING, f"Documents the {member} for readers of the YAML; it is never published.", loose=True
+    )
 
 
 def _sort_fields(subject: str) -> tuple[Field, ...]:
@@ -97,7 +99,7 @@ _VARIABLE = Node(
             "The value the variable takes when a query sets none, cast to its declared type.",
             required=True,
         ),
-        Field("description", _STRING, "Renders as the variable's COMMENT."),
+        Field("description", _STRING, "Renders as the variable's COMMENT.", loose=True),
     )
 )
 SEMANTIC_VIEW = FileKind(
@@ -201,7 +203,7 @@ METRIC = FileKind(
                 "The aggregate expression; the models its `ref()` calls name are the metric's tables.",
                 required=True,
             ),
-            Field("description", _STRING, "Renders as the metric's COMMENT, its lines joined into one."),
+            Field("description", _STRING, "Renders as the metric's COMMENT, its lines joined into one.", loose=True),
             Field("synonyms", _LIST, "Other names for the metric, rendered as WITH SYNONYMS.", items=_STRING),
             Field(
                 "using_relationships",
@@ -250,7 +252,9 @@ FILTER = FileKind(
         (
             _name("filter"),
             Field("expr", _TEMPLATE, "The boolean expression; the models its `ref()` calls name are its tables."),
-            Field("description", _STRING, "Renders as the filter's COMMENT, or after its expression in prose."),
+            Field(
+                "description", _STRING, "Renders as the filter's COMMENT, or after its expression in prose.", loose=True
+            ),
             Field(
                 "labels",
                 _LIST,
@@ -274,11 +278,13 @@ CUSTOM_INSTRUCTION = FileKind(
                 "ai_sql_generation",
                 _TEMPLATE,
                 "Guidance on shaping SQL, joined into the view's AI_SQL_GENERATION.",
+                loose=True,
             ),
             Field(
                 "ai_question_categorization",
                 _TEMPLATE,
                 "Guidance on classifying questions, joined into the view's AI_QUESTION_CATEGORIZATION.",
+                loose=True,
             ),
             Field(
                 "sql_generation",
@@ -306,7 +312,7 @@ VERIFIED_QUERY = FileKind(
         (
             _name("verified query"),
             _documents("verified query"),
-            Field("question", _STRING, "The natural-language question the SQL answers.", required=True),
+            Field("question", _STRING, "The natural-language question the SQL answers.", required=True, loose=True),
             Field(
                 "sql",
                 _TEMPLATE,

@@ -33,9 +33,24 @@ def _free(name: str, summary: str) -> Field:
 
 _DISPLAY = Node(
     (
-        Field("display_name", _STRING, "The name people see; two agents with one display name is a warning."),
-        Field("avatar", _STRING, "The avatar image name, from the account's avatar allowlist when it sets one."),
-        Field("color", _STRING, "The display color: a plain color name, or a CSS variable such as `var(--token)`."),
+        Field(
+            "display_name",
+            _STRING,
+            "The name people see; two agents with one display name is a warning.",
+            loose=True,
+        ),
+        Field(
+            "avatar",
+            _STRING,
+            "The avatar image name, from the account's avatar allowlist when it sets one.",
+            loose=True,
+        ),
+        Field(
+            "color",
+            _STRING,
+            "The display color: a plain color name, or a CSS variable such as `var(--token)`.",
+            loose=True,
+        ),
     )
 )
 _SAMPLE_QUESTION = Node(
@@ -93,8 +108,8 @@ def _common(subject: str, display: str, display_summary: str) -> tuple[Field, ..
         Field(
             "name", _STRING, f"The {subject}'s name, which keys it and names the object it publishes as.", required=True
         ),
-        Field("comment", _STRING, f"Published as the {subject}'s comment, before SST's ownership marker."),
-        Field(display, _MAPPING, display_summary, node=_DISPLAY),
+        Field("comment", _STRING, f"Published as the {subject}'s comment, before SST's ownership marker.", loose=True),
+        Field(display, _MAPPING, display_summary, node=_DISPLAY, loose=True),
     )
 
 
@@ -115,8 +130,8 @@ def _closing(subject: str, block: str) -> tuple[Field, ...]:
 
 
 _ENVIRONMENT = (
-    Field("warehouse", _STRING, "The warehouse the tool's queries run on."),
-    Field("query_timeout", _INTEGER, "Seconds a tool query may run."),
+    Field("warehouse", _STRING, "The warehouse the tool's queries run on.", loose=True),
+    Field("query_timeout", _INTEGER, "Seconds a tool query may run.", loose=True),
 )
 _SEARCH_COLUMN = Node(
     (
@@ -138,7 +153,7 @@ _PASSTHROUGH = _free("passthrough", "Keys added last to the tool's resources, ov
 _SEARCH = (
     *_ENVIRONMENT,
     Field("search_service", _TEMPLATE, "The search service tool member the tool queries, as a `tool()` call."),
-    Field("max_results", _INTEGER, "The most results one search returns."),
+    Field("max_results", _INTEGER, "The most results one search returns.", loose=True),
     Field("title_column", _TEMPLATE, "The column a result's title is; defaults to the member's."),
     Field("id_column", _TEMPLATE, "The column that identifies a document; defaults to the member's."),
     Field("stage_path", _TEMPLATE, "The stage documents are previewed from; written with `relative_path_column`."),
@@ -159,7 +174,12 @@ AGENT_TOOL = Node(
             open_choices=True,
         ),
         Field("name", _STRING, "The name the agent calls the tool by, unique within the agent."),
-        Field("description", _STRING, "What the tool answers and what it does not, as the orchestrator reads it."),
+        Field(
+            "description",
+            _STRING,
+            "What the tool answers and what it does not, as the orchestrator reads it.",
+            loose=True,
+        ),
         _free("tool_spec_passthrough", "Keys added last to the rendered tool spec, overriding the computed ones."),
         _moved(
             "columns_and_descriptions",
@@ -240,7 +260,7 @@ _SUBAGENT = Node(
             required=True,
         ),
         Field("display_name", _STRING, "The subagent's name as the router shows it; defaults to the agent's own."),
-        Field("description", _STRING, "What the subagent is for, which the router reads to choose it."),
+        Field("description", _STRING, "What the subagent is for, which the router reads to choose it.", loose=True),
         Field(
             "sample_questions",
             _LIST,

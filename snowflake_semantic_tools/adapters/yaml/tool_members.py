@@ -26,6 +26,7 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
     CREATION_KEYS,
     MOVED_TOOL_KEYS,
     TOOL_COLUMN_KEYS,
+    TOOL_MEMBER,
     TOOL_MEMBER_KEYS,
 )
 from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
@@ -45,6 +46,7 @@ from snowflake_semantic_tools.domain.resolve.ref_fields import ref_field
 from snowflake_semantic_tools.domain.resolve.routine_body import expand_body
 from snowflake_semantic_tools.domain.resolve.template import ResolveContext, resolve_scalar
 from snowflake_semantic_tools.domain.resolve.tool_column import ColumnSite, tool_column
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.tool_body import hardcoded_relations
 
@@ -140,6 +142,11 @@ def parse_member(source: ToolSource, path: NodePath, value: object) -> tuple[Too
     subject = artifact_key(TOOL.name, name.casefold())
     keys = {key: item for key, item in entry.items() if key is not True}
     diagnostics.extend(unknown_tool_keys(keys, TOOL_MEMBER_KEYS, subject, source, path, subject=subject))
+    diagnostics.extend(
+        loose_value_diagnostics(
+            TOOL_MEMBER.node, keys, path, artifact=subject, subject=subject, origin_of=source.origin
+        )
+    )
     referenced = "relations" in entry
     on_model, on_attributes = _on_fields(entry.get("on", entry.get(True)), origin, name, diagnostics)
     columns = _Columns(source, path, entry, ColumnSite(name, "", subject, subject, origin), referenced, on_model)

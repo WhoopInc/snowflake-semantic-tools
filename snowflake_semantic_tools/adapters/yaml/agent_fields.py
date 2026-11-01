@@ -153,6 +153,16 @@ def label(path: NodePath) -> str:
     return text
 
 
+def line_origins(relative: str, lines: Mapping[NodePath, SourcePosition]) -> Callable[[NodePath], Origin]:
+    """Place a node of the file where it is written, else at the file's start."""
+
+    def origin_of(path: NodePath) -> Origin:
+        position = lines.get(path)
+        return Origin(relative, position.line, position.col) if position is not None else Origin(relative, 1, 1)
+
+    return origin_of
+
+
 def config_origins(relative: str, lines: Mapping[NodePath, SourcePosition]) -> Callable[[str], Origin]:
     """Place a key of the file's `config:` block where it is written, else at the file's start."""
 

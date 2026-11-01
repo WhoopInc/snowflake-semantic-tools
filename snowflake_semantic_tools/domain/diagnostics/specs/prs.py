@@ -544,6 +544,22 @@ SPECS: tuple[ErrorSpec, ...] = (
         ),
     ),
     spec(
+        "SST-PRS131",
+        Severity.WARNING,
+        "Field holds a value of another kind",
+        "{artifact}: '{field}' is {found}, not {expected}",
+        "write {expected}",
+        condition=(
+            "a field SST reads without checking its kind, such as a description, a search column's "
+            "flags or an agent's display block, holds a value of another kind"
+        ),
+        note=(
+            "Such a field is read as text, as a flag or as unset whatever it holds, so a mapping "
+            "written as a description is published as its Python form, and one written as a flag "
+            "reads as true."
+        ),
+    ),
+    spec(
         "SST-PRS900",
         Severity.ERROR,
         "Parser returned a non-frozen record",

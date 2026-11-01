@@ -23,6 +23,7 @@ from snowflake_semantic_tools.adapters.yaml.agent_fields import (
     folder_files,
     instruction,
     label,
+    line_origins,
     parse_eval_files,
     parse_skill,
     published_text,
@@ -43,6 +44,7 @@ from snowflake_semantic_tools.domain.model.cowork_profile import CoworkProfileMo
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.validate.cowork_profile import cowork_profile_diagnostics
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import name_problem
 
@@ -196,6 +198,11 @@ def _parse_profile(
         evals=parse_eval_files(relative, tree.get("evals"), diagnostics, kind=_KIND),
     )
     diagnostics.extend(unknown_block_keys(relative, tree, lines, subject, _PROFILE_KEYS))
+    diagnostics.extend(
+        loose_value_diagnostics(
+            COWORK_PROFILE.node, tree, (), artifact=subject, subject=subject, origin_of=line_origins(relative, lines)
+        )
+    )
     diagnostics.extend(
         item_config_diagnostics(
             "cowork_profiles", tree.get("config"), subject=subject, origin_of=config_origins(relative, lines)

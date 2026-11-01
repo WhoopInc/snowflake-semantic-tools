@@ -13,6 +13,7 @@ from snowflake_semantic_tools.adapters.yaml.agent_fields import (
     config_origins,
     folder_files,
     instruction,
+    line_origins,
     parse_eval_files,
     parse_skill,
     published_text,
@@ -44,6 +45,7 @@ from snowflake_semantic_tools.domain.model.config_schema import resolve_settings
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.passthrough import AGENT_SPEC_KEYS, TOOL_SPEC_KEYS, passthrough_diagnostics
 from snowflake_semantic_tools.domain.resolve.calls import literal_problem
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 from snowflake_semantic_tools.domain.validate.sql import name_problem
 
@@ -160,6 +162,22 @@ _MOVED_TOOL_KEYS: Mapping[str, str] = MappingProxyType(
 )
 
 
+def _key_diagnostics(
+    relative: str, tree: Mapping[str, Any], lines: Mapping[NodePath, SourcePosition], subject: str
+) -> list[Diagnostic]:
+    """Report each key the file's blocks do not model, then each loose value of another kind.
+
+    Diagnostics:
+        SST-PRS126, SST-PRS022, SST-PRS004: as `unknown_block_keys` reports them.
+        SST-PRS131: as `loose_value_diagnostics` reports it.
+    """
+    origin_of = line_origins(relative, lines)
+    return [
+        *unknown_block_keys(relative, tree, lines, subject, _AGENT_KEYS, _moved),
+        *loose_value_diagnostics(AGENT.node, tree, (), artifact=subject, subject=subject, origin_of=origin_of),
+    ]
+
+
 def _moved(path: NodePath, key: str) -> str | None:
     """Return where a key an agent file used to write is written now; None for any other key.
 
@@ -257,7 +275,7 @@ def _parse_agent(
         passthrough_diagnostics(f"{name}.spec", passthrough, AGENT_SPEC_KEYS, subject=subject, origin=origin)
     )
     eval_files = parse_eval_files(relative, tree.get("evals"), diagnostics, kind="agent")
-    diagnostics.extend(unknown_block_keys(relative, tree, lines, subject, _AGENT_KEYS, _moved))
+    diagnostics.extend(_key_diagnostics(relative, tree, lines, subject))
     origin_of = config_origins(relative, lines)
     diagnostics.extend(item_config_diagnostics("agents", tree.get("config"), subject=subject, origin_of=origin_of))
     return (

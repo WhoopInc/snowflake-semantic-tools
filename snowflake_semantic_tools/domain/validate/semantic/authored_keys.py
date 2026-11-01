@@ -13,6 +13,7 @@ from snowflake_semantic_tools.domain.model.authored_schema import SEMANTIC_KINDS
 from snowflake_semantic_tools.domain.parse.fields import unknown_field
 from snowflake_semantic_tools.domain.parse.names import name_warnings
 from snowflake_semantic_tools.domain.parse.template import TemplateSyntaxError, scan_template_calls
+from snowflake_semantic_tools.domain.validate.loose_values import loose_value_diagnostics
 from snowflake_semantic_tools.domain.validate.semantic.nodes import node_label, node_origin, node_root, written_root
 from snowflake_semantic_tools.domain.validate.settings import item_config_diagnostics
 
@@ -137,6 +138,42 @@ def authored_key_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, 
                     subject = artifact_key(node_type, str(node.get("name") or index))
                     diagnostics.extend(_unread_keys(document, subject, node_type, (root_key, index), "", node, allowed))
     return tuple(diagnostics)
+
+
+def loose_semantic_diagnostics(documents: AuthoredDocuments) -> tuple[Diagnostic, ...]:
+    """Every loose field of a view or member that holds another kind of value.
+
+    Diagnostics:
+        SST-PRS131: as `loose_value_diagnostics` reports it.
+    """
+    diagnostics: list[Diagnostic] = []
+    for document in documents.documents:
+        for kind in SEMANTIC_KINDS:
+            root_key = node_root(kind.name)
+            nodes = document.tree.get(root_key) if root_key in document.root_keys else None
+            for index, node in enumerate(nodes if isinstance(nodes, list) else ()):
+                if not isinstance(node, dict):
+                    continue
+                subject = artifact_key(kind.name, str(node.get("name") or index))
+                diagnostics.extend(
+                    loose_value_diagnostics(
+                        kind.node,
+                        node,
+                        (root_key, index),
+                        artifact=subject,
+                        subject=subject,
+                        origin_of=_origins(document),
+                    )
+                )
+    return tuple(diagnostics)
+
+
+def _origins(document: AuthoredDocument) -> Callable[[NodePath], Origin]:
+    def origin_of(path: NodePath) -> Origin:
+        position = document.position(path)
+        return Origin(document.path, position.line if position else None, position.col if position else None)
+
+    return origin_of
 
 
 # Types whose duplicates SST-VAL001 already reports.

@@ -8,7 +8,7 @@ defines both tests. The pre-check column says where the condition can first be
 detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 `runtime` is seen only while a statement runs.
 
-- Codes: 828
+- Codes: 829
 - Raised from no module: 0
 - Without a complete test file: 0
 
@@ -376,6 +376,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-PRS127`](error-codes.md#sst-prs127) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.semantic.build` | `tests/codes/prs/test_sst_prs127.py` |
 | [`SST-PRS128`](error-codes.md#sst-prs128) | PRS | error | local | `snowflake_semantic_tools.domain.validate.semantic.shape` | `tests/codes/prs/test_sst_prs128.py` |
 | [`SST-PRS130`](error-codes.md#sst-prs130) | PRS | error | local | `snowflake_semantic_tools.adapters.yaml.tool_members`<br>`snowflake_semantic_tools.domain.model.authored_schema.tools` | `tests/codes/prs/test_sst_prs130.py` |
+| [`SST-PRS131`](error-codes.md#sst-prs131) | PRS | warning | local | `snowflake_semantic_tools.domain.validate.loose_values` | `tests/codes/prs/test_sst_prs131.py` |
 | [`SST-PRS900`](error-codes.md#sst-prs900) | PRS | error | local | `snowflake_semantic_tools.domain.parse.records` | `tests/codes/prs/test_sst_prs900.py` |
 | [`SST-PRT001`](error-codes.md#sst-prt001) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.cli.commands.debug`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt001.py` |
 | [`SST-PRT002`](error-codes.md#sst-prt002) | PRT | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.cli.runner` | `tests/codes/prt/test_sst_prt002.py` |

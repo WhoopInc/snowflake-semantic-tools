@@ -39,6 +39,7 @@ from snowflake_semantic_tools.domain.validate.dbt_seam import (
 from snowflake_semantic_tools.domain.validate.semantic.authored_keys import (
     authored_key_diagnostics,
     legacy_reference_diagnostics,
+    loose_semantic_diagnostics,
     member_name_diagnostics,
     view_config_diagnostics,
 )
@@ -229,6 +230,7 @@ def _document_diagnostics(
         *_relationship_parse_diagnostics(documents, project_dir, models_dir),
         *dbt_model_diagnostics(context.models, referenced_models),
         *dbt_column_diagnostics(context.models, referenced_models),
+        *loose_semantic_diagnostics(documents),
     )
 
 
