@@ -58,6 +58,7 @@ and explain each SST term the first time you use it.
 | `sst migrate refs` | offline, edits files | Dry run by default; `--write` rewrites references and moves old settings under `config:`. |
 | `sst migrate split` | offline, edits files | Dry run by default; `--write` writes one file per listed member and removes the list. |
 | `sst docs` | offline, edits files | Regenerates SST's own reference pages; for SST maintainers, not projects. |
+| `sst schema` | offline, edits files | Writes a JSON Schema per authored file kind to `sst_target/schemas/`, for an editor to check files as SST would. |
 | `sst baseline show` | offline | Lists the baseline file's entries. |
 | `sst baseline add` | offline, edits files | Writes `.sst/baseline.json`; `--target` connects for a code only a connection finds, or with `--all-warnings`. Ask before using it. |
 | `sst baseline prune` | offline, edits files | Removes stale entries; `--target` connects only to judge an entry only a connection to it found. |

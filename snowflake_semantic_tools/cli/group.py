@@ -126,6 +126,7 @@ COMMAND_ORDER = (
     "eval",
     "explain",
     "docs",
+    "schema",
     "clean",
     "drop",
     "state",

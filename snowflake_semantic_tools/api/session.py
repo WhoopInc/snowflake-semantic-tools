@@ -11,6 +11,7 @@ project, which is never written to. Nothing here prints, exits, or connects to S
 from __future__ import annotations
 
 import dataclasses
+import posixpath
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -43,10 +44,12 @@ from snowflake_semantic_tools.app.policy import hold_to_policy, severity_policy,
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, stable_fingerprint
+from snowflake_semantic_tools.domain.model.authored_schema.locations import DIRECTORY_DEFAULTS, schema_kind
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
     config_block,
     config_bool,
+    configured_dir,
     governance_config,
 )
 
@@ -252,6 +255,26 @@ class ProjectSession:
             statements=tuple(str(statement) for statement in artifact.statements),
             fingerprint=artifact.fingerprint,
         )
+
+    def schema_for(self, path: str) -> str | None:
+        """Return the kind, a key of `schemas()`, of the schema that checks the project file at `path`.
+
+        `path` is relative to the project, with `/` separators; None when no schema checks it. A
+        file in an `evals/` folder is read, overlay first, to tell a dataset, which lists
+        `questions:`, from a config; one that cannot be read is taken for a config.
+        """
+        config = resolved_config(self._paths, self._base.target).tree
+        directories = {key: configured_dir(config, key, default) for key, default in DIRECTORY_DEFAULTS.items()}
+        return schema_kind(path, directories, lists_questions=self._lists_questions(path))
+
+    def _lists_questions(self, path: str) -> bool:
+        clean = posixpath.normpath(path)
+        if "evals" not in clean.split("/")[:-1] or clean.startswith(".."):
+            return False
+        try:
+            return "questions" in read_plain_yaml(self._paths.project_dir / clean)
+        except ProjectError:
+            return False
 
     def validate(self, *, strict: bool | None = None, baseline: bool = True) -> Validation:
         """Validate the project offline: what `sst validate --no-snowflake-syntax-check` reports.

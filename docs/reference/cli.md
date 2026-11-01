@@ -35,6 +35,7 @@ envelope on stdout and nothing else.
 | [`sst eval`](#sst-eval) | Run agent evals in Snowflake and gate them against their baselines; billed. |
 | [`sst explain`](#sst-explain) | Explain one diagnostic code from the registry: no project, configuration, or connection. |
 | [`sst docs`](#sst-docs) | Write the generated reference pages under docs/reference/. |
+| [`sst schema`](#sst-schema) | Write the JSON Schemas of SST's authored files and sst_config.yml. |
 | [`sst clean`](#sst-clean) | Remove local SST build artifacts only; never touch Snowflake. |
 | [`sst drop`](#sst-drop) | Break-glass: drop exactly one object SST owns from one target, and forget it in state. |
 | [`sst state`](#sst-state) | Repair a target's state table: recover or adopt entries, convert its kind, or release a lock. |
@@ -832,6 +833,25 @@ sst docs [OPTIONS]
 | `--only` | errors\|coverage\|artifacts\|cli\|config, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`. Defaults to all of them. |
 | `--output-dir` | DIRECTORY |  | Write the pages here instead of `docs/reference`. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 instead of 2 when there are differences. |
+
+## sst schema
+
+Write the JSON Schemas of SST's authored files and sst_config.yml.
+
+One &lt;kind&gt;.schema.json per file kind, under sst_target/schemas/, or --output-dir; --kind
+picks some of them. Each schema is generated from the tables SST reads files by, so an
+editor that loads it reports what SST would: a key SST does not read, a required key
+missing, a value outside its choices or of another kind. Only a file that differs from the
+one on disk is written. Exit 1 when one cannot be written.
+
+```text
+sst schema [OPTIONS]
+```
+
+| Option | Value | Default | Description |
+|---|---|---|---|
+| `--kind` | semantic_view\|metric\|filter\|custom_instruction\|verified_query\|relationship\|tool\|agent\|cowork_profile\|skill\|plugin\|coco_profile\|coco_shared_profile\|eval_metric\|eval_dataset\|eval_config\|dbt_model_meta\|dbt_column_meta\|semantic_file\|sst_config, repeatable |  | Write only this kind's schema; repeat for more. |
+| `--output-dir` | DIRECTORY |  | Write the schemas here instead of `sst_target/schemas`. |
 
 ## sst clean
 

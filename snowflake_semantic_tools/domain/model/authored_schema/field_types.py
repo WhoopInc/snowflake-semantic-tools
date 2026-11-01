@@ -80,6 +80,7 @@ class Field:
             or refused key does nothing, as its diagnostic says.
         code: The code a removed or refused key reports instead of the walker's own.
         config_block: For a `config:` key, the `sst_config.yml` block whose settings it takes.
+        folded: An `ENUM` value is matched against `choices` ignoring case.
         loose: SST reads the value without checking its kind, as text, a flag, or unset when it is
             of another kind, so a value of another kind is a warning (SST-PRS131), not an error.
     """
@@ -97,6 +98,7 @@ class Field:
     replacement: str | None = None
     code: str | None = None
     config_block: str | None = None
+    folded: bool = False
     loose: bool = False
 
     @property

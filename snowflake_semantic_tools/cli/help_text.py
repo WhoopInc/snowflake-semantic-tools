@@ -165,6 +165,8 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst init", "--check-only"): "Report whether the setup is complete; create nothing.",
     ("sst clean", "--dry-run"): "List what would be removed; remove nothing.",
     ("sst docs", "--output-dir"): "Write the pages here instead of `docs/reference`.",
+    ("sst schema", "--output-dir"): "Write the schemas here instead of `sst_target/schemas`.",
+    ("sst schema", "--kind"): "Write only this kind's schema; repeat for more.",
     ("sst list", "--long"): (
         "Also print each artifact's applied fingerprint and published version (a skill's or plugin's "
         "alias, the committed version an agent serves, a profile row's VERSION, as the last apply "
