@@ -7,7 +7,12 @@ from typing import Any
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import artifact_key
-from snowflake_semantic_tools.domain.model.authored import NULL_ORDERS, SORT_DIRECTIONS, AuthoredDocuments
+from snowflake_semantic_tools.domain.model.authored import (
+    ACCESS_MODIFIERS,
+    NULL_ORDERS,
+    SORT_DIRECTIONS,
+    AuthoredDocuments,
+)
 from snowflake_semantic_tools.domain.parse.frame import canonical_frame, frame_order_problem
 from snowflake_semantic_tools.domain.resolve.calls import required_call
 from snowflake_semantic_tools.domain.resolve.ref_fields import reference_functions
@@ -82,7 +87,7 @@ def metric_parse_diagnostics(
         SST-PRS030: when a synonym holds a quote or a control character.
     """
     diagnostics: list[Diagnostic] = []
-    allowed_access = ("private_access", "public_access")
+    allowed_access = tuple(sorted(ACCESS_MODIFIERS))
     for document, index, node in load_nodes(documents, member_root("metric")):
         name = str(node.get("name") or "<unnamed>")
         subject = artifact_key("metric", name)
