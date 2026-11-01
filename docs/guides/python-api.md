@@ -37,6 +37,8 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.reload(dbt=True)` | a new session from the project's files as they are now |
 | `session.with_overlay(files)` | a new session from them with unsaved edits over them; see below |
 | `session.schema_for(path)` | the kind of the JSON Schema that checks a project file, a key of `schemas()`; `None` for a file SST does not read |
+| `session.lineage(node, upstream=True, downstream=True, depth=None)` | a `Lineage`: what `sst lineage NODE --no-manifest --output json` traces, as `LineageNode` and `LineageEdge` records; `KeyError` for a node the graph does not hold |
+| `session.state_table()` | the state table `sst apply` records the session's target in, as SQL, and the target name its rows are recorded under; read offline |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -55,6 +57,33 @@ and `sst_config`. They are generated from the tables SST reads files by, so a
 schema flags what `validate` reports about a file's keys and accepts what it
 accepts; [the authored files reference](../reference/files.md) lists the same
 keys. `sst schema` writes them to `sst_target/schemas/` for an editor.
+
+## What a target has deployed
+
+`deployed(session, connection)` reads the target's state table, never writes,
+and returns a `Deployed` for each artifact: each the session compiled, in
+publish order, then each `apply` recorded that the project no longer compiles.
+Its `status` follows `sst plan`: `deployed` when the fingerprint `apply`
+recorded is the one the artifact compiles to now, `changed` when another is
+recorded, `not_deployed` when none is, and `removed` for a recorded artifact
+the project no longer compiles. A state table that exists but cannot be read
+raises `SnowflakePortError` rather than reading as empty.
+
+`connection` is a `ConnectionParams`, which opens a session as one user with an
+OAuth access token or a key pair and closes it again, or a connector the
+caller already holds:
+
+```python
+from snowflake_semantic_tools.api import ConnectionParams, ProjectSession, deployed
+
+session = ProjectSession.open(Path("my_project"), target="prod")
+connection = ConnectionParams(account="myorg-myaccount", user="ME", role="ANALYST", token=access_token)
+for row in deployed(session, connection):
+    print(row.key, row.status)
+```
+
+`ConnectionParams` never shows its credential in its `repr`. Reading the state
+table needs `USAGE` on its database and schema and `SELECT` on it.
 
 ## A session is a snapshot
 

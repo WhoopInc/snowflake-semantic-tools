@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.snowflake.connector import SnowflakeConnector
+from snowflake_semantic_tools.api import ProjectSession, deployed
 from snowflake_semantic_tools.domain.model.identifier import Identifier, SchemaScope
 from snowflake_semantic_tools.domain.sql import ident, qname, sql
 from tests.helpers.e2e_cli import SstRun, run_sst
@@ -50,6 +51,16 @@ def applied(
     compiled = run_sst("compile", *args)
     assert compiled.exit_code == 0, compiled.stdout + compiled.stderr
     return Applied(schema, project, args, run_sst("--output", "json", "apply", *args, "--yes"))
+
+
+def test_the_api_reads_every_applied_artifact_as_deployed(applied: Applied, live_connector: SnowflakeConnector) -> None:
+    assert applied.first.exit_code == 0, applied.first.stdout
+    session = ProjectSession.open(applied.project, manifest_path=Path(applied.args[-1]))
+
+    rows = deployed(session, live_connector)
+
+    assert rows and {row.status for row in rows} == {"deployed"}
+    assert [row.key for row in rows] == [item.key for item in session.catalog()]
 
 
 def test_apply_publishes_a_view_that_carries_its_marker_and_answers_a_metric(

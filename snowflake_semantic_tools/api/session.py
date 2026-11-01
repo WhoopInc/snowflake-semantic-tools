@@ -19,7 +19,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.adapters.clock import SystemClock
 from snowflake_semantic_tools.adapters.dbt.parse_stamp import dbt_inputs
-from snowflake_semantic_tools.adapters.dbt.profiles import read_plain_yaml
+from snowflake_semantic_tools.adapters.dbt.profiles import load_profile_target, read_plain_yaml
 from snowflake_semantic_tools.adapters.dbt.run_cache import DbtCache
 from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.fs.baseline import BASELINE_FILE, read_baseline
@@ -36,14 +36,18 @@ from snowflake_semantic_tools.adapters.project_source import DbtOutcome, YamlPro
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
+from snowflake_semantic_tools.api.lineage import Lineage, lineage_of
 from snowflake_semantic_tools.app.baseline import gate_baseline
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult, RenderedViews
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.diagnostics_json import diagnostic_json, summary_counts
+from snowflake_semantic_tools.app.manifest import manifest_for
 from snowflake_semantic_tools.app.policy import hold_to_policy, severity_policy, strict_disagreement
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, stable_fingerprint
+from snowflake_semantic_tools.domain.lineage.graph import LineageGraph, manifest_lineage
+from snowflake_semantic_tools.domain.lineage.trace import find_nodes, trace
 from snowflake_semantic_tools.domain.model.authored_schema.locations import DIRECTORY_DEFAULTS, schema_kind
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
@@ -52,6 +56,7 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     configured_dir,
     governance_config,
 )
+from snowflake_semantic_tools.domain.model.registry import SEMANTIC_REGISTRY
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,6 +163,7 @@ class ProjectSession:
         self._compiled = CompileProject(self._inputs, renders=reuse.renders).run()
         self._by_key = {item.artifact_key: item for item in self._compiled.compiled}
         self._baseline = _read_baseline(read_dir)
+        self._graph: LineageGraph | None = None
         if self._overlay is None:
             # Compiling read dbt before anything else, so this is what it read, not a new read.
             base.outcome = self._inputs.dbt_outcome()
@@ -255,6 +261,50 @@ class ProjectSession:
             statements=tuple(str(statement) for statement in artifact.statements),
             fingerprint=artifact.fingerprint,
         )
+
+    def lineage(
+        self, node: str, *, upstream: bool = True, downstream: bool = True, depth: int | None = None
+    ) -> Lineage:
+        """Return what `node` reads and what reads it, as `sst lineage --no-manifest --output json` lists it.
+
+        `node` is what `sst lineage` takes: an artifact key, a member key such as
+        `metric:<name>`, a dbt node such as `model:<name>`, or a bare name, which names every node
+        of that name; the name after a kind may glob. The graph is built from the manifest this
+        session's compile publishes, the first time it is asked for, and kept.
+
+        Args:
+            upstream: Walk to what the node reads.
+            downstream: Walk to what reads the node.
+            depth: Stop this many steps from the node; None walks as far as the graph goes.
+
+        Raises:
+            KeyError: the graph holds no node `node` names.
+        """
+        graph = self._lineage_graph()
+        start = find_nodes(graph, node, SEMANTIC_REGISTRY.artifacts)
+        if not start:
+            raise KeyError(node)
+        traced = trace(graph, start, upstream=upstream, downstream=downstream, depth=depth)
+        return lineage_of(graph, node, start, traced)
+
+    def _lineage_graph(self) -> LineageGraph:
+        if self._graph is None:
+            self._graph = manifest_lineage(manifest_for(self._compiled, self._inputs.manifest_sources()))
+        return self._graph
+
+    def state_table(self) -> tuple[str, str]:
+        """Return where `sst apply` records this session's target: its state table, and the target name.
+
+        The state table is the fully qualified name, as Snowflake SQL, the target's `profiles.yml`
+        entry and the configuration's `state:` block resolve to; the target name is the one its
+        rows are recorded under. Nothing is read from Snowflake, and no credential is read.
+
+        Raises:
+            ProjectError: `profiles.yml` cannot be read, or holds no usable entry for the target.
+        """
+        config = resolved_config(self._paths, self._base.target).tree
+        profile = load_profile_target(self._paths, self._base.target, state=config_block(config.get("state")))
+        return profile.state_table.sql, profile.target_name
 
     def schema_for(self, path: str) -> str | None:
         """Return the kind, a key of `schemas()`, of the schema that checks the project file at `path`.
