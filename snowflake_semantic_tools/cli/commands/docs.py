@@ -1,7 +1,7 @@
 """`sst docs`: write, or check, the reference pages generated from the engine's own registries.
 
-`--only` names the references to generate -- `errors`, `coverage`, `artifacts`, `cli`, `config`
--- and every one is generated without it. `--check` exits 2 when a committed page differs, which
+`--only` names the references to generate -- `errors`, `coverage`, `artifacts`, `cli`, `config`,
+`files` -- and every one is generated without it. `--check` exits 2 when a committed page differs, which
 is a difference between declared and actual state, and keeps 1 for the generator itself
 failing; `--no-detailed-exitcode` turns 2 into 0. The coverage page is the coverage gate: it
 reads the package for where each code is raised and `tests/codes/` for its tests.
@@ -41,7 +41,7 @@ def docs(
 ) -> CommandResult:
     """Write the generated reference pages under docs/reference/.
 
-    The error-code, coverage, artifact, command-line, and configuration references are
+    The error-code, coverage, artifact, command-line, configuration, and authored-file references are
     rendered from the engine's own registries, so they cannot drift from what the engine
     accepts; --only picks some of them, and --output-dir writes or checks them elsewhere. Only
     a page that differs from the file on disk is written. The coverage page also reads each

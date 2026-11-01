@@ -194,7 +194,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst docs", "--check"): "Write nothing; exit 2 when a committed reference page is out of date.",
     ("sst docs", "--only"): (
         "Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), "
-        "`artifacts`, `cli`, `config`. Defaults to all of them."
+        "`artifacts`, `cli`, `config`, `files` (the authored-file keys). Defaults to all of them."
     ),
     ("sst enrich", "--select"): (
         "Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work, and dbt's "

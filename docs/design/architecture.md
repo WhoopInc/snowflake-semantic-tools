@@ -210,8 +210,10 @@ included.
    (names in `RULE_SETS`). Give it a `ddl_position` above every type in its
    `dependency_types`, and either a `ref_function` some resolver handles or a
    place in `DELIBERATELY_UNREFERENCED`.
-2. Teach `ProjectInputs` to load it, in `YamlProjectInputs` and
-   `InMemoryProjectInputs` alike.
+2. Declare its file's keys as a `FileKind` in `domain/model/authored_schema/`
+   and add it to `FILE_KINDS`, then teach `ProjectInputs` to load it, in
+   `YamlProjectInputs` and `InMemoryProjectInputs` alike, reading by that
+   table; its JSON Schema and its section of `docs/reference/files.md` follow.
 3. Write a compiler under `app/compile/` whose `run_result` returns a
    `CompileResult` of `CompiledArtifact` values, rendering each through
    `RenderedArtifact.create` from a renderer in `domain/render/`, and call it
@@ -224,7 +226,7 @@ included.
    and commit the new goldens.
 6. Run `poetry run sst docs` and commit the regenerated reference pages.
 
-Drawn from: [domain/model/registry.py](../../snowflake_semantic_tools/domain/model/registry.py), [domain/ports/lifecycle.py](../../snowflake_semantic_tools/domain/ports/lifecycle.py), [app/lifecycle/composite.py](../../snowflake_semantic_tools/app/lifecycle/composite.py), [app/plan.py](../../snowflake_semantic_tools/app/plan.py), [tests/helpers/goldens.py](../../tests/helpers/goldens.py), [domain/render/reference_docs.py](../../snowflake_semantic_tools/domain/render/reference_docs.py).
+Drawn from: [domain/model/registry.py](../../snowflake_semantic_tools/domain/model/registry.py), [domain/ports/lifecycle.py](../../snowflake_semantic_tools/domain/ports/lifecycle.py), [app/lifecycle/composite.py](../../snowflake_semantic_tools/app/lifecycle/composite.py), [app/plan.py](../../snowflake_semantic_tools/app/plan.py), [tests/helpers/goldens.py](../../tests/helpers/goldens.py), [domain/render/reference_docs.py](../../snowflake_semantic_tools/domain/render/reference_docs.py), [domain/model/authored_schema/](../../snowflake_semantic_tools/domain/model/authored_schema/__init__.py).
 
 ## The compile pipeline
 

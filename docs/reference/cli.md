@@ -815,7 +815,7 @@ sst explain [OPTIONS] CODE
 
 Write the generated reference pages under docs/reference/.
 
-The error-code, coverage, artifact, command-line, and configuration references are
+The error-code, coverage, artifact, command-line, configuration, and authored-file references are
 rendered from the engine's own registries, so they cannot drift from what the engine
 accepts; --only picks some of them, and --output-dir writes or checks them elsewhere. Only
 a page that differs from the file on disk is written. The coverage page also reads each
@@ -830,7 +830,7 @@ sst docs [OPTIONS]
 | Option | Value | Default | Description |
 |---|---|---|---|
 | `--check` | flag |  | Write nothing; exit 2 when a committed reference page is out of date. |
-| `--only` | errors\|coverage\|artifacts\|cli\|config, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`. Defaults to all of them. |
+| `--only` | errors\|coverage\|artifacts\|cli\|config\|files, repeatable |  | Repeatable. Generate only these references: `errors`, `coverage` (the code-to-test matrix), `artifacts`, `cli`, `config`, `files` (the authored-file keys). Defaults to all of them. |
 | `--output-dir` | DIRECTORY |  | Write the pages here instead of `docs/reference`. |
 | `--no-detailed-exitcode` | flag |  | Exit 0 instead of 2 when there are differences. |
 

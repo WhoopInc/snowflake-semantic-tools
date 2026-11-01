@@ -48,6 +48,8 @@ release:
 - [CLI](reference/cli.md): every command and option.
 - [Configuration keys](reference/config.md): every `sst_config.yml` key and
   its default.
+- [Authored files](reference/files.md): every key of each file SST reads, its
+  type, and whether it is required; `sst schema` writes the same as JSON Schemas.
 - [Error codes](reference/error-codes.md): every diagnostic code, its severity,
   and how to fix it.
 - [Coverage matrix](reference/coverage.md): where each code is raised and the

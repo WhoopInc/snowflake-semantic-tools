@@ -36,6 +36,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.compiled` | the compile result itself, for a caller that needs more than the summaries give |
 | `session.reload(dbt=True)` | a new session from the project's files as they are now |
 | `session.with_overlay(files)` | a new session from them with unsaved edits over them; see below |
+| `session.schema_for(path)` | the kind of the JSON Schema that checks a project file, a key of `schemas()`; `None` for a file SST does not read |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -46,6 +47,14 @@ command would exit 0.
 
 An artifact whose files hold an error is not compiled, so `catalog` does not
 list it; `validate` reports why.
+
+`schemas()`, imported from `snowflake_semantic_tools.api` and needing no
+session, returns every JSON Schema (Draft 2020-12) by kind: one per kind of
+authored file, `semantic_file` for any file in the semantic models directory,
+and `sst_config`. They are generated from the tables SST reads files by, so a
+schema flags what `validate` reports about a file's keys and accepts what it
+accepts; [the authored files reference](../reference/files.md) lists the same
+keys. `sst schema` writes them to `sst_target/schemas/` for an editor.
 
 ## A session is a snapshot
 

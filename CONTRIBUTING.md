@@ -363,9 +363,13 @@ Every problem SST reports is a diagnostic registered in `snowflake_semantic_tool
 
 A code whose condition can no longer arise, or that another code already reports, is retired, never deleted and reused. Remove its `spec(...)` entry and its fires/silent pair; add the code with the release to `RETIRED_CODES` in `specs/retired.py`; and add a `TOMBSTONES` row in `specs/aliases.py` with its old title, the code that took its condition over (or `None`), and why it was retired. The registry then refuses the number (SST-REG017), `sst explain` answers for it, and the error reference lists it under "Retired numbers".
 
+### Adding a key to an authored file
+
+Every key of every file SST reads is one `Field` in a table under `snowflake_semantic_tools/domain/model/authored_schema/`, one module per family of kinds: its name, kind, summary, and whether it is required, with `choices` for an enum and `node` for what nests in it. The parser's key lists, the unknown-key checks, the JSON Schemas `sst schema` writes, and `docs/reference/files.md` are all derived from it, so adding a key is adding its `Field`, then reading it in the parser. A key SST reads without checking its kind is `loose=True`, and reports SST-PRS131 for a value of another kind; a key of an older dialect keeps its row with a `status` (`DEPRECATED`, `INERT`, `REFUSED`, `RENAMED`, `REMOVED`) and what replaced it. `tests/unit/api/test_authored_claims.py` edits a reference-project file for each required key, enum, and kind the tables claim and fails unless SST reports it; `tests/unit/api/test_json_schemas.py` fails unless the schema flags the same edit. A key the reference project does not write is not probed, so add it there too.
+
 ### Generated Reference Pages
 
-`docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema/keys.py`, where every `sst_config.yml` key is declared), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
+`docs/reference/*.md` is rendered from the engine's registries: the diagnostics, the configuration schema (`snowflake_semantic_tools/domain/model/config_schema/keys.py`, where every `sst_config.yml` key is declared), the authored-file tables (`snowflake_semantic_tools/domain/model/authored_schema/`), the CLI's commands and options, and the artifact registry (`snowflake_semantic_tools/domain/model/registry.py`). After changing any of them, run `poetry run sst docs` and commit the pages it rewrites; CI fails on `sst docs --check` otherwise.
 
 ### Adding a CLI option
 

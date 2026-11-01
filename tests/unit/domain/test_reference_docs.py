@@ -47,7 +47,7 @@ EXITS = ((0, "OK", "Success."), (2, "CHANGES", "Changes are pending."))
 def test_pages_cover_every_registry_entry() -> None:
     pages = reference_pages(COMMANDS, GLOBAL, EXITS, {})
     assert sorted(pages) == [
-        f"{REFERENCE_DIR}/{name}.md" for name in ("artifacts", "cli", "config", "coverage", "error-codes")
+        f"{REFERENCE_DIR}/{name}.md" for name in ("artifacts", "cli", "config", "coverage", "error-codes", "files")
     ]
     artifacts = pages[f"{REFERENCE_DIR}/artifacts.md"]
     for artifact in ARTIFACT_REGISTRY.artifacts.values():
