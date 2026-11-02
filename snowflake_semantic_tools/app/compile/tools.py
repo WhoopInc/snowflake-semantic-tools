@@ -73,6 +73,10 @@ class CompiledTool(StandaloneArtifact):
         return tuple(dict.fromkeys(files))
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        return self.member.folder
+
+    @property
     def referenced_models(self) -> tuple[str, ...]:
         """Return the model a search service reads, or the models and sources a routine's body names."""
         if self.member.on_model:

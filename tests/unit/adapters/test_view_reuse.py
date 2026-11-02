@@ -165,6 +165,8 @@ def test_every_argument_a_view_is_built_from_is_part_of_what_reuse_compares() ->
         "attachment",
         "settings",
         "variable_origins",
+        # The view file's folder below the semantic-model directory: `path` below what `config` names.
+        "folder",
     }
 
     assert set(inspect.signature(_build_view).parameters) == compared

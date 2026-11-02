@@ -181,7 +181,8 @@ CROSSINGS = [
 ]
 
 # Everything the package root may hold: the five rings and the version module.
-PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "cli", "api", "app", "adapters", "domain"))
+# `py.typed` tells type checkers the package ships its annotations (PEP 561).
+PACKAGE_ROOT = frozenset(("__init__.py", "_version.py", "py.typed", "cli", "api", "app", "adapters", "domain"))
 
 
 def _lint_imports(root: Path = REPO_ROOT) -> subprocess.CompletedProcess[str]:

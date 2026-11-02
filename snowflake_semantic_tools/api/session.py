@@ -37,6 +37,7 @@ from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
 from snowflake_semantic_tools.api.lineage import Lineage, lineage_of
+from snowflake_semantic_tools.api.locations import Locations, project_locations
 from snowflake_semantic_tools.app.baseline import gate_baseline
 from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult, RenderedViews
 from snowflake_semantic_tools.app.compile.project import CompileProject
@@ -51,6 +52,7 @@ from snowflake_semantic_tools.domain.lineage.trace import find_nodes, trace
 from snowflake_semantic_tools.domain.model.authored_schema.locations import DIRECTORY_DEFAULTS, schema_kind
 from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
+    Setting,
     config_block,
     config_bool,
     configured_dir,
@@ -73,6 +75,12 @@ class ObjectSummary:
         member_keys: The keys of the members it holds, such as a view's metrics.
         referenced_models: The dbt models it reads.
         fingerprint: The digest of what it publishes; equal fingerprints publish the same thing.
+        route_folder: The folder its block's routes fold along, below that block's route root: one
+            segment per directory, empty for the root. The closest folder of `locations()` it
+            starts with is the route that places it.
+        settings: Each setting it resolved, by key without its `+`, with the step that set it --
+            `config`, `route:<a/b>`, `root` or `default` -- as `sst list --long` reports them;
+            empty for a type that resolves none.
     """
 
     key: str
@@ -84,6 +92,8 @@ class ObjectSummary:
     member_keys: tuple[str, ...]
     referenced_models: tuple[str, ...]
     fingerprint: str
+    route_folder: tuple[str, ...]
+    settings: Mapping[str, Setting]
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,8 +154,10 @@ class ProjectSession:
             base.first_run = not ran_under_1_0(read_dir)
         else:
             read_dir, reuse = base.copy.sync(self._overlay), base.overlay_reuse
-            outcome = None if _touches_dbt(base.paths.project_dir, self._overlay) else base.outcome
+            outcome = None
         self._paths = _read_from(base.paths, read_dir)
+        if self._overlay is not None and not _touches_dbt(base, self._paths, self._overlay):
+            outcome = base.outcome
         project = base.paths.project_dir
         dirty = tuple(sorted(self._overlay or ()))
         self._inputs = YamlProjectInputs(
@@ -213,9 +225,10 @@ class ProjectSession:
         the project for each one after.
 
         dbt is read again only when an edit touches what it reads: a model, macro, seed,
-        snapshot, analysis or test file, a dbt project or package file, `profiles.yml`, or
-        `sst_config.yml`; otherwise the models are this session's. Overlays of one project share
-        what they parse and build, so each reads again only what its edits changed.
+        snapshot, analysis or test file, a dbt project or package file, `profiles.yml`, or the
+        `dbt:` and `defer:` settings, or `project.target_profile`, of `sst_config.yml`; an edit
+        to the rest of that file reads the models as this session read them. Overlays of one
+        project share what they parse and build, so each reads again only what its edits changed.
 
         Raises:
             ProjectError: as `open` raises, for the project with the edits over it.
@@ -305,6 +318,18 @@ class ProjectSession:
         config = resolved_config(self._paths, self._base.target).tree
         profile = load_profile_target(self._paths, self._base.target, state=config_block(config.get("state")))
         return profile.state_table.sql, profile.target_name
+
+    def locations(self) -> Locations:
+        """Return where the project publishes on every declared target, and which setting says so.
+
+        Each routed block's root and route folders, resolved once per target as a run for it
+        resolves them; an artifact's `route_folder` names the folder that places it. Nothing is
+        compiled, read from Snowflake, or read as a credential.
+
+        Raises:
+            ProjectError: the configuration or `profiles.yml` cannot be read.
+        """
+        return project_locations(self._paths, self._base.target)
 
     def schema_for(self, path: str) -> str | None:
         """Return the kind, a key of `schemas()`, of the schema that checks the project file at `path`.
@@ -485,21 +510,47 @@ def _unread_paths(project_dir: Path) -> frozenset[str]:
     return frozenset(skipped)
 
 
-def _touches_dbt(project_dir: Path, overlay: Mapping[str, bytes | None]) -> bool:
-    """Report whether an edit is to something dbt reads, or SST's own `dbt:` and `defer:` settings.
+def _touches_dbt(base: _Base, paths: ProjectPaths, overlay: Mapping[str, bytes | None]) -> bool:
+    """Report whether an edit is to something dbt reads, or to what SST hands dbt from its configuration.
 
-    A project whose `dbt_project.yml` cannot be read is treated as touched, so dbt reports it.
+    An edit to `sst_config.yml` touches dbt only when the settings dbt is run with differ, for the
+    session's target, from the project's: `dbt:`, `defer:` and `project.target_profile`. A
+    project whose `dbt_project.yml` cannot be read, or an edited configuration that cannot be,
+    is treated as touched, so dbt or the compile reports it.
     """
+    project_dir = base.paths.project_dir
     try:
         files, folders = dbt_inputs(project_dir)
     except ProjectError:
         return True
-    named = {*files, PROFILES_FILE, CONFIG_FILE}
+    config = _config_path(base.paths)
+    named = {*files, PROFILES_FILE}
     for relative in overlay:
         path = Path(relative).as_posix()
         if path in named or any(path == folder or path.startswith(f"{folder}/") for folder in folders):
             return True
-    return False
+    if config not in {Path(relative).as_posix() for relative in overlay}:
+        return False
+    try:
+        before = _dbt_facing(resolved_config(base.paths, base.target).tree)
+        after = _dbt_facing(resolved_config(paths, base.target).tree)
+    except ProjectError:
+        return True
+    return before != after
+
+
+def _config_path(paths: ProjectPaths) -> str:
+    """The configuration file's path relative to the project; `sst_config.yml` when it lies outside."""
+    config_file = paths.config_file
+    if config_file is not None and config_file.is_relative_to(paths.project_dir):
+        return config_file.relative_to(paths.project_dir).as_posix()
+    return CONFIG_FILE
+
+
+def _dbt_facing(tree: Mapping[str, object]) -> tuple[object, object, object]:
+    """The settings of a resolved configuration that decide how dbt runs and what it defers to."""
+    project = config_block(tree.get("project"))
+    return tree.get("dbt"), tree.get("defer"), project.get("target_profile")
 
 
 def _summary(item: CompiledArtifact) -> ObjectSummary:
@@ -514,4 +565,6 @@ def _summary(item: CompiledArtifact) -> ObjectSummary:
         member_keys=tuple(item.member_keys),
         referenced_models=tuple(item.referenced_models),
         fingerprint=artifact.fingerprint,
+        route_folder=tuple(item.route_folder),
+        settings=MappingProxyType({setting.key: setting for setting in item.settings}),
     )

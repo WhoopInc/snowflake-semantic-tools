@@ -222,6 +222,7 @@ class _NonViewArtifact:
     referenced_models: tuple[str, ...] = ()
     dbt_relations: tuple[tuple[str, str], ...] = ()
     settings: tuple[Setting, ...] = ()
+    route_folder: tuple[str, ...] = ()
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:

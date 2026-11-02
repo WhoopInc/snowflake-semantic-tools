@@ -33,5 +33,9 @@ class Thing(StandaloneArtifact):
         return (f"{self.label}.yml",)
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        return ()
+
+    @property
     def rendered_artifact(self) -> RenderedArtifact:
         return rendered(self.label.upper())

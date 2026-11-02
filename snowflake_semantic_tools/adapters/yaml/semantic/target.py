@@ -17,15 +17,20 @@ from snowflake_semantic_tools.domain.model.config_schema import (
 from snowflake_semantic_tools.domain.model.dbt import DbtTarget
 
 
+def view_folder(path: Path, semantic_dir: Path) -> tuple[str, ...]:
+    """Return the folder a view's routes fold along: its file's directory below `semantic_dir`.
+
+    `semantic_dir` is the semantic-model directory, as a dbt model's folder is below `models/`;
+    one segment per directory, empty for a view at its root.
+    """
+    return path.resolve().relative_to(semantic_dir.resolve()).parent.parts
+
+
 def _view_settings(
     config: Mapping[str, Any], path: Path, semantic_dir: Path, node: Mapping[str, Any] | None = None
 ) -> Mapping[str, Setting]:
-    """Resolve a view's settings: its own `config:`, then the folder routes over its file, then the root.
-
-    The folder is the view file's directory below `semantic_dir`, the semantic-model directory,
-    as a dbt model's folder is below `models/`.
-    """
-    folder = path.resolve().relative_to(semantic_dir.resolve()).parent.parts
+    """Resolve a view's settings: its own `config:`, then the folder routes over its file, then the root."""
+    folder = view_folder(path, semantic_dir)
     return resolve_settings(config.get("semantic_views"), folder, (node or {}).get("config"))
 
 

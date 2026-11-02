@@ -40,7 +40,7 @@ def placement(block: object, folder: tuple[str, ...], target: TargetIdentity) ->
     settings = resolve_settings(block, folder)
     database = target_text(setting_value(settings, "database"), target, None) or target.database.folded
     schema = target_text(setting_value(settings, "schema"), target, None) or target.schema.folded
-    return _folded(database), _folded(schema)
+    return folded_part(database), folded_part(schema)
 
 
 def inherited(block: object, folder: tuple[str, ...], target: TargetIdentity) -> Mapping[str, object]:
@@ -87,8 +87,11 @@ def _routes(block: Mapping[str, object], trail: tuple[str, ...]) -> Iterator[tup
             yield from _routes(config_block(value), folder)
 
 
-def _folded(value: str) -> str:
-    """Return a rendered location part as Snowflake resolves it."""
+def folded_part(value: str) -> str:
+    """Return a rendered database or schema name as Snowflake resolves it.
+
+    An identifier is folded as Snowflake folds it; other text is upper-cased.
+    """
     try:
         return Identifier.parse(value).folded
     except ValueError:

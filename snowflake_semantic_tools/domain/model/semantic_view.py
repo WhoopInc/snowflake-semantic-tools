@@ -361,6 +361,9 @@ class SemanticView:
         settings: The view's resolved settings, each with where its value came from, sorted by
             key, as `sst list --long` reports them. Not rendered and not compared: the values
             that render are the fields above.
+        folder: The folder its `semantic_views:` routes fold along: its file's directory below
+            the semantic-model directory, one segment per directory. Not rendered and not
+            compared, like `settings`.
         table_models: The dbt model each table reads, by the table's logical name; a `source()`
             table has none. Not rendered and not compared: the connected tag check (SST-VAL338)
             reads what each model's YAML records.
@@ -392,6 +395,7 @@ class SemanticView:
         default_factory=lambda: MappingProxyType({}), repr=False, compare=False
     )
     settings: tuple[Setting, ...] = field(default=(), repr=False, compare=False)
+    folder: tuple[str, ...] = field(default=(), repr=False, compare=False)
     table_models: Mapping[str, DbtModel] = field(
         default_factory=lambda: MappingProxyType({}), repr=False, compare=False
     )

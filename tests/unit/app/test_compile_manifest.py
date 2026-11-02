@@ -191,6 +191,7 @@ class _CompiledTool:
     referenced_models = ("docs",)
     dbt_relations = (("docs", "DB.S.DOCS"),)
     settings: tuple[Setting, ...] = ()
+    route_folder: tuple[str, ...] = ()
 
     @property
     def rendered_artifact(self) -> RenderedArtifact:
@@ -263,6 +264,7 @@ class _CompiledComposite:
     referenced_models: tuple[str, ...] = ()
     dbt_relations: tuple[tuple[str, str], ...] = ()
     settings: tuple[Setting, ...] = ()
+    route_folder: tuple[str, ...] = ()
 
     def __init__(self, rendered: RenderedArtifact) -> None:
         self._rendered = rendered

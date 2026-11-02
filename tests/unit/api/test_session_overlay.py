@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from snowflake_semantic_tools.adapters.dbt.invoke import CompletedRun
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.adapters.paths import UnsafeWrite
 from snowflake_semantic_tools.adapters.project_source import YamlProjectInputs
 from snowflake_semantic_tools.api import ProjectSession
@@ -182,3 +183,32 @@ def test_dbt_parses_again_only_for_an_overlay_of_something_dbt_reads(
     assert parses() == 2
     # Read from what the project's own session parsed, it answers as a session that parses does.
     assert _answers(semantic) == _answers(ProjectSession.open(_saved(tmp_path, project, dict(semantic.overlay))))
+
+
+def test_an_overlay_of_the_configuration_parses_again_only_when_what_dbt_runs_with_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = project_copy(tmp_path)
+    (project / "packages.yml").unlink()
+    dbt = _ParsingDbt()
+    monkeypatch.setattr(
+        "snowflake_semantic_tools.api.session.YamlProjectInputs", functools.partial(YamlProjectInputs, dbt_runner=dbt)
+    )
+
+    def parses() -> int:
+        return sum(run[1] == "parse" for run in dbt.runs)
+
+    session = ProjectSession.open(project)
+    routed = session.with_overlay(
+        {"sst_config.yml": _edited(project, "sst_config.yml", "+schema: OPS", "+schema: OPS2")}
+    )
+    assert parses() == 1
+    assert _answers(routed) == _answers(ProjectSession.open(_saved(tmp_path, project, dict(routed.overlay))))
+    parses_before = parses()
+    deferring = _edited(project, "sst_config.yml", "session:\n", "defer:\n  auto_compile: false\n\nsession:\n")
+    session.with_overlay({"sst_config.yml": deferring})
+    assert parses() == parses_before + 1
+    # One that cannot be read is refused as `open` refuses it, before dbt is asked anything.
+    with pytest.raises(ProjectError, match="not valid YAML"):
+        session.with_overlay({"sst_config.yml": b"agents: [unclosed\n"})
+    assert parses() == parses_before + 1

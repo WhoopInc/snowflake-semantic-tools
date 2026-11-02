@@ -11,6 +11,7 @@ import binascii
 import os
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -335,14 +336,70 @@ def declared_targets(files: ProjectPaths) -> tuple[str, frozenset[str], str | No
         SST-CFG013: `target:` calls `env_var()` on an unset variable with no default; raised.
         SST-CFG049: `target:` holds a template other than `env_var()`; raised.
     """
+    profile_name, profile = _declared_profile(files)
+    outputs = profile.get("outputs")
+    targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
+    return profile_name, targets, _default_target(profile)
+
+
+def _declared_profile(files: ProjectPaths) -> tuple[str, dict[str, Any]]:
+    """Return the project's profile name and its `profiles.yml` entry, refusing one it lacks (SST-CFG010)."""
     profile_name = resolve_profile_name(files)
     profile = _read_profiles(files.profiles_file()).get(profile_name)
     if not isinstance(profile, dict):
         diagnostic = D("SST-CFG010", subject="config:profiles.yml", target="(any)", profile=profile_name)
         raise ProjectError(diagnostic.message, diagnostics=(diagnostic,))
+    return profile_name, profile
+
+
+@dataclass(frozen=True, slots=True)
+class TargetPlace:
+    """Where one declared target publishes what no setting places: its own database and schema.
+
+    Attributes:
+        database: The target's `database:`, `env_var()` rendered; None when it cannot be read.
+        schema: The target's `schema:`, likewise.
+        problem: Why a part cannot be read, as its diagnostic says; None when both can.
+    """
+
+    database: str | None
+    schema: str | None
+    problem: str | None = None
+
+
+def target_places(files: ProjectPaths) -> dict[str, TargetPlace]:
+    """Return the database and schema of every target the profile declares, by name, in its order.
+
+    Only `database:` and `schema:` are rendered, so a target whose credentials name variables this
+    process lacks still says where it publishes, and no credential is read. A part whose
+    `env_var()` is unset, or that holds another template, reads as None with its reason.
+
+    Raises:
+        ProjectError: as `declared_targets` raises, when the profile itself cannot be read.
+    """
+    _, profile = _declared_profile(files)
     outputs = profile.get("outputs")
-    targets = frozenset(str(key) for key in outputs) if isinstance(outputs, dict) else frozenset()
-    return profile_name, targets, _default_target(profile)
+    if not isinstance(outputs, dict):
+        return {}
+    return {str(name): _target_place(str(name), output) for name, output in outputs.items()}
+
+
+def _target_place(name: str, output: object) -> TargetPlace:
+    fields = output if isinstance(output, dict) else {}
+    parts: list[str | None] = []
+    problems: list[str] = []
+    for key in ("database", "schema"):
+        value = fields.get(key)
+        try:
+            if isinstance(value, str) and _TEMPLATE.search(_ENV_VAR.sub("", value)):
+                _refuse("SST-CFG049", name, key=key, problem="holds a template other than env_var()")
+            text = _resolve_env(value)
+        except ProjectError as exc:
+            parts.append(None)
+            problems.append(str(exc))
+            continue
+        parts.append(None if text is None or str(text) == "" else str(text))
+    return TargetPlace(parts[0], parts[1], problems[0] if problems else None)
 
 
 def _default_target(profile: Mapping[str, object]) -> str | None:

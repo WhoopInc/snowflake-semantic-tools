@@ -134,6 +134,10 @@ class CompiledView(CompiledArtifact):
         return self.view.settings
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        return self.view.folder
+
+    @property
     def member_keys(self) -> tuple[str, ...]:
         """Return the view's member keys, grouped by kind in the order the manifest lists them.
 

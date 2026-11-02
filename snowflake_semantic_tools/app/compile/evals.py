@@ -89,6 +89,11 @@ class CompiledEval(StandaloneArtifact):
         return tuple(self.resolved.settings[key] for key in sorted(self.resolved.settings))
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        """Return its subject's folder: an eval's routes fold along its agent's or profile's."""
+        return self.resolved.evaluated.folder
+
+    @property
     def rendered_artifact(self) -> RenderedArtifact:
         combined = sha256(
             f"dataset:{self.rendered.dataset_fingerprint}\nconfig:{self.rendered.config_fingerprint}\n".encode()

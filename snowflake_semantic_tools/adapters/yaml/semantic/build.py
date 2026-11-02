@@ -68,6 +68,7 @@ def _build_view(
     *,
     settings: Mapping[str, Setting] = MappingProxyType({}),
     variable_origins: tuple[Origin, ...] = (),
+    folder: tuple[str, ...] = (),
 ) -> SemanticView:
     """Build one view from its node and the members attached to it, one phase at a time.
 
@@ -80,6 +81,7 @@ def _build_view(
     Args:
         settings: The view's resolved settings, which give its tags and `max_staleness`.
         variable_origins: Where each of the view's variables is written, which its diagnostics name.
+        folder: The folder its routes fold along, which the view records.
 
     Raises:
         ProjectError: A table, column, member, variable or tag does not resolve. Its diagnostics
@@ -140,6 +142,7 @@ def _build_view(
         scope=scope,
         member_origins=MappingProxyType({member.key: member.origin for member in selected.attached}),
         settings=tuple(settings[key] for key in sorted(settings)),
+        folder=folder,
         table_models=MappingProxyType(
             {logical: models[model] for model, logical in logical_by_model.items() if model in models}
         ),

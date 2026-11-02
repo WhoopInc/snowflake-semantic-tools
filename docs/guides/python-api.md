@@ -30,7 +30,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 
 | Call | Returns |
 |---|---|
-| `session.catalog()` | an `ObjectSummary` for each compiled artifact, in the order `apply` publishes them: its key, type, name, target, source files, dependencies, members, the dbt models it reads, and its fingerprint |
+| `session.catalog()` | an `ObjectSummary` for each compiled artifact, in the order `apply` publishes them: its key, type, name, target, source files, dependencies, members, the dbt models it reads, its fingerprint, its `route_folder`, and its `settings`, each with the step that set it |
 | `session.render(key)` | a `Rendered`: what one artifact publishes, its definition and the statements that create it; `KeyError` for a key the project did not compile |
 | `session.validate(strict=None, baseline=True)` | a `Validation`: what `sst validate --no-snowflake-syntax-check --output json` reports, as data |
 | `session.compiled` | the compile result itself, for a caller that needs more than the summaries give |
@@ -39,6 +39,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.schema_for(path)` | the kind of the JSON Schema that checks a project file, a key of `schemas()`; `None` for a file SST does not read |
 | `session.lineage(node, upstream=True, downstream=True, depth=None)` | a `Lineage`: what `sst lineage NODE --no-manifest --output json` traces, as `LineageNode` and `LineageEdge` records; `KeyError` for a node the graph does not hold |
 | `session.state_table()` | the state table `sst apply` records the session's target in, as SQL, and the target name its rows are recorded under; read offline |
+| `session.locations()` | a `Locations`: for every target the profile declares, where each routed block's root and route folders publish, and which setting says so; read offline, with no credential |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -57,6 +58,37 @@ and `sst_config`. They are generated from the tables SST reads files by, so a
 schema flags what `validate` reports about a file's keys and accepts what it
 accepts; [the authored files reference](../reference/files.md) lists the same
 keys. `sst schema` writes them to `sst_target/schemas/` for an editor.
+
+## Where each folder publishes
+
+`session.locations()` reads `sst_config.yml` once for every target in the
+profile, as a run for that target reads it ([folder routes](configuration.md#folder-routes)
+and [precedence](configuration.md#precedence)). Each `BlockLocations` is one
+routed block, `agents:` or `skills:` and the rest, then `state:`; its `folders`
+are its root and every folder a route names, shallowest first. A `RouteFolder`
+carries, by target name, each `Setting` it resolves -- the value with that
+target's conditionals resolved, and its `source`, `root` or `route:<a/b>` --
+and the `Placement`, database and schema as Snowflake resolves them, where an
+artifact there publishes. `exists` is False for a route to a folder that is not
+there (`SST-CFG041`).
+
+An artifact's own folder is `ObjectSummary.route_folder`. Routes nest as
+folders do, so the folder that places it is the longest of `folders` its
+`route_folder` starts with, unless its own `config:` sets the key, which its
+`settings` then name as `config`.
+
+A target's own database and schema come from `profiles.yml` alone, with only
+those two fields' `env_var()` calls rendered: a target whose schema names a
+variable this process lacks has `schema=None`, and its `unreadable` says why.
+`target_lists` holds each variable of `vars:` that lists target names, such as
+`production_targets`, for naming groups of targets.
+
+```python
+for block in session.locations().blocks:
+    for folder in block.folders:
+        placed = folder.placement.get("prod")
+        print(block.block, "/".join(folder.folder) or "(root)", placed)
+```
 
 ## What a target has deployed
 
@@ -123,8 +155,9 @@ print(draft.validate().passed)
 An overlay of a session that already has one keeps its edits and adds these.
 dbt is read again only when an edit is to something it reads: a model, macro,
 seed, snapshot, analysis or test file, a dbt project or package file,
-`profiles.yml`, or `sst_config.yml`; otherwise the overlay takes the models
-the session read. Overlays of one project share what they parse and build, so
+`profiles.yml`, or the settings of `sst_config.yml` it runs with -- `dbt:`,
+`defer:` and `project.target_profile`, as they resolve for the session's target;
+otherwise the overlay takes the models the session read. Overlays of one project share what they parse and build, so
 each reads again only what its edits changed. `draft.overlay` is the edits a
 session reads, and `draft.reload()` reads the project again with them.
 

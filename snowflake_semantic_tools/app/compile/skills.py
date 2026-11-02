@@ -111,11 +111,13 @@ class CompiledExtension(StandaloneArtifact):
         scripts: Each script the bundle carries, as the skill that ships it and the path
             inside that skill; only an agent with a code_execution tool can run one.
         contained_keys: What the bundle carries besides itself: a plugin's member skills.
+        route_folder: The skill's or plugin's own folder below its block's route root.
     """
 
     release: ExtensionRelease
     # `field()` keeps the protocol's `source_files` property from becoming this field's default.
     source_files: tuple[str, ...] = field()
+    route_folder: tuple[str, ...] = field()
     scripts: tuple[tuple[str, str], ...] = ()
     contained_keys: tuple[str, ...] = ()
     settings: tuple[Setting, ...] = ()
@@ -281,7 +283,9 @@ class CompileSkills:
         if _release_checks(channel, release, diagnostics):
             return None
         diagnostics.append(_extension_surface(release, skill.name, skill.origin))
-        return CompiledExtension(release, skill.source_files, scripts=_scripts_of((skill,)), settings=channel.settings)
+        return CompiledExtension(
+            release, skill.source_files, skill.folder, scripts=_scripts_of((skill,)), settings=channel.settings
+        )
 
     def _compile_plugin(
         self, plugin: Plugin, members: Mapping[str, Skill], diagnostics: list[Diagnostic]
@@ -325,6 +329,7 @@ class CompileSkills:
         return CompiledExtension(
             release,
             sources,
+            plugin.folder,
             scripts=_scripts_of(carried),
             contained_keys=tuple(artifact_key("skill", name) for name in dict.fromkeys(plugin.members)),
             settings=channel.settings,

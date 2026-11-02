@@ -104,6 +104,16 @@ class CompiledArtifact(Protocol):
         ...
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        """Return the folder its block's routes fold along, below that block's route root.
+
+        One segment per directory, empty for the root: a view's or tool's file's directory, an
+        agent's, skill's, plugin's or profile's own folder, and an eval's subject's folder. A
+        route that `settings` names as `route:<a/b>` is a prefix of it.
+        """
+        ...
+
+    @property
     def rendered_artifact(self) -> RenderedArtifact:
         """Return the artifact as rendered, carrying no ownership marker.
 

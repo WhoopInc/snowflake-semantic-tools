@@ -37,7 +37,12 @@ from snowflake_semantic_tools.adapters.yaml.semantic.phases import (
 )
 from snowflake_semantic_tools.adapters.yaml.semantic.poison import Poison, _member_poison, _view_poison
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
-from snowflake_semantic_tools.adapters.yaml.semantic.target import _view_location, _view_provenance, _view_settings
+from snowflake_semantic_tools.adapters.yaml.semantic.target import (
+    _view_location,
+    _view_provenance,
+    _view_settings,
+    view_folder,
+)
 from snowflake_semantic_tools.adapters.yaml.semantic.view_instructions import _instruction_texts, _view_instructions
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Origin
 from snowflake_semantic_tools.domain.model.artifact_key import view_key
@@ -483,6 +488,7 @@ def _build_views(
                 context.catalog.sources,
                 settings=provenance,
                 variable_origins=variable_origins,
+                folder=view_folder(path, context.semantic_dir),
             )
             if builds is not None:
                 builds.put(key, arguments, views[key])

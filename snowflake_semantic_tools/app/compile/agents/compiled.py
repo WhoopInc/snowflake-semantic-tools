@@ -72,6 +72,10 @@ class CompiledAgent(StandaloneArtifact):
         return tuple(settings[key] for key in sorted(settings))
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        return self.resolved.model.folder
+
+    @property
     def spec_fingerprint(self) -> str:
         """The fingerprint of the specification alone, which each version SST commits carries."""
         return spec_fingerprint(self.payload)

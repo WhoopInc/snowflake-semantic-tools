@@ -103,6 +103,11 @@ class CompiledCocoProfile(StandaloneArtifact):
         return tuple(settings[key] for key in sorted(settings))
 
     @property
+    def route_folder(self) -> tuple[str, ...]:
+        """Return the profile's folder, which it is named for: its routes go one folder deep."""
+        return (self.resolved.model.name,)
+
+    @property
     def spec_fingerprint(self) -> str:
         """The fingerprint of the specification alone, which each version SST commits carries."""
         return spec_fingerprint(self.payload)
