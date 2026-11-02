@@ -177,3 +177,18 @@ def test_removing_an_eval_deletes_its_files_and_its_agent_stops_naming_it(sessio
 def test_removing_an_artifact_the_project_does_not_compile_is_refused(session: ProjectSession) -> None:
     with pytest.raises(KeyError):
         session.removal("agent:nobody")
+
+
+def test_a_removal_reads_files_whose_templates_are_unquoted_as_sst_reads_them(tmp_path: Path) -> None:
+    project = project_copy(tmp_path)
+    member = project / "semantic_models/filters/is_large_order.yml"
+    quoted = "expr: \"{{ ref('orders', 'order_total') }} > large_order_cents\""
+    text = member.read_text(encoding="utf-8")
+    assert quoted in text
+    member.write_text(
+        text.replace(quoted, "expr: {{ ref('orders', 'order_total') }} > large_order_cents"), encoding="utf-8"
+    )
+    session = ProjectSession.open(project, manifest_path=DBT_MANIFEST)
+    assert "semantic_view:jaffle_sales" in {item.key for item in session.catalog()}
+
+    assert session.removal("semantic_view:jaffle_sales") == {VIEWS: None}

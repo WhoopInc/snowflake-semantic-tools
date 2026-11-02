@@ -8,7 +8,8 @@ from hypothesis import strategies as st
 from ruamel.yaml import YAML
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.yaml.format import _trimmed_tree, canonical_yaml
+from snowflake_semantic_tools.adapters.roundtrip import mapping_root
+from snowflake_semantic_tools.adapters.yaml.format import _trimmed_tree, canonical_yaml, load_masked
 from snowflake_semantic_tools.domain.validate.semantic.files import formatting_problem
 
 _KEYS = st.sampled_from(("name", "description", "expr", "synonyms", "tables", "sample_values", "x"))
@@ -326,7 +327,7 @@ def test_unquoted_templates_are_read_as_validate_reads_them_and_restored_as_writ
 def test_a_result_whose_templates_would_not_read_back_is_refused_for_its_file(monkeypatch: pytest.MonkeyPatch) -> None:
     from snowflake_semantic_tools.adapters.yaml import format as formatting
 
-    monkeypatch.setattr(formatting, "_restored_templates", lambda text, templates: text)
+    monkeypatch.setattr(formatting, "restored_templates", lambda text, templates: text)
     with pytest.raises(ProjectError) as raised:
         canonical_yaml("a: {{ ref('x') }}\n", "t.yml")
     [diagnostic] = raised.value.diagnostics
@@ -342,3 +343,14 @@ def test_a_double_quoted_value_with_control_escapes_round_trips(value: str) -> N
     formatted = canonical_yaml(text, "m.yml")
     assert YAML(typ="safe", pure=True).load(formatted) == expected
     assert canonical_yaml(formatted, "m.yml") == formatted
+
+
+def test_a_file_loaded_masked_is_edited_around_its_templates_and_dumped_with_them_as_written() -> None:
+    text = "# kept\nfilter:\n  name: big\n  expr: {{ ref('orders', 'total') }} > 10\n"
+
+    loaded = load_masked(text, "f.yml")
+    root = mapping_root(loaded.document)
+    assert root is not None
+    root["filter"]["name"] = "large"
+
+    assert loaded.dump() == text.replace("name: big", "name: large")

@@ -61,7 +61,7 @@ from ruamel.yaml.scalarstring import (
 from ruamel.yaml.util import load_yaml_guess_indent
 
 from snowflake_semantic_tools.adapters.errors import ProjectError
-from snowflake_semantic_tools.adapters.roundtrip import check_depth
+from snowflake_semantic_tools.adapters.roundtrip import EditableYaml, check_depth, load_editable
 from snowflake_semantic_tools.adapters.yaml.documents import SINGULAR_ROOTS
 from snowflake_semantic_tools.adapters.yaml.parse import _neutralize_templates
 from snowflake_semantic_tools.adapters.yaml.styles import PROSE_KEYS, YamlStyle, styled
@@ -146,11 +146,11 @@ def canonical_yaml(
         if "{{" not in text or [item.code for item in exc.diagnostics] != ["SST-LOD001"]:
             raise
         unparsed = exc
-    masked, templates = _masked(text, path)
+    masked, templates = masked_templates(text, path)
     if not templates:
         raise unparsed
-    result = _restored_templates(_laid_out(masked, path, options), templates)
-    again, kept = _masked(result, path)
+    result = restored_templates(_laid_out(masked, path, options), templates)
+    again, kept = masked_templates(result, path)
     if kept != templates or _laid_out(again, path, options) != again:
         found = f"a form of {path} whose templates would not read back as written, so it was left as it is"
         diagnostic = D("SST-INT003", subject="format", value="sst format", found=found, expected="the same value")
@@ -158,7 +158,7 @@ def canonical_yaml(
     return result
 
 
-def _masked(text: str, path: str) -> tuple[str, dict[str, str]]:
+def masked_templates(text: str, path: str) -> tuple[str, dict[str, str]]:
     """Return `text` with each template validate reads in a scalar swapped for a placeholder.
 
     A template in a comment or a block scalar is text to YAML, so it is left in place.
@@ -172,7 +172,39 @@ def _masked(text: str, path: str) -> tuple[str, dict[str, str]]:
     return masked, {placeholder: source.raw for placeholder, source in sources.items()}
 
 
-def _restored_templates(text: str, templates: dict[str, str]) -> str:
+@dataclass
+class MaskedYaml:
+    """A project file loaded for editing with each template masked, as `sst format` reads it.
+
+    A value such as `expr: {{ ref('a', 'b') }} = 1` is not YAML until its template is masked;
+    each is a placeholder in `document` while it is edited, and `dump` restores it as written.
+
+    Attributes:
+        document: The document, its templates masked; edits change it in place.
+        templates: Each template, by the placeholder that stands in for it.
+    """
+
+    document: EditableYaml
+    templates: dict[str, str]
+
+    def dump(self) -> str:
+        """Return the edited document as text, each template restored as written."""
+        return restored_templates(self.document.dump(), self.templates)
+
+
+def load_masked(text: str, path: str) -> MaskedYaml:
+    """Load a project file for editing in place, each template masked as `sst format` masks it.
+
+    Raises:
+        ProjectError: a template is unterminated or nested (SST-LOD004), or the file does not
+            parse once masked.
+    """
+    masked, templates = masked_templates(text, path)
+    return MaskedYaml(load_editable(masked, path), templates)
+
+
+def restored_templates(text: str, templates: dict[str, str]) -> str:
+    """Return `text` with each placeholder `masked_templates` swapped in restored as written."""
     for placeholder, raw in templates.items():
         text = text.replace(placeholder, raw)
     return text

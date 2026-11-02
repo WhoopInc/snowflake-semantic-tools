@@ -14,8 +14,9 @@ import posixpath
 from collections.abc import Mapping
 from pathlib import Path
 
-from snowflake_semantic_tools.adapters.roundtrip import insert_key, load_editable, mapping_root, ordered_mapping
+from snowflake_semantic_tools.adapters.roundtrip import insert_key, mapping_root, ordered_mapping
 from snowflake_semantic_tools.adapters.yaml.emit import emit_document
+from snowflake_semantic_tools.adapters.yaml.format import load_masked
 from snowflake_semantic_tools.adapters.yaml.styles import YamlStyle, configured_style
 from snowflake_semantic_tools.app.compile import CompiledArtifact
 from snowflake_semantic_tools.domain.authoring import NewFile, eval_files, eval_names, new_files
@@ -57,8 +58,8 @@ def scaffold_eval(project_dir: Path, config: Mapping[str, object], subject: Comp
         raise ValueError(f"an eval evaluates an agent or a CoWork profile, not a {subject.artifact_type}")
     stem, order = _SUBJECTS[subject.artifact_type]
     manifest = _manifest(subject, stem)
-    document = load_editable((project_dir / manifest).read_text(encoding="utf-8"), manifest)
-    root = mapping_root(document)
+    document = load_masked((project_dir / manifest).read_text(encoding="utf-8"), manifest)
+    root = mapping_root(document.document)
     if root is None or "evals" in root:
         raise ValueError(f"{manifest} names an eval already")
     files = _written(project_dir, eval_files(posixpath.dirname(manifest), subject.name), configured_style(config))
@@ -131,8 +132,8 @@ def _eval_removal(
         raise ValueError(f"the subject of {item.artifact_key} is not compiled")
     manifest = _manifest(subject, _SUBJECTS[subject.artifact_type][0])
     edits: dict[str, bytes | None] = {path: None for path in item.source_files if path != manifest}
-    document = load_editable((project_dir / manifest).read_text(encoding="utf-8"), manifest)
-    root = mapping_root(document)
+    document = load_masked((project_dir / manifest).read_text(encoding="utf-8"), manifest)
+    root = mapping_root(document.document)
     if root is not None and "evals" in root:
         del root["evals"]
         edits[manifest] = document.dump().encode("utf-8")
@@ -143,8 +144,8 @@ def _entry_removal(project_dir: Path, item: CompiledArtifact) -> dict[str, bytes
     """Remove a semantic view or tool member: its file, or its entry in a file declaring several."""
     artifact = ARTIFACT_REGISTRY.artifacts[item.artifact_type]
     declaring = _declaring_file(project_dir, item, artifact.singular_root, artifact.root_key)
-    document = load_editable((project_dir / declaring).read_text(encoding="utf-8"), declaring)
-    root = mapping_root(document)
+    document = load_masked((project_dir / declaring).read_text(encoding="utf-8"), declaring)
+    root = mapping_root(document.document)
     if root is None:
         return {declaring: None}
     single = root.get(artifact.singular_root)
@@ -165,7 +166,7 @@ def _declaring_file(project_dir: Path, item: CompiledArtifact, singular: str | N
     for path in item.source_files:
         if not path.endswith((".yml", ".yaml")) or not (project_dir / path).is_file():
             continue
-        root = load_editable((project_dir / path).read_text(encoding="utf-8"), path).root
+        root = load_masked((project_dir / path).read_text(encoding="utf-8"), path).document.root
         if not isinstance(root, Mapping):
             continue
         single = root.get(singular)
