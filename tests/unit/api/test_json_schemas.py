@@ -232,4 +232,7 @@ def test_every_key_and_kind_carries_its_presentation() -> None:
         "columns": ["type"],
     }
     assert found["agent"][STUDIO]["flatten"] == ["spec"]
+    metric = found["semantic_file"]["properties"]["metric"]
+    assert metric[STUDIO]["groups"][0]["id"] == "about"
+    assert found["semantic_file"]["properties"]["snowflake_metrics"]["items"][STUDIO] == metric[STUDIO]
     assert [section["id"] for section in found["sst_config"][STUDIO]["sections"]][0] == "publishing"

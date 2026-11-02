@@ -153,13 +153,16 @@ def file_schema(kind: FileKind) -> dict[str, object]:
 
 
 def _roots(kind: FileKind) -> dict[str, object]:
-    """The two keys a kind's declarations are written under: one declaration, and a list of them."""
-    node = _node(kind.node, kind.name)
-    ui = KIND_UI[kind.name]
+    """The two keys a kind's declarations are written under: one declaration, and a list of them.
+
+    Each declaration carries its kind's presentation, its sections among it, so an editor reaching
+    one through its root key reads the same `x-studio` as the kind's own schema gives.
+    """
+    node = {**_node(kind.node, kind.name), STUDIO: _kind_ui(KIND_UI[kind.name])}
     one, many = kind.roots
     return {
-        one: {**node, STUDIO: {"label": ui.label}},
-        many: {"type": "array", "items": node, STUDIO: {"label": ui.plural}},
+        one: node,
+        many: {"type": "array", "items": node, STUDIO: {"label": KIND_UI[kind.name].plural}},
     }
 
 
