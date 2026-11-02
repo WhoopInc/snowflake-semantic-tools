@@ -36,6 +36,7 @@ from snowflake_semantic_tools.adapters.project_source import DbtOutcome, YamlPro
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
+from snowflake_semantic_tools.adapters.yaml.skill_reuse import SkillCatalogs
 from snowflake_semantic_tools.api.authoring import removal, scaffold, scaffold_eval
 from snowflake_semantic_tools.api.lineage import Lineage, lineage_of
 from snowflake_semantic_tools.api.locations import Locations, project_locations
@@ -177,6 +178,7 @@ class ProjectSession:
             dbt_cache=reuse.dbt_cache,
             view_builds=reuse.view_builds,
             dbt_outcome=outcome,
+            skill_catalogs=reuse.skill_catalogs,
         )
         self._first_run = base.first_run
         self._compiled = CompileProject(self._inputs, renders=reuse.renders).run()
@@ -561,6 +563,7 @@ class _Reuse:
     dbt_cache: DbtCache = field(default_factory=DbtCache)
     view_builds: ViewBuilds = field(default_factory=ViewBuilds)
     renders: RenderedViews = field(default_factory=RenderedViews)
+    skill_catalogs: SkillCatalogs = field(default_factory=SkillCatalogs)
 
 
 class _Base:

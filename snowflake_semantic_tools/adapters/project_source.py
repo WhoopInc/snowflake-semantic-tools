@@ -52,6 +52,7 @@ from snowflake_semantic_tools.adapters.yaml.parse import parse_yaml_bytes
 from snowflake_semantic_tools.adapters.yaml.routes import routed_diagnostics
 from snowflake_semantic_tools.adapters.yaml.semantic import load_semantic_views_result, read_semantic_inputs
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
+from snowflake_semantic_tools.adapters.yaml.skill_reuse import SkillCatalogs
 from snowflake_semantic_tools.adapters.yaml.skills import _published, load_skill_catalog
 from snowflake_semantic_tools.adapters.yaml.tools import load_tool_catalog
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, DiagnosticBag, Severity
@@ -465,7 +466,8 @@ class YamlProjectInputs(ProjectInputs):
     commit comes from `git_sha`, and the uncommitted paths from `git_dirty`, which the CLI
     supplies, so the CLI decides how git is asked; without `git_dirty`, none are.
     `allow_stale_manifest`, `view_builds` and `dbt_outcome` are passed to the source, as
-    `YamlProjectSource` describes.
+    `YamlProjectSource` describes. `skill_catalogs` keeps the skill catalog a session's last load
+    read, which a load whose skill and plugin files are unchanged takes instead of reading them.
     """
 
     def __init__(
@@ -483,9 +485,11 @@ class YamlProjectInputs(ProjectInputs):
         dbt_cache: DbtCache | None = None,
         view_builds: ViewBuilds | None = None,
         dbt_outcome: DbtOutcome | None = None,
+        skill_catalogs: SkillCatalogs | None = None,
     ) -> None:
         self._files = files
         self._project_dir = files.project_dir
+        self._skill_catalogs = skill_catalogs
         self._target_name = target_name
         self._database = database
         self._load_cache = load_cache or LoadCache()
@@ -519,9 +523,14 @@ class YamlProjectInputs(ProjectInputs):
         return self._source.load_project()
 
     def skill_catalog(self, *, skills_dir: str, plugins_dir: str) -> SkillCatalog:
-        return load_skill_catalog(
-            self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir, config=self.config().tree
-        )
+        config = self.config().tree
+
+        def load() -> SkillCatalog:
+            return load_skill_catalog(self._project_dir, skills_dir=skills_dir, plugins_dir=plugins_dir, config=config)
+
+        if self._skill_catalogs is None:
+            return load()
+        return self._skill_catalogs.get(self._project_dir, skills_dir, plugins_dir, config, load)
 
     def coco_profile_catalog(self, *, coco_profiles_dir: str) -> tuple[CocoProfileCatalog, DiagnosticBag]:
         return load_coco_profile_catalog(

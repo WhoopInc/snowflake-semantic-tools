@@ -8,7 +8,7 @@ node position moved to match, so everything downstream reads both shapes the sam
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from types import MappingProxyType
@@ -102,12 +102,21 @@ class RawDocuments:
             of them is in `documents`.
         diagnostics: The discovery diagnostics, then each file's in discovery order: why a file
             failed, or what a loaded file's formatting was found to be.
+        by_abs_path: The same documents, by `RawDocument.abs_path`.
     """
 
     documents: tuple[RawDocument, ...]
     by_path: Mapping[str, RawDocument]
     failed: tuple[str, ...]
     diagnostics: tuple[Diagnostic, ...]
+    by_abs_path: Mapping[Path, RawDocument] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "by_abs_path", MappingProxyType({item.abs_path: item for item in self.documents}))
+
+    def at(self, abs_path: Path) -> RawDocument | None:
+        """Return the document read from the resolved file `abs_path`; None when none was."""
+        return self.by_abs_path.get(abs_path)
 
     def under(self, directory: Path, root_key: str) -> tuple[RawDocument, ...]:
         """Return the documents at any depth below `directory` whose tree has the top-level `root_key`.
@@ -115,11 +124,12 @@ class RawDocuments:
         `directory` is resolved before the comparison and `root_key` must match exactly; the
         documents keep their discovery order.
         """
-        resolved = directory.resolve()
+        # As text: `is_relative_to` on every document of a large project is the cost of a load.
+        prefix = f"{directory.resolve().as_posix().rstrip('/')}/"
         return tuple(
             document
             for document in self.documents
-            if document.abs_path.is_relative_to(resolved) and root_key in document.root_keys
+            if root_key in document.root_keys and document.abs_path.as_posix().startswith(prefix)
         )
 
 

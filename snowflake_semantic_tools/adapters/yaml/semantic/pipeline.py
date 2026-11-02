@@ -68,6 +68,9 @@ from snowflake_semantic_tools.domain.validate.semantic.rules import rule_diagnos
 from snowflake_semantic_tools.domain.validate.semantic.scope import scope_diagnostics, view_scope
 from snowflake_semantic_tools.domain.validate.semantic.verified_queries import duplicate_question_diagnostics
 
+# The configuration blocks a view's build reads; its folder's settings arrive resolved.
+VIEW_CONFIG_BLOCKS = ("vars", "tags")
+
 
 @dataclass(frozen=True, slots=True)
 class SemanticInputs:
@@ -460,8 +463,10 @@ def _build_views(
     """
     views: dict[str, SemanticView] = {}
     diagnostics: list[Diagnostic] = []
+    read = view_config(context.config)
     if builds is not None:
-        builds.begin((context.project_dir, context.models, context.config, context.catalog.sources))
+        # A view's folder is its path below `semantic_dir`, so that directory is shared too.
+        builds.begin((context.project_dir, context.semantic_dir, context.models, read, context.catalog.sources))
     for path, node in nodes:
         settings = _view_settings(context.config, path, context.semantic_dir, node)
         view_target = _view_location(settings, context.target)
@@ -484,7 +489,7 @@ def _build_views(
                 context.models,
                 members,
                 attachment,
-                context.config,
+                read,
                 context.catalog.sources,
                 settings=provenance,
                 variable_origins=variable_origins,
@@ -502,6 +507,15 @@ def _build_views(
     return views, tuple(diagnostics)
 
 
+def view_config(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Return the blocks of the configuration a view's build reads: `vars:` and `tags:`.
+
+    A view is built from these alone, and its folder's settings, which its build is handed, so
+    an edit anywhere else in the configuration reuses every view a load built before it.
+    """
+    return {key: config[key] for key in VIEW_CONFIG_BLOCKS if key in config}
+
+
 def _entry_origins(context: LoadContext, path: Path, node: Mapping[str, Any], field: str) -> tuple[Origin, ...]:
     """Return where each entry of a view's list `field` is written, found by the view's node in its file.
 
@@ -511,10 +525,12 @@ def _entry_origins(context: LoadContext, path: Path, node: Mapping[str, Any], fi
     assert root_key is not None
     entries = node.get(field)
     count = len(entries) if isinstance(entries, list) else 0
-    for document in context.documents.under(context.semantic_dir, root_key):
-        for index, candidate in enumerate(document.tree.get(root_key) or []):
-            if document.abs_path == path and candidate is node:
-                return tuple(_located(document, (root_key, index, field, item)) for item in range(count))
+    document = context.documents.at(path)
+    if document is None or root_key not in document.root_keys:
+        return ()
+    for index, candidate in enumerate(document.tree.get(root_key) or []):
+        if candidate is node:
+            return tuple(_located(document, (root_key, index, field, item)) for item in range(count))
     return ()
 
 
