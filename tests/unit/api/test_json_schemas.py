@@ -18,7 +18,7 @@ import yaml
 from snowflake_semantic_tools.api import ProjectSession, schemas
 from snowflake_semantic_tools.domain.model.authored_schema import FILE_KINDS
 from snowflake_semantic_tools.domain.model.authored_schema.locations import schema_kind
-from snowflake_semantic_tools.domain.render.json_schema import SCHEMA_KEYWORDS, any_case, schema_id
+from snowflake_semantic_tools.domain.render.json_schema import SCHEMA_KEYWORDS, STUDIO, any_case, schema_id
 from tests.helpers.authored_claims import CLAIMS, Claim, edited
 from tests.helpers.json_schema_check import check
 from tests.helpers.reference_project import DBT_MANIFEST, project_copy
@@ -56,6 +56,9 @@ def _keywords(schema: object) -> Iterator[str]:
     if isinstance(schema, dict):
         for key, value in schema.items():
             yield key
+            if key == STUDIO:
+                # An annotation's value is no schema, so it holds no keywords.
+                continue
             nested = value.values() if key in ("properties", "patternProperties", "$defs") else (value,)
             for item in nested:
                 yield from _keywords(item)
@@ -193,3 +196,40 @@ def test_a_config_value_may_be_a_template() -> None:
     assert (("semantic_views", "+enabled"), "anyOf") in check(config, {"semantic_views": {"+enabled": "yes"}})
     assert check(config, {"semantic_views": {"finance": {"core": {"+enabled": False}}}}) == []
     assert check(config, {"semantic_viewz": {}}) == [(("semantic_viewz",), "false")]
+
+
+def _properties(schema: object) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Every property schema, with its name, at any depth, through `anyOf` and `$defs`.
+
+    A variant rule's `if` and `then` only match and refuse keys declared elsewhere, so they are skipped.
+    """
+    if isinstance(schema, dict):
+        for name, value in schema.get("properties", {}).items():
+            yield name, value
+        for key, value in schema.items():
+            if key not in (STUDIO, "if", "then"):
+                yield from _properties(value)
+    elif isinstance(schema, list):
+        for item in schema:
+            yield from _properties(item)
+
+
+def test_every_key_and_kind_carries_its_presentation() -> None:
+    """An editor names every key from `x-studio`, so no property and no file kind is without one."""
+    for kind, schema in _SCHEMAS.items():
+        if kind != "semantic_file":
+            assert STUDIO in schema, kind
+        unnamed = [name for name, value in _properties(schema) if value and "label" not in value.get(STUDIO, {})]
+        # A root a semantic file only tolerates for another kind is `{}`; every other property is named.
+        assert unnamed == [], kind
+    found: Any = _SCHEMAS
+    tools = found["agent"]["properties"]["spec"]["properties"]["tools"]
+    assert tools[STUDIO]["list"] == {
+        "noun": "tool",
+        "title": "name",
+        "layout": "cards",
+        "subtitle": "description",
+        "columns": ["type"],
+    }
+    assert found["agent"][STUDIO]["flatten"] == ["spec"]
+    assert [section["id"] for section in found["sst_config"][STUDIO]["sections"]][0] == "publishing"

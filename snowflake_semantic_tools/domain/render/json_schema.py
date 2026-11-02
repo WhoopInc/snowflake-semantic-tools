@@ -6,6 +6,8 @@ declare, a required key missing, a value outside an enum or of another kind. It 
 everything SST accepts: a `config:` value that is a template, an enum SST matches ignoring
 case, a key of an older dialect (marked `deprecated`, its description naming what replaced it).
 Each `$id` is a name, never fetched, and only the keywords in `SCHEMA_KEYWORDS` are emitted.
+Every key, file kind and the configuration file carry `x-studio`, an annotation no validator
+reads: how an editor names, groups and lays it out, from `domain.model.presentation`.
 """
 
 from __future__ import annotations
@@ -22,10 +24,23 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
     ValueKind,
 )
 from snowflake_semantic_tools.domain.model.config_schema import CHILDREN, ConfigKey, KeyKind, KeyStatus, block_settings
+from snowflake_semantic_tools.domain.model.presentation import (
+    CONFIG_SECTIONS,
+    CONFIG_UI,
+    FIELD_UI,
+    KIND_UI,
+    LIST_UI,
+    KindUi,
+    ListUi,
+    Ui,
+)
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
 from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS_AT
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
+# The annotation an editor reads a key's presentation from; validators ignore it, as JSON Schema
+# ignores any keyword it does not define.
+STUDIO = "x-studio"
 # The names the configuration file's schema, and a semantic models file's, go by.
 CONFIG_KIND = "sst_config"
 SEMANTIC_FILE = "semantic_file"
@@ -53,6 +68,7 @@ SCHEMA_KEYWORDS = frozenset(
         "minimum",
         "maximum",
         "deprecated",
+        STUDIO,
     )
 )
 _TYPES: Mapping[ValueKind, str] = {
@@ -105,10 +121,7 @@ def semantic_file_schema() -> dict[str, object]:
             if root is not None:
                 properties[root] = {}
     for kind in SEMANTIC_KINDS:
-        node = _node(kind.node, kind.name)
-        one, many = kind.roots
-        properties[one] = node
-        properties[many] = {"type": "array", "items": node}
+        properties.update(_roots(kind))
     return {
         "$schema": DRAFT,
         "$id": schema_id(SEMANTIC_FILE),
@@ -125,16 +138,29 @@ def file_schema(kind: FileKind) -> dict[str, object]:
     if not kind.roots:
         body = node
     else:
-        one, many = kind.roots
-        body = {
-            "type": "object",
-            "properties": {one: node, many: {"type": "array", "items": node}},
-        }
+        body = {"type": "object", "properties": _roots(kind)}
         if kind.name == "tool":
             # A tools file holds members alone, so another key is reported; a semantic file may
             # hold other kinds' roots as well.
             body["additionalProperties"] = False
-    return {"$schema": DRAFT, "$id": schema_id(kind.name), "title": kind.summary, **body}
+    return {
+        "$schema": DRAFT,
+        "$id": schema_id(kind.name),
+        "title": kind.summary,
+        STUDIO: _kind_ui(KIND_UI[kind.name]),
+        **body,
+    }
+
+
+def _roots(kind: FileKind) -> dict[str, object]:
+    """The two keys a kind's declarations are written under: one declaration, and a list of them."""
+    node = _node(kind.node, kind.name)
+    ui = KIND_UI[kind.name]
+    one, many = kind.roots
+    return {
+        one: {**node, STUDIO: {"label": ui.label}},
+        many: {"type": "array", "items": node, STUDIO: {"label": ui.plural}},
+    }
 
 
 def _node(node: Node, path: str) -> dict[str, object]:
@@ -182,6 +208,7 @@ def _field(item: Field, path: str) -> dict[str, object]:
     if calls:
         description += " Takes " + ", ".join(f"`{call}()`" for call in calls) + "."
     schema["description"] = description
+    schema[STUDIO] = _ui(FIELD_UI[path], LIST_UI.get(path))
     if item.status is not FieldStatus.CURRENT:
         schema["deprecated"] = True
     return schema if item.required else _nullable(schema)
@@ -231,7 +258,9 @@ def _choices(item: Field) -> dict[str, object]:
 
 def _settings(block: str, node: Node | None, path: str) -> dict[str, object]:
     """A `config:` field: its block's settings, each typed as `sst_config.yml` types it."""
-    properties: dict[str, object] = {name: _config_value(key) for name, key in block_settings(block).items()}
+    properties: dict[str, object] = {
+        name: {**_config_value(key), STUDIO: _ui(CONFIG_UI[key.path])} for name, key in block_settings(block).items()
+    }
     for item in node.fields if node is not None else ():
         properties[item.name] = _field(item, f"{path}.{item.name}")
     return {"type": "object", "properties": properties, "additionalProperties": False}
@@ -241,7 +270,12 @@ def config_schema() -> dict[str, object]:
     """Return the schema of `sst_config.yml`, from `CONFIG_SCHEMA`."""
     definitions: dict[str, object] = {}
     body = _config_block("", definitions)
-    schema: dict[str, object] = {"$schema": DRAFT, "$id": schema_id(CONFIG_KIND), "title": "The SST project file"}
+    schema: dict[str, object] = {
+        "$schema": DRAFT,
+        "$id": schema_id(CONFIG_KIND),
+        "title": "The SST project file",
+        STUDIO: {"sections": [{"id": s.id, "label": s.label, "blurb": s.blurb} for s in CONFIG_SECTIONS]},
+    }
     schema.update(body)
     if definitions:
         schema["$defs"] = definitions
@@ -267,6 +301,7 @@ def _config_block(parent: str, definitions: dict[str, object]) -> dict[str, obje
             definitions[route] = {
                 "type": "object",
                 "description": slot.summary,
+                STUDIO: _ui(CONFIG_UI[slot.path]),
                 "properties": settings,
                 "patternProperties": {"^[^+]": {"$ref": f"#/$defs/{route}"}},
                 "additionalProperties": False,
@@ -279,6 +314,7 @@ def _config_block(parent: str, definitions: dict[str, object]) -> dict[str, obje
 def _config_key(key: ConfigKey, definitions: dict[str, object]) -> dict[str, object]:
     schema = _config_block(key.path, definitions) if key.kind is KeyKind.BLOCK else _config_value(key)
     schema["description"] = key.summary
+    schema[STUDIO] = _ui(CONFIG_UI[key.path])
     if key.status is not KeyStatus.CURRENT:
         schema["deprecated"] = True
     return schema
@@ -310,3 +346,35 @@ def _config_value(key: ConfigKey) -> dict[str, object]:
     if key.maximum is not None:
         value["maximum"] = key.maximum
     return {"anyOf": [value, _TEMPLATE_TEXT], "description": key.summary}
+
+
+def _ui(ui: Ui, listed: ListUi | None = None) -> dict[str, object]:
+    """Return a key's `x-studio`: its label, what else it sets, and a list's item naming and layout."""
+    found: dict[str, object] = {"label": ui.label}
+    if ui.group is not None:
+        found["group"] = ui.group
+    if ui.advanced:
+        found["advanced"] = True
+    if ui.widget is not None:
+        found["widget"] = ui.widget.value
+    if listed is not None:
+        item: dict[str, object] = {"noun": listed.noun, "title": listed.title, "layout": listed.layout.value}
+        if listed.subtitle is not None:
+            item["subtitle"] = listed.subtitle
+        if listed.columns:
+            item["columns"] = list(listed.columns)
+        found["list"] = item
+    return found
+
+
+def _kind_ui(ui: KindUi) -> dict[str, object]:
+    """A file kind's `x-studio`: its names, its sections in order, and the keys that describe it."""
+    return {
+        "label": ui.label,
+        "plural": ui.plural,
+        "groups": [{"id": group.id, "label": group.label, "blurb": group.blurb} for group in ui.groups],
+        "description": ui.description,
+        "owner": ui.owner,
+        "key_settings": list(ui.key_settings),
+        "flatten": list(ui.flatten),
+    }
