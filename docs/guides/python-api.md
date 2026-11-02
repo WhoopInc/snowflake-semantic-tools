@@ -188,6 +188,37 @@ it names: an artifact type or member kind, whose names `catalog()` lists, else
 their columns), `sources`, `variables` and `tags`. A setting's value takes
 `setting_functions` and `{{ target.<key> }}` for each of `target_keys`.
 
+Each JSON Schema also says how an editor shows every key, as the `x-studio`
+annotation validators ignore: a `label`, the `group` (section) it sits in,
+whether it is `advanced`, its `widget` (`prose`, `sql`, `markdown`,
+`reference`, `code`), and for a list of mappings its `list`: the `noun` one
+item is, the key whose value is its `title` and `subtitle`, its `layout`
+(`table`, `cards` or `chips`) and a table's `columns`. A file kind's schema
+names its `groups` in order, the keys that give a declaration's
+`description` and `owner`, its `key_settings`, and the mappings it shows
+`flatten`ed into its own sections (an agent's `spec`); `sst_config`'s names
+its `sections`.
+
+## Per-target values and editing the configuration
+
+A value of `sst_config.yml` may differ by target. `parse_target_value(text)`
+reads it as SST does, without resolving it: `PLAIN` text, one `VAR`, a
+`CONDITIONAL` with its arms and final `else`, or `UNREADABLE` (a conditional
+the grammar does not cover, or one beside other text, which an editor should
+show as written). `resolve_for(text, target, variables)` gives what a run for
+`target` resolves it to, or why it does not resolve, and
+`target_groups(text, targets, target_lists, variables)` groups the targets
+that get the same value, naming a group by the `vars:` list that lists exactly
+its targets. `format_target_value` writes a `TargetValue` back in the grammar
+the resolver reads.
+
+`edit_config(text, path, value)` returns the file with the key at `path` --
+`("agents", "sales", "+schema")` -- set to `value`, or removed when `value`
+is None. It keeps every comment, blank line and quote; a new key goes where
+the configuration reference orders it; and removing a key removes each mapping
+it leaves empty, so a folder route's last key takes the route.
+`edit_target_value(text, path, value)` writes a `TargetValue` there.
+
 ## A session is a snapshot
 
 A session holds what it read and never reads the project again, so every

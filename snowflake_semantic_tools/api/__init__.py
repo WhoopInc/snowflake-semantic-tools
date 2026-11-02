@@ -11,6 +11,7 @@ from snowflake_semantic_tools.api.authoring_context import (
     SourceName,
     Variable,
 )
+from snowflake_semantic_tools.api.config_edit import edit_config, edit_target_value
 from snowflake_semantic_tools.api.deployed import ConnectionParams, Deployed, deployed
 from snowflake_semantic_tools.api.lineage import Lineage, LineageEdge, LineageNode
 from snowflake_semantic_tools.api.locations import (
@@ -25,8 +26,22 @@ from snowflake_semantic_tools.api.schemas import schemas
 from snowflake_semantic_tools.api.session import ObjectSummary, ProjectSession, Rendered, Validation
 from snowflake_semantic_tools.domain.model.setting import Setting
 from snowflake_semantic_tools.domain.render.field_vocabulary import FieldVocabulary, FileRoot, TemplateFunction
+from snowflake_semantic_tools.domain.resolve.target_value import (
+    Arm,
+    ArmTest,
+    Resolved,
+    TargetGroup,
+    TargetValue,
+    ValueForm,
+    format_target_value,
+    parse_target_value,
+    resolve_for,
+    target_groups,
+)
 
 __all__ = [
+    "Arm",
+    "ArmTest",
     "AuthoringContext",
     "BlockLocations",
     "ColumnName",
@@ -44,13 +59,23 @@ __all__ = [
     "Placement",
     "ProjectSession",
     "Rendered",
+    "Resolved",
     "RouteFolder",
     "Setting",
     "SourceName",
+    "TargetGroup",
     "TargetLocation",
+    "TargetValue",
     "TemplateFunction",
     "Validation",
+    "ValueForm",
     "Variable",
     "deployed",
+    "edit_config",
+    "edit_target_value",
+    "format_target_value",
+    "parse_target_value",
+    "resolve_for",
     "schemas",
+    "target_groups",
 ]

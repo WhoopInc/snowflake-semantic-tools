@@ -6,7 +6,8 @@ arms, the final `else` optional -- becomes the literal its first true arm names.
 conditional is read before any arm is tested, so one the grammar does not cover is reported
 whatever the target. `{{ var('<name>') }}` anywhere in a value becomes the variable `vars:`
 declares. Every other template, `{{ target.database }}` among them, is left as written for the
-reader of that key. Nothing else is evaluated, so the grammar stays enumerable. A value whose
+reader of that key. Nothing else is evaluated, so the grammar stays enumerable; its patterns are `target_value`'s, which
+reads a value's structure for an editor. A value whose
 template does not resolve is removed: its reader sees the key unset, and the diagnostic blocks.
 """
 
@@ -20,23 +21,13 @@ from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic, Diagnosti
 from snowflake_semantic_tools.domain.model.config_schema.key_types import KeyKind
 from snowflake_semantic_tools.domain.model.config_schema.keys import CONFIG_KEYS
 from snowflake_semantic_tools.domain.resolve.calls import variable_problem
+from snowflake_semantic_tools.domain.resolve.target_value import ARM as _ARM
+from snowflake_semantic_tools.domain.resolve.target_value import CONDITIONAL as _CONDITIONAL
+from snowflake_semantic_tools.domain.resolve.target_value import EMBEDDED as _EMBEDDED
+from snowflake_semantic_tools.domain.resolve.target_value import FALLBACK as _FALLBACK
+from snowflake_semantic_tools.domain.resolve.target_value import QUOTED as _QUOTED
+from snowflake_semantic_tools.domain.resolve.target_value import VAR as _VAR
 
-_LITERAL = r"'([^']*)'"
-# One or more quoted names in parentheses or brackets, a trailing comma allowed: `('a',)`, `['a', 'b']`.
-_NAMES = r"(\(\s*'[^']*'(?:\s*,\s*'[^']*')*\s*,?\s*\)|\[\s*'[^']*'(?:\s*,\s*'[^']*')*\s*,?\s*\])"
-# A list variable as a membership arm's operand: `var('production_targets')`.
-_NAMES_VAR = r"var\(\s*'([^']+)'\s*\)"
-_ARM = re.compile(
-    rf"\s*{_LITERAL}\s+if\s+target\.name\s*"
-    rf"(?:(==|!=)\s*{_LITERAL}|(not\s+in|in)\s*(?:{_NAMES}|{_NAMES_VAR}))\s*(?:else\b|$)"
-)
-_QUOTED = re.compile(_LITERAL)
-_FALLBACK = re.compile(rf"\s*{_LITERAL}\s*$")
-# One template, so `{{ a }} and {{ b }}` is not read as one conditional.
-_CONDITIONAL = re.compile(r"^\s*\{\{(?P<body>(?:(?!\}\}).)*\bif\s+target\.name\b(?:(?!\}\}).)*)\}\}\s*$", re.DOTALL)
-# A target conditional with other text beside it, which never resolves.
-_EMBEDDED = re.compile(r"\{\{(?:(?!\}\}).)*\bif\s+target\.name\b", re.DOTALL)
-_VAR = re.compile(r"\{\{\s*var\(\s*['\"]([^'\"]+)['\"]\s*\)\s*\}\}")
 # What `render` returns for a value whose template failed, so its key or list item is dropped.
 _UNRESOLVED = object()
 
