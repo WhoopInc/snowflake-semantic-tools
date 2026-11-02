@@ -167,13 +167,13 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-DIS007`](error-codes.md#sst-dis007) | DIS | error | local | `snowflake_semantic_tools.adapters.yaml.discover` | `tests/codes/dis/test_sst_dis007.py` |
 | [`SST-DIS008`](error-codes.md#sst-dis008) | DIS | warning | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis008.py` |
 | [`SST-DIS009`](error-codes.md#sst-dis009) | DIS | error | local | `snowflake_semantic_tools.adapters.dbt.project` | `tests/codes/dis/test_sst_dis009.py` |
-| [`SST-DIS010`](error-codes.md#sst-dis010) | DIS | warning | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.cli.commands.eval`<br>`snowflake_semantic_tools.cli.exit_codes`<br>`snowflake_semantic_tools.cli.wiring.compile`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/dis/test_sst_dis010.py` |
-| [`SST-DIS011`](error-codes.md#sst-dis011) | DIS | warning | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis011.py` |
+| [`SST-DIS010`](error-codes.md#sst-dis010) | DIS | warning | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.app.selection`<br>`snowflake_semantic_tools.cli.commands.eval`<br>`snowflake_semantic_tools.cli.exit_codes`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/dis/test_sst_dis010.py` |
+| [`SST-DIS011`](error-codes.md#sst-dis011) | DIS | warning | local | `snowflake_semantic_tools.app.selection` | `tests/codes/dis/test_sst_dis011.py` |
 | [`SST-DIS012`](error-codes.md#sst-dis012) | DIS | error | local | `snowflake_semantic_tools.cli.commands.test` | `tests/codes/dis/test_sst_dis012.py` |
 | [`SST-DIS013`](error-codes.md#sst-dis013) | DIS | error | local | `snowflake_semantic_tools.cli.commands.enrich` | `tests/codes/dis/test_sst_dis013.py` |
 | [`SST-DIS015`](error-codes.md#sst-dis015) | DIS | warning | local | `snowflake_semantic_tools.app.plan`<br>`snowflake_semantic_tools.cli.exit_codes`<br>`snowflake_semantic_tools.domain.plan.selectors` | `tests/codes/dis/test_sst_dis015.py` |
 | [`SST-DIS200`](error-codes.md#sst-dis200) | DIS | info | local | `snowflake_semantic_tools.adapters.yaml.ownership` | `tests/codes/dis/test_sst_dis200.py` |
-| [`SST-DIS201`](error-codes.md#sst-dis201) | DIS | info | local | `snowflake_semantic_tools.cli.wiring.compile` | `tests/codes/dis/test_sst_dis201.py` |
+| [`SST-DIS201`](error-codes.md#sst-dis201) | DIS | info | local | `snowflake_semantic_tools.app.selection` | `tests/codes/dis/test_sst_dis201.py` |
 | [`SST-IMP001`](error-codes.md#sst-imp001) | IMP | error | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp001.py` |
 | [`SST-IMP002`](error-codes.md#sst-imp002) | IMP | error | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp002.py` |
 | [`SST-IMP003`](error-codes.md#sst-imp003) | IMP | info | observe | `snowflake_semantic_tools.app.importing` | `tests/codes/imp/test_sst_imp003.py` |

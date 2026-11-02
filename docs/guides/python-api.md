@@ -32,7 +32,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 |---|---|
 | `session.catalog()` | an `ObjectSummary` for each compiled artifact, in the order `apply` publishes them: its key, type, name, target, source files, dependencies, members, the dbt models it reads, its fingerprint, its `route_folder`, and its `settings`, each with the step that set it |
 | `session.render(key)` | a `Rendered`: what one artifact publishes, its definition and the statements that create it; `KeyError` for a key the project did not compile |
-| `session.validate(strict=None, baseline=True)` | a `Validation`: what `sst validate --no-snowflake-syntax-check --output json` reports, as data |
+| `session.validate(strict=None, baseline=True, select=(), exclude=())` | a `Validation`: what `sst validate --no-snowflake-syntax-check --output json` reports, as data; `select` and `exclude` narrow it as `--select` and `--exclude` do |
 | `session.compiled` | the compile result itself, for a caller that needs more than the summaries give |
 | `session.reload(dbt=True)` | a new session from the project's files as they are now |
 | `session.with_overlay(files)` | a new session from them with unsaved edits over them; see below |
@@ -40,6 +40,9 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.lineage(node, upstream=True, downstream=True, depth=None)` | a `Lineage`: what `sst lineage NODE --no-manifest --output json` traces, as `LineageNode` and `LineageEdge` records; `KeyError` for a node the graph does not hold |
 | `session.state_table()` | the state table `sst apply` records the session's target in, as SQL, and the target name its rows are recorded under; read offline |
 | `session.locations()` | a `Locations`: for every target the profile declares, where each routed block's root and route folders publish, and which setting says so; read offline, with no credential |
+| `session.new_files(kind, name, folder=())` | the files a new artifact or member starts as, by project path; see below |
+| `session.new_eval(subject)` | the edits that start an eval of an agent or CoWork profile |
+| `session.removal(key)` | the edits that take an artifact out of the project; `None` deletes a file |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -47,6 +50,15 @@ and `.sst/baseline.json` exactly as the command does. Its `diagnostics` are the
 envelope's `diagnostics`, entry for entry, and `summary` is the envelope's
 `summary`; the [CI/CD guide](ci-cd.md) describes both. `passed` is whether the
 command would exit 0.
+
+With `select` or `exclude`, the selectors are `sst validate`'s, graph operators
+included: `select=("+agent:support+",)` validates the agent, everything it
+reads, and everything that reads it. As the command does, validation rules run
+on the chosen artifacts alone and strict mode promotes only their warnings,
+while what compiling the project reported is reported whichever artifacts it
+concerns; `Validation.selected` lists the keys chosen. A selector the command
+refuses, or a selection that chooses nothing, raises `ProjectError` carrying
+the command's diagnostic.
 
 An artifact whose files hold an error is not compiled, so `catalog` does not
 list it; `validate` reports why.
@@ -116,6 +128,38 @@ for row in deployed(session, connection):
 
 `ConnectionParams` never shows its credential in its `repr`. Reading the state
 table needs `USAGE` on its database and schema and `SELECT` on it.
+
+## Starting and removing artifacts
+
+`new_files`, `new_eval` and `removal` return edits and write nothing: hand
+them to `with_overlay` to see the project as it would be.
+
+`session.new_files(kind, name, folder)` starts an artifact type other than
+`eval`, or a member authored in files such as `metric`, where discovery reads
+its kind: a one-item file in the semantic models or tools directory, or a
+folder named for the item holding its manifest (`agents/<folder>/<name>/agent.yml`,
+`skills/<folder>/<name>/SKILL.md`). `folder` is below the kind's directory, so
+its routes decide where the item publishes. Each file holds the item's name
+in the project's `format:` layout and nothing else, so what it still needs is
+what the overlay's `validate` reports. A name or folder that is not one path
+segment raises `ValueError`, and a file that exists `FileExistsError`.
+`session.new_eval(subject)` starts a dataset and config in `evals/` beside an
+agent's or CoWork profile's manifest, and adds the manifest's `evals:` naming
+them.
+
+`session.removal(key)` takes an artifact out: an agent, profile, plugin or
+skill with every file in its folder, its evals among them, except a folder
+nested in it holding another artifact of its type; a semantic view or tool
+member with its file, or with its entry when its file declares others, the
+file's comments kept; an eval with its dataset and config, its subject's
+`evals:` removed. What still refers to the artifact is what the overlay's
+`validate` reports, and `session.lineage(key, upstream=False)` names it
+beforehand.
+
+```python
+draft = session.with_overlay(session.new_files("agent", "support_agent", ("cx",)))
+print([item.target for item in draft.catalog() if item.key == "agent:support_agent"])
+```
 
 ## A session is a snapshot
 

@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from click.testing import CliRunner
 
+from snowflake_semantic_tools.adapters.errors import ProjectError
 from snowflake_semantic_tools.api import ProjectSession
 from snowflake_semantic_tools.cli.main import cli
 from tests.helpers.reference_project import DBT_MANIFEST, MENU_VIEW, project_copy
@@ -24,9 +25,18 @@ def _cli_validate(project: Path, *flags: str) -> tuple[int, dict[str, Any]]:
     return result.exit_code, json.loads(result.output)
 
 
-def _assert_same(project: Path, *flags: str, strict: bool | None = None, baseline: bool = True) -> None:
+def _assert_same(
+    project: Path,
+    *flags: str,
+    strict: bool | None = None,
+    baseline: bool = True,
+    select: tuple[str, ...] = (),
+    exclude: tuple[str, ...] = (),
+) -> None:
     exit_code, envelope = _cli_validate(project, *flags)
-    validation = ProjectSession.open(project, manifest_path=DBT_MANIFEST).validate(strict=strict, baseline=baseline)
+    validation = ProjectSession.open(project, manifest_path=DBT_MANIFEST).validate(
+        strict=strict, baseline=baseline, select=select, exclude=exclude
+    )
 
     assert [dict(item) for item in validation.diagnostics] == envelope["diagnostics"]
     assert dict(validation.summary) == envelope["summary"]
@@ -49,6 +59,54 @@ def test_validate_reports_what_the_command_reports_for_the_project_as_committed(
 @pytest.mark.parametrize(("flag", "strict"), [("--strict", True), ("--no-strict", False)])
 def test_validate_follows_a_strict_flag_as_the_command_does(tmp_path: Path, flag: str, strict: bool) -> None:
     _assert_same(project_copy(tmp_path, offline=False), flag, strict=strict)
+
+
+@pytest.mark.parametrize(
+    ("select", "exclude"),
+    [
+        (("agent:jaffle_minimal_agent",), ()),
+        (("+agent:jaffle_analytics_agent+",), ()),
+        (("type:semantic_view",), ("jaffle_menu",)),
+        (("jaffle_menu", "no_such_artifact"), ()),
+        ((), ("type:skill",)),
+    ],
+    ids=["one-agent", "agent-lineage", "views-but-one", "one-miss", "exclude-only"],
+)
+def test_validate_narrows_as_the_command_narrows(
+    tmp_path: Path, select: tuple[str, ...], exclude: tuple[str, ...]
+) -> None:
+    flags = [
+        *(part for value in select for part in ("--select", value)),
+        *(part for value in exclude for part in ("--exclude", value)),
+    ]
+    # Strict, as committed, so what the selection leaves out is shown to stay unpromoted.
+    _assert_same(project_copy(tmp_path, offline=False), *flags, select=select, exclude=exclude)
+
+
+def test_validate_with_lineage_runs_its_rules_on_what_the_artifact_reads_and_what_reads_it(tmp_path: Path) -> None:
+    session = ProjectSession.open(project_copy(tmp_path), manifest_path=DBT_MANIFEST)
+    agent = "agent:jaffle_analytics_agent"
+    compiled = {item.key for item in session.catalog()}
+    lineage = {node.key for node in session.lineage(agent).nodes} & compiled
+
+    everything = session.validate()
+    scoped = session.validate(select=(f"+{agent}+",))
+
+    assert everything.selected is None
+    assert scoped.selected is not None and set(scoped.selected) == lineage
+    assert scoped.artifacts_checked == len(lineage) < everything.artifacts_checked
+
+
+@pytest.mark.parametrize(
+    ("select", "code"),
+    [(("nothing_by_this_name",), "SST-DIS010"), (("bogus:thing",), "SST-PRT102"), (("a,b",), "SST-PRT101")],
+)
+def test_validate_refuses_selectors_the_command_refuses(tmp_path: Path, select: tuple[str, ...], code: str) -> None:
+    session = ProjectSession.open(project_copy(tmp_path), manifest_path=DBT_MANIFEST)
+
+    with pytest.raises(ProjectError) as raised:
+        session.validate(select=select)
+    assert [item.code for item in raised.value.diagnostics] == [code]
 
 
 def test_validate_reports_an_error_and_fails_as_the_command_does(tmp_path: Path) -> None:

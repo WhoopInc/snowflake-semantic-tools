@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import dataclasses
 import posixpath
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
@@ -36,6 +36,7 @@ from snowflake_semantic_tools.adapters.project_source import DbtOutcome, YamlPro
 from snowflake_semantic_tools.adapters.resolved_config import resolved_config
 from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
+from snowflake_semantic_tools.api.authoring import removal, scaffold, scaffold_eval
 from snowflake_semantic_tools.api.lineage import Lineage, lineage_of
 from snowflake_semantic_tools.api.locations import Locations, project_locations
 from snowflake_semantic_tools.app.baseline import gate_baseline
@@ -43,7 +44,8 @@ from snowflake_semantic_tools.app.compile import CompiledArtifact, CompileResult
 from snowflake_semantic_tools.app.compile.project import CompileProject
 from snowflake_semantic_tools.app.diagnostics_json import diagnostic_json, summary_counts
 from snowflake_semantic_tools.app.manifest import manifest_for
-from snowflake_semantic_tools.app.policy import hold_to_policy, severity_policy, strict_disagreement
+from snowflake_semantic_tools.app.policy import hold_to_policy, severity_policy, strict_disagreement, strict_reach
+from snowflake_semantic_tools.app.selection import SelectorRefused, narrowed
 from snowflake_semantic_tools.app.validate import ValidateArtifacts
 from snowflake_semantic_tools.domain.diagnostics import DiagnosticBag
 from snowflake_semantic_tools.domain.diagnostics.baseline import Baseline, stable_fingerprint
@@ -128,6 +130,10 @@ class Validation:
         promoted: How many warnings strict mode made errors.
         rules_run: How many validation rules ran.
         artifacts_checked: How many compiled artifacts were validated.
+        selected: The keys of the artifacts `select` and `exclude` chose, in publish order; None
+            when neither was given. Validation rules run on these alone, and strict mode
+            promotes only their warnings, but what compiling the project reported is reported
+            whichever artifacts it concerns, as `sst validate --select` reports it.
     """
 
     passed: bool
@@ -136,6 +142,7 @@ class Validation:
     promoted: int
     rules_run: int
     artifacts_checked: int
+    selected: tuple[str, ...] | None = None
 
 
 class ProjectSession:
@@ -331,6 +338,53 @@ class ProjectSession:
         """
         return project_locations(self._paths, self._base.target)
 
+    def new_files(self, kind: str, name: str, folder: Sequence[str] = ()) -> Mapping[str, bytes]:
+        """Return the files a new artifact or semantic member starts as, by project path; nothing is written.
+
+        Each is placed where SST discovers its kind, in `folder` below the kind's directory, so
+        that folder's routes decide where it publishes, and holds its name in the project's
+        `format:` layout. Hand them to `with_overlay` to see the project with the item in it:
+        what it still needs is what that session's `validate` reports.
+
+        Args:
+            kind: An artifact type but `eval` (see `new_eval`), or a member authored in files,
+                such as `metric`.
+            folder: The folder below the kind's directory, one segment per directory.
+
+        Raises:
+            ValueError: the kind is not one SST starts, or the name or a folder is no path segment.
+            FileExistsError: a file it would start exists already.
+        """
+        return MappingProxyType(scaffold(self._paths.project_dir, self._config_tree(), kind, name, tuple(folder)))
+
+    def new_eval(self, subject: str) -> Mapping[str, bytes]:
+        """Return the edits that start an eval of the agent or CoWork profile `subject`, by project path.
+
+        Its dataset and config go in `evals/` beside the subject's manifest, which gains the
+        `evals:` naming them; nothing is written.
+
+        Raises:
+            KeyError: the project compiled no artifact `subject`.
+            ValueError: `subject` is no agent or CoWork profile, or names an eval already.
+            FileExistsError: its dataset or config exists already.
+        """
+        return MappingProxyType(scaffold_eval(self._paths.project_dir, self._config_tree(), self._by_key[subject]))
+
+    def removal(self, key: str) -> Mapping[str, bytes | None]:
+        """Return the edits that take the artifact `key` out of the project, by project path; None deletes.
+
+        Nothing is written. What still refers to the artifact is what `with_overlay(...)`'s
+        `validate` reports, and `lineage(key, upstream=False)` names it beforehand.
+
+        Raises:
+            KeyError: the project compiled no artifact `key`.
+        """
+        item = self._by_key[key]
+        return MappingProxyType(removal(self._paths.project_dir, self._config_tree(), item, self._compiled.compiled))
+
+    def _config_tree(self) -> Mapping[str, object]:
+        return resolved_config(self._paths, self._base.target).tree
+
     def schema_for(self, path: str) -> str | None:
         """Return the kind, a key of `schemas()`, of the schema that checks the project file at `path`.
 
@@ -351,7 +405,14 @@ class ProjectSession:
         except ProjectError:
             return False
 
-    def validate(self, *, strict: bool | None = None, baseline: bool = True) -> Validation:
+    def validate(
+        self,
+        *,
+        strict: bool | None = None,
+        baseline: bool = True,
+        select: Sequence[str] = (),
+        exclude: Sequence[str] = (),
+    ) -> Validation:
         """Validate the project offline: what `sst validate --no-snowflake-syntax-check` reports.
 
         The diagnostics are those the command's JSON envelope lists, in its order, with the
@@ -361,18 +422,28 @@ class ProjectSession:
             strict: `--strict` or `--no-strict`; None follows `validation.strict`.
             baseline: Hold the diagnostics `.sst/baseline.json` lists, when it exists, as `sst`
                 does; False is `--no-baseline`.
+            select: `--select` values: only these artifacts are validated, as the command
+                narrows them; graph operators such as `+agent:a+` add what an artifact reads
+                and what reads it. Empty validates every artifact.
+            exclude: `--exclude` values, which leave artifacts out the same way.
 
         Raises:
-            ProjectError: the baseline file cannot be read.
+            ProjectError: the baseline file cannot be read; a selector is refused, carrying its
+                diagnostic (SST-PRT100 to SST-PRT113); or the selectors choose no artifact
+                (SST-DIS010, SST-DIS015).
         """
+        compiled, reaches = self._compiled, None
+        if select or exclude:
+            compiled, reaches = self._narrowed(tuple(select), tuple(exclude))
         config = resolved_config(self._paths, self._base.target)
         configured = config_bool(config_block(config.tree.get("validation")).get("strict"))
         effective = strict if strict is not None else bool(configured)
         result = ValidateArtifacts(governance=governance_config(config.tree), target=self._base.target or "").run(
-            self._compiled,
+            compiled,
             strict=effective,
             connected=False,
             overrides=severity_policy(config.tree).overrides,
+            reaches=reaches,
         )
         diagnostics = DiagnosticBag((*strict_disagreement(config, strict), *result.diagnostics))
         held_baseline = self._baseline.read() if baseline else None
@@ -406,7 +477,22 @@ class ProjectSession:
             promoted=promoted,
             rules_run=result.rules_run,
             artifacts_checked=result.artifacts_checked,
+            selected=None if reaches is None else tuple(item.artifact_key for item in compiled.compiled),
         )
+
+    def _narrowed(
+        self, select: tuple[str, ...], exclude: tuple[str, ...]
+    ) -> tuple[CompileResult, Callable[[str | None], bool]]:
+        """The compile narrowed as `--select` and `--exclude` narrow it, and whom strict mode reaches."""
+        try:
+            chosen = narrowed(self._compiled, select, exclude, graph=self._lineage_graph)
+        except SelectorRefused as refused:
+            raise ProjectError(str(refused), diagnostics=(refused.diagnostic,)) from None
+        if chosen.misses:
+            raise ProjectError(f"selector {' '.join(select)!r} matched no artifact", diagnostics=chosen.misses)
+        # Reported as the compile's own, as the command reports them, so `--strict` promotes them.
+        diagnostics = DiagnosticBag((*chosen.report, *chosen.result.diagnostics))
+        return dataclasses.replace(chosen.result, diagnostics=diagnostics), strict_reach(chosen.scope)
 
 
 def _read_from(paths: ProjectPaths, read_dir: Path) -> ProjectPaths:

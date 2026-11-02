@@ -32,7 +32,9 @@ __all__ = [
     "check_depth",
     "insert_key",
     "load_editable",
+    "mapping_root",
     "new_editable",
+    "ordered_mapping",
     "scalar",
 ]
 
@@ -190,6 +192,16 @@ def block_list(values: tuple[str, ...]) -> CommentedSeq:
     sequence = CommentedSeq(scalar(value) for value in values)
     sequence.fa.set_block_style()
     return sequence
+
+
+def mapping_root(document: EditableYaml) -> CommentedMap | None:
+    """Return a document's top node when it is a mapping, for editing in place; None otherwise."""
+    return document.root if isinstance(document.root, CommentedMap) else None
+
+
+def ordered_mapping(pairs: tuple[tuple[str, object], ...]) -> CommentedMap:
+    """Return a mapping that is written with its keys in the order given."""
+    return CommentedMap(pairs)
 
 
 def insert_key(mapping: CommentedMap, key: str, value: object, order: tuple[str, ...]) -> None:

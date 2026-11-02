@@ -17,13 +17,24 @@ expressions, instructions, prompts) is never joined or folded: its line breaks a
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from ruamel.yaml.scalarstring import FoldedScalarString, LiteralScalarString
 
+from snowflake_semantic_tools.domain.model.config_schema import CONFIG_KEYS, config_block, config_bool, config_int
 from snowflake_semantic_tools.domain.model.text_fields import PROSE_KEYS, STRUCTURAL_KEYS
 
-__all__ = ("PROSE_KEYS", "STRUCTURAL_KEYS", "YamlStyle", "fold_positions", "foldable", "styled", "unwrap_prose")
+__all__ = (
+    "PROSE_KEYS",
+    "STRUCTURAL_KEYS",
+    "YamlStyle",
+    "configured_style",
+    "fold_positions",
+    "foldable",
+    "styled",
+    "unwrap_prose",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +50,26 @@ class YamlStyle:
     spaced: bool = False
     wrap_width: int | None = None
     unwrap_prose: bool = False
+
+
+def configured_style(config: Mapping[str, object]) -> YamlStyle:
+    """Return the `format:` settings a resolved configuration states, each unset one at its default.
+
+    A `wrap_width` outside its bounds is the configuration's SST-CFG008, which compile reports
+    where it is written; here it reads as unset, so nothing folds.
+    """
+    block = config_block(config.get("format"))
+    width = config_int(block.get("wrap_width"))
+    spec = CONFIG_KEYS["format.wrap_width"]
+    if width is not None and (
+        (spec.minimum is not None and width < spec.minimum) or (spec.maximum is not None and width > spec.maximum)
+    ):
+        width = None
+    return YamlStyle(
+        config_bool(block.get("blank_line_between_items")) is True,
+        width,
+        config_bool(block.get("unwrap_prose")) is True,
+    )
 
 
 # A line that starts something a line break must stay in front of.
