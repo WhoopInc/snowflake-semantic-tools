@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.render.field_vocabulary import (
     DATA_TYPE_FIELDS,
     FieldVocabulary,
     field_vocabularies,
+    file_roots,
     template_functions,
 )
 from snowflake_semantic_tools.domain.resolve.calls import KNOWN_FUNCTIONS, LEGACY_FUNCTIONS
@@ -144,3 +145,12 @@ def test_an_unconfigured_project_leaves_avatars_and_candidates_open_and_allows_a
     assert "agent.profile.avatar" not in offered and "evals.+candidate_models" not in offered
     assert offered["agents.+orchestration_model"].choices == ("auto",)
     assert offered["agent.spec.tools.type"].choices == tuple(sorted(KNOWN_AGENT_TOOL_TYPES))
+
+
+def test_each_kind_declared_under_a_top_level_key_names_its_keys() -> None:
+    roots = {item.kind: item.keys for item in file_roots()}
+
+    assert roots["metric"] == ("metric", "snowflake_metrics")
+    assert roots["tool"] == ("tool", "tools")
+    assert "agent" not in roots
+    assert all(name in FILE_KINDS and FILE_KINDS[name].roots == keys for name, keys in roots.items())

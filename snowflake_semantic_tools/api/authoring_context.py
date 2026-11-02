@@ -21,8 +21,10 @@ from snowflake_semantic_tools.domain.render.field_vocabulary import (
     SETTING_FUNCTIONS,
     TARGET_KEYS,
     FieldVocabulary,
+    FileRoot,
     TemplateFunction,
     field_vocabularies,
+    file_roots,
     template_functions,
 )
 
@@ -99,6 +101,8 @@ class AuthoringContext:
         functions: Every template function a field may call, by name.
         fields: What each field that takes calls or values takes, by the path the JSON Schemas
             describe it under; a field not listed takes text of its schema's type.
+        roots: The top-level keys each kind is declared under in a file that holds several, so
+            a key path in such a file names its field: `snowflake_metrics[0].expr` is `metric.expr`.
         setting_functions: The functions a setting's value may call, in `sst_config.yml` or an
             artifact's `config:`, besides naming `{{ target.<key> }}`.
         target_keys: The keys `{{ target.<key> }}` names in a setting's value.
@@ -110,6 +114,7 @@ class AuthoringContext:
 
     functions: tuple[TemplateFunction, ...]
     fields: tuple[FieldVocabulary, ...]
+    roots: tuple[FileRoot, ...]
     setting_functions: tuple[str, ...]
     target_keys: tuple[str, ...]
     models: tuple[ModelName, ...]
@@ -124,6 +129,7 @@ def authoring_context(config: Mapping[str, object], catalog: DbtCatalog) -> Auth
     return AuthoringContext(
         functions=template_functions(),
         fields=field_vocabularies(config),
+        roots=file_roots(),
         setting_functions=SETTING_FUNCTIONS,
         target_keys=TARGET_KEYS,
         models=tuple(

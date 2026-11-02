@@ -180,7 +180,9 @@ route. It lists:
   closes the agent tool types, the orchestration models and the avatars; a data
   type field suggests types without closing them.
 
-`functions` names every template function, with its argument counts and what
+`roots` names the top-level keys each kind is declared under in a file that
+holds several, so a key path in such a file names its field:
+`snowflake_metrics[0].expr` is `metric.expr`. `functions` names every template function, with its argument counts and what
 it names: an artifact type or member kind, whose names `catalog()` lists, else
 `model`, `source`, `var` or `tag`, which the context lists as `models` (with
 their columns), `sources`, `variables` and `tags`. A setting's value takes

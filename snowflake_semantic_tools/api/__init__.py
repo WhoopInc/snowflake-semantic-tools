@@ -24,7 +24,7 @@ from snowflake_semantic_tools.api.locations import (
 from snowflake_semantic_tools.api.schemas import schemas
 from snowflake_semantic_tools.api.session import ObjectSummary, ProjectSession, Rendered, Validation
 from snowflake_semantic_tools.domain.model.setting import Setting
-from snowflake_semantic_tools.domain.render.field_vocabulary import FieldVocabulary, TemplateFunction
+from snowflake_semantic_tools.domain.render.field_vocabulary import FieldVocabulary, FileRoot, TemplateFunction
 
 __all__ = [
     "AuthoringContext",
@@ -33,6 +33,7 @@ __all__ = [
     "ConnectionParams",
     "Deployed",
     "FieldVocabulary",
+    "FileRoot",
     "Lineage",
     "LineageEdge",
     "LineageNode",

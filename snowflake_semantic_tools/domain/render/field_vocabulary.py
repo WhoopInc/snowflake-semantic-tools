@@ -98,6 +98,24 @@ class FieldVocabulary:
     folded: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class FileRoot:
+    """The top-level keys a file declares one kind under, such as a semantic file's `snowflake_metrics:`.
+
+    Attributes:
+        kind: The file kind, which a `FieldVocabulary.path` under these keys starts with.
+        keys: The key one declaration is written under, then the key a list of them is.
+    """
+
+    kind: str
+    keys: tuple[str, ...]
+
+
+def file_roots() -> tuple[FileRoot, ...]:
+    """Return the keys each kind declared under a top-level key is written under, in reference order."""
+    return tuple(FileRoot(name, kind.roots) for name, kind in FILE_KINDS.items() if kind.roots)
+
+
 def template_functions() -> tuple[TemplateFunction, ...]:
     """Return every template function a field may call, by name, but the legacy `table` and `column`."""
     names = {entry.ref_function: entry.name for entry in SEMANTIC_REGISTRY.artifacts.values() if entry.ref_function}
