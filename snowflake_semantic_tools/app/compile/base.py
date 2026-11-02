@@ -42,6 +42,15 @@ class CompiledArtifact(Protocol):
         ...
 
     @property
+    def display_name(self) -> str | None:
+        """Return the name the artifact is shown by, as authored; None when it authors none.
+
+        Only an agent's `profile:` and a CoWork profile's `display:` author one; every other
+        type is shown by `name`.
+        """
+        return None
+
+    @property
     def artifact_key(self) -> str:
         """Return the `<kind>:<name>` key that identifies the artifact in state, plans, and selectors.
 

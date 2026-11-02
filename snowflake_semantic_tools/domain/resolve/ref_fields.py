@@ -16,6 +16,7 @@ from snowflake_semantic_tools.domain.resolve.template import (
     CUSTOM_INSTRUCTION_ITEM,
     DESCRIPTION,
     FILTER_EXPR,
+    INSTRUCTION_TEXT,
     METRIC_EXPR,
     ROUTINE_BODY,
     STAGE_PATH,
@@ -139,6 +140,40 @@ def reference_functions(field: str) -> tuple[str, ...]:
         KeyError: `field` is not a reference field.
     """
     return REFERENCE_FIELDS[field]
+
+
+# The `REFERENCE_FIELDS` keys that leave out where the field nests, with the path it is written
+# at, which the JSON Schemas describe it under.
+NESTED_AT: Mapping[str, str] = MappingProxyType(
+    {"eval_dataset.ground_truth_subagents": "eval_dataset.questions.ground_truth.ground_truth_subagents"}
+)
+# `REFERENCE_FIELDS` by the path each field is written at.
+REFERENCE_FIELDS_AT: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {NESTED_AT.get(field, field): functions for field, functions in REFERENCE_FIELDS.items()}
+)
+
+
+# Every authored field whose text may hold template calls amid other text -- SQL, an expression,
+# prose -- by where it is written, as `REFERENCE_FIELDS` names fields, with the policy its calls
+# are checked under. `REF_FIELDS` binds the same policies under the names diagnostics give these
+# fields, and a test keeps the two in step.
+INLINE_FIELDS: Mapping[str, RefPolicy] = MappingProxyType(
+    {
+        "metric.expr": METRIC_EXPR,
+        "metric.window.partition_by": METRIC_EXPR,
+        "metric.window.partition_by_excluding": METRIC_EXPR,
+        "metric.window.order_by.ref": METRIC_EXPR,
+        "filter.expr": FILTER_EXPR,
+        "tool.where": FILTER_EXPR,
+        "verified_query.sql": VQR_SQL,
+        "tool.body": ROUTINE_BODY,
+        "agent.spec.tools.stage_path": STAGE_PATH,
+        "custom_instruction.ai_sql_generation": INSTRUCTION_TEXT,
+        "custom_instruction.ai_question_categorization": INSTRUCTION_TEXT,
+        "custom_instruction.sql_generation": INSTRUCTION_TEXT,
+        "custom_instruction.question_categorization": INSTRUCTION_TEXT,
+    }
+)
 
 
 def check_ref_policies(

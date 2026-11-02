@@ -46,11 +46,14 @@ from snowflake_semantic_tools.domain.model.config_schema import (
     CONFIG_FILE,
     KeyKind,
     Setting,
+    avatar_allowlist,
     block_settings,
     config_block,
     config_bool,
     config_int,
     configured_dir,
+    extra_tool_types,
+    orchestration_models,
     resolve_settings,
     setting_value,
     target_text,
@@ -327,7 +330,7 @@ class CompileProject:
             settings.target.schema.folded,
             None,
             None,
-            allowed_models=_allowed_models(settings),
+            allowed_models=orchestration_models(settings.block("snowflake")),
             skills=skill_pins,
             plugins=plugin_pins,
             unpublished=MappingProxyType(dict(unpublished)),
@@ -485,7 +488,7 @@ class CompileProject:
                 which have a consumer even when no agent references them.
         """
         defaults = settings.block("agents")
-        allowed_models = _allowed_models(settings)
+        allowed_models = orchestration_models(settings.block("snowflake"))
         skill_pins, plugin_pins, plugin_members = extension_pins(publishing.skills)
         semantic_targets = {item.name.casefold(): item.rendered_artifact.target for item in semantic.compiled}
         database, schema = settings.location("agents")
@@ -505,9 +508,9 @@ class CompileProject:
             consumed=plugin_members | publishing.profile_consumed | profile_pins,
             unpublished=MappingProxyType(dict(unpublished)),
             allow_unknown_keys=settings.block("snowflake").get("allow_unknown_keys") is not False,
-            avatar_allowlist=_avatar_allowlist(settings.block("snowflake")),
+            avatar_allowlist=avatar_allowlist(settings.block("snowflake")),
             target_warehouse=settings.target.warehouse,
-            extra_tool_types=_extra_tool_types(settings.block("snowflake")),
+            extra_tool_types=extra_tool_types(settings.block("snowflake")),
             tool_locations=MappingProxyType(
                 {
                     name: (place.database, place.schema)
@@ -571,24 +574,12 @@ def _published_names(
     return targets
 
 
-def _extra_tool_types(snowflake: Mapping[str, object]) -> frozenset[str]:
-    """Read `snowflake.tool_types`: the tool types the project adds to the shipped ones."""
-    value = snowflake.get("tool_types")
-    return frozenset(str(item) for item in value if isinstance(item, str)) if isinstance(value, list) else frozenset()
-
-
 def _consumed_collisions(skills: CompileResult, consumed: Mapping[str, QualifiedName]) -> tuple[Diagnostic, ...]:
     """Report each published skill or plugin whose name an extension under `extensions:` holds."""
     return namespace_collisions(
         ((item.artifact_key, item.artifact_type, item.name) for item in skills.compiled),
         {name: f"extension '{location.sql}'" for name, location in consumed.items()},
     )
-
-
-def _avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
-    """Return `snowflake.profile.avatar_allowlist`; None when it is not configured as a list."""
-    allowlist = config_block(snowflake.get("profile")).get("avatar_allowlist")
-    return frozenset(str(value) for value in allowlist) if isinstance(allowlist, list) else None
 
 
 def _object_in(name: str, database: str, schema: str) -> QualifiedName:
@@ -696,12 +687,6 @@ def _name_suffix(settings: _Settings, resolved: Mapping[str, Setting], subject: 
         )
     )
     return ""
-
-
-def _allowed_models(settings: _Settings) -> frozenset[str]:
-    """Return `snowflake.orchestration_models`, else just `auto`."""
-    raw_models = settings.block("snowflake").get("orchestration_models")
-    return frozenset(str(value) for value in raw_models) if isinstance(raw_models, list) else frozenset(("auto",))
 
 
 def _tool_placements(settings: _Settings, catalog: ToolCatalog) -> dict[str, ToolPlacement]:

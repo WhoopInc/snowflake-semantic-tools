@@ -35,6 +35,24 @@ def configured_dir(config: Mapping[str, object], key: str, default: str) -> str:
     return str(project.get(key) or default) if isinstance(project, dict) else default
 
 
+def orchestration_models(snowflake: Mapping[str, object]) -> frozenset[str]:
+    """Return `snowflake.orchestration_models`: the models agents may name; `auto` alone if not a list."""
+    models = snowflake.get("orchestration_models")
+    return frozenset(str(value) for value in models) if isinstance(models, list) else frozenset(("auto",))
+
+
+def extra_tool_types(snowflake: Mapping[str, object]) -> frozenset[str]:
+    """Return `snowflake.tool_types`: the agent tool types the project adds to the shipped ones."""
+    value = snowflake.get("tool_types")
+    return frozenset(str(item) for item in value if isinstance(item, str)) if isinstance(value, list) else frozenset()
+
+
+def avatar_allowlist(snowflake: Mapping[str, object]) -> frozenset[str] | None:
+    """Return `snowflake.profile.avatar_allowlist`; None, which allows any, when it is not a list."""
+    allowlist = config_block(snowflake.get("profile")).get("avatar_allowlist")
+    return frozenset(str(value) for value in allowlist) if isinstance(allowlist, list) else None
+
+
 def route_root(config: Mapping[str, object], artifact: ArtifactType) -> str:
     """Return the directory an artifact type's folder routes start from, relative to the project root.
 

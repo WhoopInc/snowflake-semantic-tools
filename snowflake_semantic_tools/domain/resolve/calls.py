@@ -49,6 +49,9 @@ KNOWN_FUNCTIONS: frozenset[str] = frozenset(
     )
 )
 
+# The legacy spellings of `ref`, refused wherever they are written.
+LEGACY_FUNCTIONS: frozenset[str] = frozenset(("table", "column"))
+
 # The argument counts a function accepts; a function not listed takes one name.
 _ARITY: Mapping[str, tuple[int, ...]] = MappingProxyType({"ref": (1, 2), "source": (2,)})
 
@@ -86,10 +89,10 @@ def call_problem(
         SST-REF015: a call with an argument count its function does not take.
     """
     function = call.function
-    if function in ("table", "column"):
+    if function in LEGACY_FUNCTIONS:
         return _legacy(call, origin, subject)
     if function not in KNOWN_FUNCTIONS:
-        known = ", ".join(sorted(KNOWN_FUNCTIONS - {"table", "column"}))
+        known = ", ".join(sorted(KNOWN_FUNCTIONS - LEGACY_FUNCTIONS))
         return D("SST-REF004", origin=origin, subject=subject, ref_function=function, expected=known)
     if not allowed:
         return D("SST-REF008", origin=origin, subject=subject, artifact=artifact, field=field)

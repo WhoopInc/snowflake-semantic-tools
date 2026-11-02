@@ -61,6 +61,27 @@ _FAMILIES = {
 }
 _BASE = re.compile(r"[A-Z_0-9]+(?:\s+(?:PRECISION|VARYING))?")
 
+# The types an editor offers for a data type field, one canonical spelling each; any type the
+# grammar accepts may still be written, such as `NUMBER(38, 2)` or a synonym.
+SUGGESTED_TYPES: tuple[str, ...] = (
+    "NUMBER",
+    "INTEGER",
+    "FLOAT",
+    "VARCHAR",
+    "BOOLEAN",
+    "DATE",
+    "TIME",
+    "TIMESTAMP_NTZ",
+    "TIMESTAMP_LTZ",
+    "TIMESTAMP_TZ",
+    "VARIANT",
+    "OBJECT",
+    "ARRAY",
+    "BINARY",
+    "GEOGRAPHY",
+    "GEOMETRY",
+)
+
 
 def datatype(value: str) -> Sql:
     """Return a Snowflake data type exactly as written, once it matches the type grammar.

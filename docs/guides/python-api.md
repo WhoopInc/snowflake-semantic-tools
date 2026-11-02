@@ -30,7 +30,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 
 | Call | Returns |
 |---|---|
-| `session.catalog()` | an `ObjectSummary` for each compiled artifact, in the order `apply` publishes them: its key, type, name, target, source files, dependencies, members, the dbt models it reads, its fingerprint, its `route_folder`, and its `settings`, each with the step that set it |
+| `session.catalog()` | an `ObjectSummary` for each compiled artifact, in the order `apply` publishes them: its key, type, name, the `display_name` an agent's `profile:` or a CoWork profile's `display:` gives it (`None` for every other type), target, source files, dependencies, members, the dbt models it reads, its fingerprint, its `route_folder`, and its `settings`, each with the step that set it |
 | `session.render(key)` | a `Rendered`: what one artifact publishes, its definition and the statements that create it; `KeyError` for a key the project did not compile |
 | `session.validate(strict=None, baseline=True, select=(), exclude=())` | a `Validation`: what `sst validate --no-snowflake-syntax-check --output json` reports, as data; `select` and `exclude` narrow it as `--select` and `--exclude` do |
 | `session.compiled` | the compile result itself, for a caller that needs more than the summaries give |
@@ -43,6 +43,7 @@ what was authored is a diagnostic in `validate`, not an exception.
 | `session.new_files(kind, name, folder=())` | the files a new artifact or member starts as, by project path; see below |
 | `session.new_eval(subject)` | the edits that start an eval of an agent or CoWork profile |
 | `session.removal(key)` | the edits that take an artifact out of the project; `None` deletes a file |
+| `session.authoring_context()` | an `AuthoringContext`: what an editor offers while a project file is written; see below |
 
 `validate` applies the project's severity overrides, strict mode
 (`validation.strict`, or `strict=` as `--strict` and `--no-strict` give it)
@@ -160,6 +161,30 @@ beforehand.
 draft = session.with_overlay(session.new_files("agent", "support_agent", ("cx",)))
 print([item.target for item in draft.catalog() if item.key == "agent:support_agent"])
 ```
+
+## What an editor offers
+
+`session.authoring_context()` says, for each authored field and setting that
+takes template calls or a set of values, what it takes, so an editor completes
+and limits it as SST will read it. Each `FieldVocabulary` is keyed by the path
+the JSON Schemas describe the field under: the file kind, then each key, list
+indices left out (`agent.spec.tools.semantic_view`); a setting of
+`sst_config.yml` is its key's path (`agents.+orchestration_model`) under any
+route. It lists:
+
+- `functions`, the template functions the field takes, the one a bare value is
+  told to use first, and `inline`, whether its calls sit amid other text such
+  as SQL rather than making up the whole value;
+- `choices`, the values it takes, with `closed` when another is reported and
+  `folded` when they match ignoring case. The project's `snowflake:` block
+  closes the agent tool types, the orchestration models and the avatars; a data
+  type field suggests types without closing them.
+
+`functions` names every template function, with its argument counts and what
+it names: an artifact type or member kind, whose names `catalog()` lists, else
+`model`, `source`, `var` or `tag`, which the context lists as `models` (with
+their columns), `sources`, `variables` and `tags`. A setting's value takes
+`setting_functions` and `{{ target.<key> }}` for each of `target_keys`.
 
 ## A session is a snapshot
 

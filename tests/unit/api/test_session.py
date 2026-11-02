@@ -146,6 +146,16 @@ def test_the_catalog_lists_every_compiled_artifact_and_render_returns_what_it_pu
         session.render("semantic_view:no_such_view")
 
 
+def test_the_catalog_names_what_an_agent_or_cowork_profile_is_shown_by(tmp_path: Path) -> None:
+    catalog = ProjectSession.open(project_copy(tmp_path), manifest_path=DBT_MANIFEST).catalog()
+
+    shown = {item.key: item.display_name for item in catalog}
+    assert shown["agent:jaffle_analytics_agent"] == "Jaffle Analytics"
+    assert shown["agent:jaffle_minimal_agent"] is None
+    assert shown["cowork_profile:jaffle_concierge"] == "Jaffle Concierge"
+    assert all(shown[item.key] is None for item in catalog if item.type not in {"agent", "cowork_profile"})
+
+
 def test_reload_reads_the_files_again_and_leaves_the_session_it_came_from_as_it_was(tmp_path: Path) -> None:
     project = project_copy(tmp_path)
     session = ProjectSession.open(project, manifest_path=DBT_MANIFEST)

@@ -55,6 +55,10 @@ class CompiledAgent(StandaloneArtifact):
         return str(self.resolved.model.name)
 
     @property
+    def display_name(self) -> str | None:
+        return self.resolved.model.profile.display_name
+
+    @property
     def artifact_key(self) -> str:
         return str(self.resolved.model.key)
 

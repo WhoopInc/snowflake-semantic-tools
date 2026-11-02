@@ -456,7 +456,7 @@ Where: a YAML file with `questions:` in an agent's or CoWork profile's `evals/` 
 | `questions[].ground_truth.required_filters` | list of texts |  | Filters the generated query must apply. |
 | `questions[].ground_truth.immutable` | boolean |  | The expected answer does not change as data arrives. |
 | `questions[].ground_truth.immutable_reason` | text |  | Why the expected answer does not change. |
-| `questions[].ground_truth.ground_truth_subagents` | list of templates |  | The subagents a CoWork profile is expected to route to, each an `agent()` or `tool()` call. |
+| `questions[].ground_truth.ground_truth_subagents` | list of templates |  | The subagents a CoWork profile is expected to route to, each an `agent()` or `tool()` call. Takes `agent()`, `tool()`. |
 | `database` | *refused* |  | Refused: an eval's database comes from its `config:` and the `evals:` block. `SST-VAL703`. |
 | `schema` | *refused* |  | Refused: an eval's schema comes from its `config:` and the `evals:` block. `SST-VAL703`. |
 | `enabled` | *refused* |  | Refused: an eval's enabled comes from its `config:` and the `evals:` block. `SST-VAL703`. |

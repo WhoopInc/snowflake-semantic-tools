@@ -38,6 +38,7 @@ from snowflake_semantic_tools.adapters.yaml.documents import LoadCache
 from snowflake_semantic_tools.adapters.yaml.semantic.reuse import ViewBuilds
 from snowflake_semantic_tools.adapters.yaml.skill_reuse import SkillCatalogs
 from snowflake_semantic_tools.api.authoring import removal, scaffold, scaffold_eval
+from snowflake_semantic_tools.api.authoring_context import AuthoringContext, authoring_context
 from snowflake_semantic_tools.api.lineage import Lineage, lineage_of
 from snowflake_semantic_tools.api.locations import Locations, project_locations
 from snowflake_semantic_tools.app.baseline import gate_baseline
@@ -72,6 +73,8 @@ class ObjectSummary:
         key: Its `<type>:<name>` artifact key, unique in the project.
         type: Its registry artifact type, such as `semantic_view` or `agent`.
         name: Its name, as authored.
+        display_name: The name it is shown by, as an agent's `profile:` or a CoWork profile's
+            `display:` authors it; None for every other type, and when none is authored.
         target: The fully qualified name it publishes as, as Snowflake SQL.
         source_files: The project files it is compiled from, relative to the project.
         depends_on: The keys of the artifacts that must publish before it.
@@ -89,6 +92,7 @@ class ObjectSummary:
     key: str
     type: str
     name: str
+    display_name: str | None
     target: str
     source_files: tuple[str, ...]
     depends_on: tuple[str, ...]
@@ -384,6 +388,20 @@ class ProjectSession:
         item = self._by_key[key]
         return MappingProxyType(removal(self._paths.project_dir, self._config_tree(), item, self._compiled.compiled))
 
+    def authoring_context(self) -> AuthoringContext:
+        """Return what an editor offers while a project file is written, as this session read the project.
+
+        What each field takes -- the template functions it calls, the values it accepts, with
+        the tool types, orchestration models and avatars the configuration's `snowflake:` block
+        allows -- and the names its calls may take that `catalog()` does not list: the dbt
+        models with their columns, the dbt sources, the project variables and the tags. Nothing
+        is compiled, run, or written.
+
+        Raises:
+            ProjectError: the configuration cannot be read.
+        """
+        return authoring_context(self._config_tree(), self._inputs.dbt_catalog())
+
     def _config_tree(self) -> Mapping[str, object]:
         return resolved_config(self._paths, self._base.target).tree
 
@@ -648,6 +666,7 @@ def _summary(item: CompiledArtifact) -> ObjectSummary:
         key=item.artifact_key,
         type=item.artifact_type,
         name=item.name,
+        display_name=item.display_name,
         target=artifact.target.sql,
         source_files=tuple(item.source_files),
         depends_on=tuple(artifact.depends_on),

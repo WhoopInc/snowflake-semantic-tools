@@ -23,7 +23,7 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
 )
 from snowflake_semantic_tools.domain.model.config_schema import CHILDREN, ConfigKey, KeyKind, KeyStatus, block_settings
 from snowflake_semantic_tools.domain.model.registry import ARTIFACT_REGISTRY
-from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS
+from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS_AT
 
 DRAFT = "https://json-schema.org/draft/2020-12/schema"
 # The names the configuration file's schema, and a semantic models file's, go by.
@@ -178,7 +178,7 @@ def _field(item: Field, path: str) -> dict[str, object]:
     """The schema of one field's value, with its description and, for an older key, `deprecated`."""
     schema = _value(item, path)
     description = item.summary
-    calls = REFERENCE_FIELDS.get(path)
+    calls = REFERENCE_FIELDS_AT.get(path)
     if calls:
         description += " Takes " + ", ".join(f"`{call}()`" for call in calls) + "."
     schema["description"] = description

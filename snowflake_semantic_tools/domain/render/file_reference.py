@@ -17,7 +17,7 @@ from snowflake_semantic_tools.domain.model.authored_schema import (
     Node,
     ValueKind,
 )
-from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS
+from snowflake_semantic_tools.domain.resolve.ref_fields import REFERENCE_FIELDS_AT
 
 # How the type column names each status other than current; each field's summary says why.
 _STATUS: Mapping[FieldStatus, str] = {
@@ -134,7 +134,7 @@ def _description(item: Field, condition: str, key: str, kind: str) -> str:
     """The field's summary, with what applies it, what it takes, and how SST reads or reports it."""
     parts = [condition] if condition else []
     parts.append(item.summary)
-    calls = REFERENCE_FIELDS.get(f"{kind}.{key.replace('[]', '')}")
+    calls = REFERENCE_FIELDS_AT.get(f"{kind}.{key.replace('[]', '')}")
     if calls:
         parts.append("Takes " + ", ".join(f"`{call}()`" for call in calls) + ".")
     if item.config_block is not None:
