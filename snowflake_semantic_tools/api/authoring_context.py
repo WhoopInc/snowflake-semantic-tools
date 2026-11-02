@@ -1,5 +1,8 @@
 """What an editor offers as a project file is written: what each field takes, and what its calls name.
 
+Names are listed without their descriptions, which hold most of a large project's bytes; an
+editor that shows one reads it from the dbt docs.
+
 `ProjectSession.authoring_context` returns it. Each field's vocabulary and every template
 function are SST's own tables (`domain.render.field_vocabulary`); the names the functions take
 that the catalog does not list -- dbt models and their columns, dbt sources, project variables
@@ -36,12 +39,10 @@ class ColumnName:
     Attributes:
         name: The column, as the manifest records it.
         data_type: Its data type, dbt's own or `meta.sst.data_type`; None when neither is written.
-        description: Its description; None when empty.
     """
 
     name: str
     data_type: str | None
-    description: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,13 +52,11 @@ class ModelName:
     Attributes:
         name: Its dbt name.
         relation: The relation it builds, as Snowflake SQL.
-        description: Its description; None when empty.
         columns: Its columns, in manifest order.
     """
 
     name: str
     relation: str
-    description: str | None
     columns: tuple[ColumnName, ...]
 
 
@@ -69,13 +68,11 @@ class SourceName:
         source: The source's name.
         table: The table's name.
         relation: The relation it reads; None when the manifest records none.
-        description: Its description; None when empty.
     """
 
     source: str
     table: str
     relation: str | None
-    description: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,10 +132,7 @@ def authoring_context(config: Mapping[str, object], catalog: DbtCatalog) -> Auth
                     ModelName(
                         name=model.name,
                         relation=model.relation_name,
-                        description=model.description,
-                        columns=tuple(
-                            ColumnName(column.name, column.data_type, column.description) for column in model.columns
-                        ),
+                        columns=tuple(ColumnName(column.name, column.data_type) for column in model.columns),
                     )
                     for model in catalog.models
                 ),
@@ -147,10 +141,7 @@ def authoring_context(config: Mapping[str, object], catalog: DbtCatalog) -> Auth
         ),
         sources=tuple(
             sorted(
-                (
-                    SourceName(item.source_name, item.name, item.relation_name, item.description)
-                    for item in catalog.sources
-                ),
+                (SourceName(item.source_name, item.name, item.relation_name) for item in catalog.sources),
                 key=lambda item: (item.source, item.table),
             )
         ),
