@@ -2,8 +2,9 @@
 
 `components` resolves the flags into what a run fills, `infer` holds the derivation rules,
 `prompts` the Cortex prompts and responses, `columns` what one model's columns gain,
-`governance` the column-tag read and which tags it finds sensitive, and
-`tables` what a model gains as table synonyms. Everything here is pure: the use case
+`governance` the column-tag read and which tags it finds sensitive,
+`tables` what a model gains as table synonyms, and `descriptions` the descriptions a model and
+its columns gain from Snowflake comments. Everything here is pure: the use case
 reads the warehouse and the files, and passes what it read in.
 """
 
@@ -37,6 +38,7 @@ from snowflake_semantic_tools.domain.enrich.components import (
     parse_components,
     resolve_options,
 )
+from snowflake_semantic_tools.domain.enrich.descriptions import description_value, needs_description, table_description
 from snowflake_semantic_tools.domain.enrich.governance import column_tags_sql, governed_columns, parse_column_tags
 from snowflake_semantic_tools.domain.enrich.infer import (
     SampleDecision,
@@ -88,9 +90,11 @@ __all__ = [
     "column_tags_sql",
     "decide_samples",
     "derive_column_type",
+    "description_value",
     "enrich_model",
     "governed_columns",
     "is_sampled_type",
+    "needs_description",
     "needs_table_synonyms",
     "parse_column_synonyms",
     "parse_column_tags",
@@ -106,6 +110,7 @@ __all__ = [
     "semantic_data_type",
     "sensitive",
     "synonym_columns",
+    "table_description",
     "table_synonyms",
     "table_synonyms_prompt",
     "taken_names",

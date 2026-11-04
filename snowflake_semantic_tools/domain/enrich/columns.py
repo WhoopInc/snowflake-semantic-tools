@@ -6,7 +6,8 @@ YAML describes and the relation lacks is reported and never dropped, and an excl
 left alone. A sensitive column -- one carrying `pii_tags` or `meta.sst.governance_tags` in its
 YAML, or a tag `governance:` names in Snowflake -- is never sampled, and its values reach no
 prompt. When a run reads column tags, each column's `meta.sst.governance_tags` is rewritten to
-exactly the sensitive tags it found.
+exactly the sensitive tags it found. A run that fills `descriptions` sets a column's own
+`description`, beside its name rather than under `meta.sst`, from the column's COMMENT.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from types import MappingProxyType
 
 from snowflake_semantic_tools.domain.diagnostics import D, Diagnostic
 from snowflake_semantic_tools.domain.enrich.components import Component, EnrichOptions
+from snowflake_semantic_tools.domain.enrich.descriptions import description_value
 from snowflake_semantic_tools.domain.enrich.infer import (
     clean_synonyms,
     decide_samples,
@@ -47,6 +49,7 @@ COMPONENT_KEYS: Mapping[Component, str] = MappingProxyType(
         Component.SAMPLE_VALUES: "sample_values",
         Component.ENUMS: "is_enum",
         Component.COLUMN_SYNONYMS: "synonyms",
+        Component.DESCRIPTIONS: "description",
     }
 )
 
@@ -60,11 +63,13 @@ class WarehouseColumn:
         data_type: INFORMATION_SCHEMA's `DATA_TYPE`, such as `TEXT` or `NUMBER`.
         governance_tags: The sensitive tags Snowflake lists on the column, each named as
             `matching_tags` names it; empty when none matches, or no tag was read.
+        comment: INFORMATION_SCHEMA's `COMMENT`; None when the column has none.
     """
 
     name: str
     data_type: str
     governance_tags: tuple[str, ...] = ()
+    comment: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,18 +78,20 @@ class ColumnUpdate:
 
     Attributes:
         name: The column as the YAML names it; for an added column, the name enrich writes.
-        values: Each key and the value it takes; a list value is a tuple of text.
+        values: Each `meta.sst` key and the value it takes; a list value is a tuple of text.
         added: The YAML does not describe the column yet, so enrich adds its entry.
+        description: The column's own `description` the update sets; None when it sets none.
     """
 
     name: str
     values: tuple[tuple[str, object], ...]
     added: bool = False
+    description: str | None = None
 
     @property
     def keys(self) -> tuple[str, ...]:
-        """The keys the update sets."""
-        return tuple(key for key, _ in self.values)
+        """The keys the update sets: `description` first when it sets one, then the `meta.sst` keys."""
+        return (*(("description",) if self.description is not None else ()), *(key for key, _ in self.values))
 
 
 @dataclass(frozen=True, slots=True)
@@ -525,6 +532,9 @@ def enrich_model(
         SST-VAL317: a written `is_enum: true` the sampled data contradicts.
         SST-SNO031: a column's name, or a value enrich would write for it, holds template syntax,
             and nothing is written for the column. A sampled value that does is not written.
+
+    A column whose description the run fills from its COMMENT gets it in the update's own
+    `description`; a comment that holds template syntax is refused like any other value.
     """
     diagnostics = _absent_columns(model, warehouse)
     updates: list[ColumnUpdate] = []
@@ -546,10 +556,12 @@ def enrich_model(
             _hand_edited_enum(model, existing, column_role, options, settings, fetched, column.data_type)
         )
         values = tuple((key, found[key]) for key in WRITTEN_KEYS if found.get(key) is not None)
+        description = description_value(existing.description if existing is not None else None, column.comment, options)
         name = existing.name if existing is not None else yaml_column_name(column.name)
-        refused = templated_text(name, values) if values else ()
+        texts = (*values, *((("description", description),) if description is not None else ()))
+        refused = templated_text(name, texts) if texts else ()
         diagnostics.extend(_unwritten(model, name, refused))
-        if values and not refused:
-            updates.append(ColumnUpdate(name, values, added=existing is None))
+        if texts and not refused:
+            updates.append(ColumnUpdate(name, values, added=existing is None, description=description))
     diagnostics.extend(_governed_samples(model, warehouse, options))
     return ModelEnrichment(model.name, tuple(updates), tuple(diagnostics))

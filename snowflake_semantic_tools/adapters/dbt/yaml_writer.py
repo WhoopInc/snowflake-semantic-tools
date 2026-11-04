@@ -5,8 +5,9 @@ A model's or column's `sst` block is edited where it already is -- bare `meta.ss
 `config.meta.sst`, which a model gets before its `columns`. A column's keys take their place in
 `WRITTEN_KEYS` order, and a model's `synonyms` theirs in `MODEL_KEYS` order; a model or column
 the file does not describe yet is appended. An update whose value is an empty list removes its
-key, as enrich removes `governance_tags` Snowflake no longer lists. Nothing else in the file
-changes.
+key, as enrich removes `governance_tags` Snowflake no longer lists. A description is the node's
+own `description:`, replaced where it is and otherwise added beside its `name`, as an import
+writes one. Nothing else in the file changes.
 """
 
 from __future__ import annotations
@@ -112,8 +113,27 @@ def _model_entry(root: CommentedMap, model: str, path: str, section: str = "mode
     return entry
 
 
-def _apply(entry: CommentedMap, updates: Sequence[ColumnUpdate] | None, synonyms: Sequence[str], path: str) -> None:
-    """Set the model's table synonyms, then make its column updates; None leaves its columns alone."""
+def _describe(node: CommentedMap, description: str) -> None:
+    """Set a model's or column's own `description:`, in its place when it has one, else after its `name`."""
+    if "description" in node:
+        node["description"] = scalar(description)
+    else:
+        node.insert(1 if "name" in node else 0, "description", scalar(description))
+
+
+def _apply(
+    entry: CommentedMap,
+    updates: Sequence[ColumnUpdate] | None,
+    synonyms: Sequence[str],
+    path: str,
+    description: str | None = None,
+) -> None:
+    """Set the model's description and table synonyms, then make its column updates.
+
+    None for `updates` leaves its columns alone, and None for `description` its description.
+    """
+    if description is not None:
+        _describe(entry, description)
     if synonyms:
         insert_key(_sst_block(entry, path), "synonyms", block_list(tuple(synonyms)), MODEL_KEYS)
     if updates is None:
@@ -124,6 +144,10 @@ def _apply(entry: CommentedMap, updates: Sequence[ColumnUpdate] | None, synonyms
         if column is None:
             column = CommentedMap(name=scalar(update.name))
             columns.append(column)
+        if update.description is not None:
+            _describe(column, update.description)
+        if not update.values:
+            continue
         sst = _sst_block(column, path)
         for key, value in update.values:
             if value == ():
@@ -147,8 +171,10 @@ def write_model_updates(
     updates: Mapping[str, Sequence[ColumnUpdate]],
     synonyms: Mapping[str, Sequence[str]] | None = None,
     sections: Mapping[str, str] | None = None,
+    *,
+    descriptions: Mapping[str, str] | None = None,
 ) -> WrittenFile:
-    """Apply each model's column updates and table synonyms to one dbt YAML file's text.
+    """Apply each model's column updates, table synonyms and description to one dbt YAML file's text.
 
     Args:
         text: The file's text; None for a file enrich creates.
@@ -156,6 +182,7 @@ def write_model_updates(
         synonyms: The table synonyms of each model the file describes, by model name.
         sections: The top-level key each model is described under, by model name; `models`
             when absent, `snapshots` or `seeds` for a snapshot or seed.
+        descriptions: The `description` each model the file describes gains, by model name.
 
     Raises:
         ProjectError: The file is not YAML (SST-LOD001), or a part enrich must edit has another
@@ -166,9 +193,10 @@ def write_model_updates(
     assert isinstance(root, CommentedMap)
     synonyms = synonyms or {}
     sections = sections or {}
-    for model in dict.fromkeys((*updates, *synonyms)):
+    descriptions = descriptions or {}
+    for model in dict.fromkeys((*updates, *synonyms, *descriptions)):
         entry = _model_entry(root, model, path, sections.get(model, "models"))
-        _apply(entry, updates.get(model), synonyms.get(model, ()), path)
+        _apply(entry, updates.get(model), synonyms.get(model, ()), path, descriptions.get(model))
     return WrittenFile(document.dump(), document.reformats())
 
 

@@ -17,7 +17,9 @@ Answer = Callable[[str, Mapping[str, object]], object]
 class ScriptedEnrich:
     """Answer enrich's reads from dictionaries, recording every call in order.
 
-    Relations are keyed by their SQL name, such as `DB.SCH.ORDERS`. A relation in `failures`
+    Relations are keyed by their SQL name, such as `DB.SCH.ORDERS`. A column is `(name, type)`,
+    or `(name, type, comment)` for one with a COMMENT, and `comments` gives each relation's own
+    COMMENT, which a relation in `comment_failures` fails to read. A relation in `failures`
     raises its error from whichever read reaches it first, and one in `tag_failures` from its
     tag read alone; `tags` gives each relation's column tags, by column, as three-part names.
     Cortex raises `cortex_failure`
@@ -30,7 +32,9 @@ class ScriptedEnrich:
     def __init__(
         self,
         *,
-        columns: Mapping[str, Sequence[tuple[str, str]]] | None = None,
+        columns: Mapping[str, Sequence[tuple[str, str] | tuple[str, str, str | None]]] | None = None,
+        comments: Mapping[str, str | None] | None = None,
+        comment_failures: Mapping[str, SnowflakePortError] | None = None,
         values: Mapping[str, Mapping[str, Sequence[str]]] | None = None,
         answer: Answer | None = None,
         failures: Mapping[str, SnowflakePortError] | None = None,
@@ -42,9 +46,14 @@ class ScriptedEnrich:
         tag_failures: Mapping[str, SnowflakePortError] | None = None,
     ) -> None:
         self._columns = {
-            relation: tuple(WarehouseColumn(name, data_type) for name, data_type in described)
+            relation: tuple(
+                WarehouseColumn(column[0], column[1], comment=column[2] if len(column) > 2 else None)
+                for column in described
+            )
             for relation, described in (columns or {}).items()
         }
+        self._comments = dict(comments or {})
+        self._comment_failures = dict(comment_failures or {})
         self._values = {relation: dict(found) for relation, found in (values or {}).items()}
         self._answer = answer or (lambda _prompt, _schema: {})
         self._failures = dict(failures or {})
@@ -71,6 +80,13 @@ class ScriptedEnrich:
         self.calls.append(("columns", relation.sql))
         self._fail(relation)
         return self._columns.get(relation.sql)
+
+    def relation_comment(self, relation: QualifiedName) -> str | None:
+        self.calls.append(("comment", relation.sql))
+        self._fail(relation)
+        if relation.sql in self._comment_failures:
+            raise self._comment_failures[relation.sql]
+        return self._comments.get(relation.sql)
 
     def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
         self.calls.append(("tags", relation.sql))
@@ -123,8 +139,10 @@ class InMemoryFiles:
         updates: Mapping[str, Sequence[ColumnUpdate]],
         synonyms: Mapping[str, Sequence[str]],
         sections: Mapping[str, str] | None = None,
+        *,
+        descriptions: Mapping[str, str] | None = None,
     ) -> WrittenFile:
-        return write_model_updates(text, path, updates, synonyms, sections)
+        return write_model_updates(text, path, updates, synonyms, sections, descriptions=descriptions)
 
     def write(self, path: str, text: str) -> None:
         self.texts[path] = text

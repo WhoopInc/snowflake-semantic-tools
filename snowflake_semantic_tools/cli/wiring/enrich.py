@@ -42,6 +42,9 @@ class LazyEnrichPort(EnrichPort):
     def relation_columns(self, relation: QualifiedName) -> tuple[WarehouseColumn, ...] | None:
         return self._connected().relation_columns(relation)
 
+    def relation_comment(self, relation: QualifiedName) -> str | None:
+        return self._connected().relation_comment(relation)
+
     def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
         return self._connected().column_tags(relation)
 

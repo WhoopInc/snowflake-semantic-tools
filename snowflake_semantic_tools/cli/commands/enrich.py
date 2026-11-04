@@ -156,8 +156,10 @@ def enrich(
     model YAML leaves out: column types and data types by default, and with --include sample
     values, enums (which bring sample values with them), and synonyms, which Cortex proposes.
     Table synonyms go into the model's own `meta.sst`, which every semantic view that uses it
-    reads. Values already written are kept unless --force names their component. Sample values
-    and enums read row data, which `enrichment.allow_sample_value_collection: false` refuses.
+    reads. Descriptions come from the relation's and its columns' Snowflake comments, and go
+    into the model's and each column's own `description`. Values already written are kept
+    unless --force names their component. Sample values and enums read row data, which
+    `enrichment.allow_sample_value_collection: false` refuses.
     PATH selects the models whose SQL or YAML file is under it. The relations are the
     manifest's, for the resolved target, which must be production-like unless --allow-non-prod
     is given.
@@ -226,16 +228,23 @@ def _exit_code(report: EnrichReport, *, check: bool, detailed: bool) -> int:
     return CHANGES if check and detailed and report.changed else OK
 
 
+def _status(item: ModelReport) -> str:
+    if item.enrichment is None:
+        return "failed"
+    return "enriched" if item.enrichment.updates or item.description is not None else "unchanged"
+
+
 def _model_data(item: ModelReport) -> dict[str, object]:
     enrichment = item.enrichment
     filled = {component.value: enrichment.filled(component) for component in Component} if enrichment else {}
     return {
         "model": item.model,
         "path": item.path,
-        "status": "failed" if enrichment is None else "enriched" if enrichment.updates else "unchanged",
+        "status": _status(item),
         "added": list(enrichment.added) if enrichment else [],
         "filled": {name: count for name, count in filled.items() if count},
         "table_synonyms": list(item.table_synonyms),
+        "table_description": item.description is not None,
     }
 
 
@@ -271,6 +280,8 @@ def _model_line(item: ModelReport) -> str:
         parts.insert(0, f"{_plural(len(enrichment.added), 'column')} added")
     if item.table_synonyms:
         parts.append(f"table synonyms {len(item.table_synonyms)}")
+    if item.description is not None:
+        parts.append("table description")
     return f"{item.model}: {', '.join(parts) or 'unchanged'}"
 
 

@@ -78,7 +78,7 @@ maintain, and, last, the one-time upgrade from 0.3.
 | `sst debug` | Show the resolved configuration, profile, target, and state table, and test the connection (`--no-connect` skips it) |
 | `sst agent-kit` | Install, upgrade, show the status of, or remove skills that teach Cortex Code or Claude Code to work in an SST project |
 | **Author** | |
-| `sst enrich` | Fill missing column types, data types, sample values, enums, and synonyms from the warehouse, editing the YAML in place |
+| `sst enrich` | Fill missing column types, data types, sample values, enums, synonyms, and descriptions (from Snowflake comments) from the warehouse, editing the YAML in place |
 | `sst format` | Rewrite YAML into canonical form; `--check` exits 2 when a file would change |
 | `sst validate` | Check every artifact, offline or with Snowflake syntax checks |
 | `sst explain` | Explain one diagnostic code, offline |
