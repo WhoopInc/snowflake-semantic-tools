@@ -201,7 +201,7 @@ _COMMAND_OPTION_HELP: Mapping[tuple[str, str], str] = {
     ("sst enrich", "--exclude"): "Leave these dbt models out; same forms as `--select`.",
     ("sst enrich", "--include"): (
         "Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, "
-        "column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types."
+        "column-synonyms, table-synonyms, descriptions, synonyms, all. Defaults to column-types and data-types."
     ),
     ("sst enrich", "--force"): "Components to derive again over values already written; forcing one includes it.",
     ("sst enrich", "--database"): "Read every relation from this database instead of the manifest's.",

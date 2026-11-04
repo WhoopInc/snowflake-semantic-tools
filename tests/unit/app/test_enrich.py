@@ -441,3 +441,72 @@ def test_values_shaped_like_personal_data_are_neither_written_nor_sent_to_cortex
     assert prompts and not any("jane.doe" in prompt for prompt in prompts)
     project.write(report)
     assert "jane.doe" not in files.texts["models/orders.yml"]
+
+
+COMMENTED_COLUMNS = [("ORDER_ID", "TEXT", "The order's key"), ("TOTAL", "NUMBER", "Order total in USD")]
+
+
+def test_descriptions_come_from_snowflake_comments_where_the_yaml_has_none() -> None:
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": COMMENTED_COLUMNS}, comments={"DB.SCH.ORDERS": "One row per order"})
+    total = DbtColumn("total", "Written by hand", None, None)
+    project, _, files = _project(
+        _model(description=None, columns=(DbtColumn("order_id", None, None, None), total)), port=port
+    )
+    report = project.run(_request(C.DESCRIPTIONS))
+    assert port.calls == [("columns", "DB.SCH.ORDERS"), ("comment", "DB.SCH.ORDERS")]
+    (orders,) = report.models
+    assert orders.description == "One row per order"
+    assert orders.enrichment is not None and orders.enrichment.filled(C.DESCRIPTIONS) == 1
+    assert list(report.diagnostics) == []
+    project.write(report)
+    assert files.texts["models/orders.yml"] == (
+        "version: 2\nmodels:\n  - name: orders\n    description: One row per order\n    columns:\n"
+        "      - name: order_id\n        description: The order's key\n      - name: total\n"
+    )
+
+
+def test_a_described_model_reads_no_comment_unless_descriptions_are_forced() -> None:
+    port = ScriptedEnrich(columns={"DB.SCH.ORDERS": COMMENTED_COLUMNS}, comments={"DB.SCH.ORDERS": "One row per order"})
+    project, _, _ = _project(port=port)
+    assert project.run(_request(C.DESCRIPTIONS)).models[0].description is None
+    assert ("comment", "DB.SCH.ORDERS") not in port.calls
+    project, port, _ = _project(
+        port=ScriptedEnrich(
+            columns={"DB.SCH.ORDERS": COMMENTED_COLUMNS}, comments={"DB.SCH.ORDERS": "One row per order"}
+        )
+    )
+    forced = project.run(_request(C.DESCRIPTIONS, forced=(C.DESCRIPTIONS,)))
+    assert forced.models[0].description == "One row per order" and port.calls[-1] == ("comment", "DB.SCH.ORDERS")
+    untouched, port, _ = _project(port=ScriptedEnrich(columns={"DB.SCH.ORDERS": COMMENTED_COLUMNS}))
+    assert untouched.run(_request()).models[0].enrichment.filled(C.DESCRIPTIONS) == 0  # type: ignore[union-attr]
+    assert ("comment", "DB.SCH.ORDERS") not in port.calls
+
+
+def test_a_comment_that_fails_to_read_fails_its_model_and_a_templated_one_is_not_written() -> None:
+    failing = ScriptedEnrich(
+        columns={"DB.SCH.ORDERS": ORDERS_COLUMNS},
+        comment_failures={"DB.SCH.ORDERS": SnowflakePortError("Insufficient privileges\nmore")},
+    )
+    project, _, _ = _project(_model(description=None), port=failing)
+    report = project.run(_request(C.DESCRIPTIONS))
+    assert report.models[0].failed and report.files == ()
+    assert [item.message for item in report.diagnostics] == [
+        "model 'orders': reading the relation's comment failed: Insufficient privileges"
+    ]
+    templated = ScriptedEnrich(columns={"DB.SCH.ORDERS": ORDERS_COLUMNS}, comments={"DB.SCH.ORDERS": "{{ x }}"})
+    project, _, _ = _project(_model(description=None), port=templated)
+    report = project.run(_request(C.DESCRIPTIONS))
+    assert report.models[0].description is None and report.files == ()
+    assert [(item.code, item.subject) for item in report.diagnostics] == [("SST-SNO031", "dbt_model:orders")]
+
+
+def test_a_model_that_gains_only_a_description_is_still_written() -> None:
+    port = ScriptedEnrich(
+        columns={"DB.SCH.ORDERS": ORDERS_COLUMNS[:2]}, comments={"DB.SCH.ORDERS": "One row per order"}
+    )
+    project, _, files = _project(_model(description=None), port=port)
+    report = project.run(_request(C.DESCRIPTIONS))
+    assert [item.path for item in report.changed] == ["models/orders.yml"]
+    assert report.models[0].enrichment is not None and report.models[0].enrichment.updates == ()
+    project.write(report)
+    assert "    description: One row per order\n" in files.texts["models/orders.yml"]

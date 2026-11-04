@@ -1,7 +1,8 @@
-"""A relation's columns, the tags on them, and the distinct values they hold, read for `sst enrich`.
+"""A relation's columns, its comment, and its columns' tags and distinct values, read for `sst enrich`.
 
-Nothing here writes. Columns come from the database's INFORMATION_SCHEMA, which describes views
-as well as tables, under the names Snowflake stores, and their tags from its
+Nothing here writes. Columns and their comments come from the database's INFORMATION_SCHEMA,
+which describes views as well as tables, under the names Snowflake stores, the relation's own
+comment from its TABLES view, and the columns' tags from its
 TAG_REFERENCES_ALL_COLUMNS table function. Distinct values come from one query per group of
 columns: each column is a parenthesized branch of a UNION ALL that groups its non-null values,
 counts them, and keeps the most frequent, so the whole sample costs one scan per column.
@@ -24,14 +25,27 @@ COLUMNS_PER_QUERY = 50
 
 
 def columns_sql(relation: QualifiedName) -> Sql:
-    """Return the statement reading a relation's columns; it binds the schema and the name."""
+    """Return the statement reading a relation's columns and comments; it binds the schema and the name."""
     return sql(
-        "SELECT COLUMN_NAME, DATA_TYPE "
+        "SELECT COLUMN_NAME, DATA_TYPE, COMMENT "
         "FROM {database}.INFORMATION_SCHEMA.COLUMNS "
         "WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s "
         "ORDER BY ORDINAL_POSITION",
         database=ident(relation.database),
     )
+
+
+def table_comment_sql(relation: QualifiedName) -> Sql:
+    """Return the statement reading a table's or a view's comment; it binds the schema and the name."""
+    return sql(
+        "SELECT COMMENT FROM {database}.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s",
+        database=ident(relation.database),
+    )
+
+
+def _comment(value: object) -> str | None:
+    """Return a COMMENT as text; None for a missing or empty one."""
+    return str(value) if value is not None and str(value) != "" else None
 
 
 def distinct_values_sql(relation: QualifiedName, columns: Sequence[str], limit: int) -> Sql:
@@ -75,8 +89,20 @@ class ProfilerMethods(Session, RelationProfilerPort):
             if _not_visible(error):
                 return None
             raise
-        columns = tuple(WarehouseColumn(str(name), str(data_type)) for name, data_type in result.rows)
+        columns = tuple(
+            WarehouseColumn(str(name), str(data_type), comment=_comment(comment))
+            for name, data_type, comment in result.rows
+        )
         return columns or None
+
+    def relation_comment(self, relation: QualifiedName) -> str | None:
+        try:
+            result = self.query(table_comment_sql(relation), (relation.schema.folded, relation.name.folded))
+        except SnowflakePortError as error:
+            if _not_visible(error):
+                return None
+            raise
+        return next((_comment(comment) for (comment,) in result.rows), None)
 
     def column_tags(self, relation: QualifiedName) -> Mapping[str, tuple[QualifiedName, ...]]:
         # Unlike `relation_columns`, a relation the role cannot see is an error: the caller has

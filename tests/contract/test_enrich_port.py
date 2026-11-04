@@ -10,6 +10,7 @@ from snowflake_semantic_tools.adapters.snowflake.connector.profiler import (
     COLUMNS_PER_QUERY,
     columns_sql,
     distinct_values_sql,
+    table_comment_sql,
 )
 from snowflake_semantic_tools.domain.enrich import TABLE_SYNONYMS_SCHEMA, WarehouseColumn, column_tags_sql
 from snowflake_semantic_tools.domain.model.identifier import QualifiedName
@@ -37,10 +38,37 @@ class _Recorded(SnowflakeConnector):
 
 
 def test_columns_are_read_from_the_databases_information_schema_by_stored_name() -> None:
-    port = _Recorded(QueryResult(("COLUMN_NAME", "DATA_TYPE"), (("ORDER_ID", "TEXT"), ("Total", "NUMBER"))))
-    assert port.relation_columns(ORDERS) == (WarehouseColumn("ORDER_ID", "TEXT"), WarehouseColumn("Total", "NUMBER"))
+    rows = (("ORDER_ID", "TEXT", "The order's key"), ("Total", "NUMBER", None), ("NOTE", "TEXT", ""))
+    port = _Recorded(QueryResult(("COLUMN_NAME", "DATA_TYPE", "COMMENT"), rows))
+    assert port.relation_columns(ORDERS) == (
+        WarehouseColumn("ORDER_ID", "TEXT", comment="The order's key"),
+        WarehouseColumn("Total", "NUMBER"),
+        WarehouseColumn("NOTE", "TEXT"),
+    )
     assert port.statements == [(str(columns_sql(ORDERS)), ("SCH", "Orders"))]
-    assert str(columns_sql(ORDERS)).startswith("SELECT COLUMN_NAME, DATA_TYPE FROM DB.INFORMATION_SCHEMA.COLUMNS ")
+    assert str(columns_sql(ORDERS)).startswith(
+        "SELECT COLUMN_NAME, DATA_TYPE, COMMENT FROM DB.INFORMATION_SCHEMA.COLUMNS "
+    )
+
+
+def test_a_relations_comment_is_read_from_the_databases_tables_view_by_stored_name() -> None:
+    port = _Recorded(QueryResult(("COMMENT",), (("One row per order",),)))
+    assert port.relation_comment(ORDERS) == "One row per order"
+    assert port.statements == [(str(table_comment_sql(ORDERS)), ("SCH", "Orders"))]
+    assert str(table_comment_sql(ORDERS)) == (
+        "SELECT COMMENT FROM DB.INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = %s AND TABLE_NAME = %s"
+    )
+
+
+@pytest.mark.parametrize("rows", [(), ((None,),), (("",),)])
+def test_a_relation_without_a_comment_reads_as_none(rows: tuple[tuple[object, ...], ...]) -> None:
+    assert _Recorded(QueryResult(("COMMENT",), rows)).relation_comment(ORDERS) is None
+
+
+def test_a_comment_the_role_cannot_see_is_none_and_any_other_failure_propagates() -> None:
+    assert _Recorded(SnowflakePortError("missing", errno=2003)).relation_comment(ORDERS) is None
+    with pytest.raises(SnowflakePortError, match="warehouse suspended"):
+        _Recorded(SnowflakePortError("warehouse suspended", sqlstate="57P03")).relation_comment(ORDERS)
 
 
 @pytest.mark.parametrize(
@@ -53,7 +81,7 @@ def test_columns_are_read_from_the_databases_information_schema_by_stored_name()
 )
 def test_a_relation_the_role_cannot_see_has_no_columns(error: SnowflakePortError) -> None:
     assert _Recorded(error).relation_columns(ORDERS) is None
-    assert _Recorded(QueryResult(("COLUMN_NAME", "DATA_TYPE"), ())).relation_columns(ORDERS) is None
+    assert _Recorded(QueryResult(("COLUMN_NAME", "DATA_TYPE", "COMMENT"), ())).relation_columns(ORDERS) is None
 
 
 def test_any_other_failure_to_read_columns_propagates() -> None:
@@ -165,6 +193,20 @@ def test_the_offline_double_follows_the_profiler_contract() -> None:
     with pytest.raises(SnowflakePortError, match="no tags"):
         tagged.column_tags(QualifiedName.parse("db.sch.broken"))
     assert tagged.calls[0] == ("tags", ORDERS.sql)
+    commented = ScriptedEnrich(
+        columns={ORDERS.sql: [("ORDER_ID", "TEXT", "The order's key"), ("TOTAL", "NUMBER")]},
+        comments={ORDERS.sql: "One row per order"},
+        failures={"DB.SCH.BROKEN": SnowflakePortError("broken")},
+    )
+    assert commented.relation_columns(ORDERS) == (
+        WarehouseColumn("ORDER_ID", "TEXT", comment="The order's key"),
+        WarehouseColumn("TOTAL", "NUMBER"),
+    )
+    assert commented.relation_comment(ORDERS) == "One row per order"
+    assert commented.relation_comment(QualifiedName.parse("db.sch.other")) is None
+    with pytest.raises(SnowflakePortError, match="broken"):
+        commented.relation_comment(QualifiedName.parse("db.sch.broken"))
+    assert commented.calls[1] == ("comment", ORDERS.sql)
 
 
 def test_the_probe_asks_for_one_token_with_model_and_prompt_bound() -> None:

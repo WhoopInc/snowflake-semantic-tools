@@ -56,8 +56,10 @@ class ProjectFiles(EnrichFilesPort):
         updates: Mapping[str, Sequence[ColumnUpdate]],
         synonyms: Mapping[str, Sequence[str]],
         sections: Mapping[str, str] | None = None,
+        *,
+        descriptions: Mapping[str, str] | None = None,
     ) -> WrittenFile:
-        written = write_model_updates(text, path, updates, synonyms, sections)
+        written = write_model_updates(text, path, updates, synonyms, sections, descriptions=descriptions)
         kept = keep_canonical(text, written.text, path, self._style)
         return written if kept == written.text else replace(written, text=kept)
 

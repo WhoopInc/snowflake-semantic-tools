@@ -19,6 +19,7 @@ class Component(Enum):
     ENUMS = "enums"
     COLUMN_SYNONYMS = "column-synonyms"
     TABLE_SYNONYMS = "table-synonyms"
+    DESCRIPTIONS = "descriptions"
 
 
 # What a run fills when `--include` is not given: cheap, deterministic, and metadata only.

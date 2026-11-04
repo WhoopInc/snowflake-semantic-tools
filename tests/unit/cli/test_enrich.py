@@ -132,6 +132,7 @@ def test_the_json_report_lists_models_files_and_components(monkeypatch: pytest.M
             "added": ["quantity"],
             "filled": {"column-types": 1},
             "table_synonyms": [],
+            "table_description": False,
         }
     ]
     assert data["files"] == [
@@ -272,3 +273,28 @@ def test_a_project_that_reads_column_tags_records_them_through_the_session(
     assert "              governance_tags:\n                - SEC.GOV.COUNT\n" in (project / YAML).read_text(
         encoding="utf-8"
     )
+
+
+def test_descriptions_are_filled_from_comments_and_reported(monkeypatch: pytest.MonkeyPatch, project: Path) -> None:
+    columns: list[tuple[str, str] | tuple[str, str, str | None]] = [
+        *ORDER_ITEMS_COLUMNS[:-1],
+        ("QUANTITY", "NUMBER", "Units of the product on the line"),
+    ]
+    port = _Warehouse(columns={ORDER_ITEMS: columns}, comments={ORDER_ITEMS: "Order line items, from the catalog"})
+    args = ("--select", "order_items", "--include", "descriptions")
+    result = _invoke(monkeypatch, project, port, *args, "--check", "--output", "json")
+    assert result.exit_code == 2, result.output
+    (model,) = json.loads(result.output)["data"]["models"]
+    assert model["filled"] == {"descriptions": 1} and model["table_description"] is False
+    assert ("comment", ORDER_ITEMS) not in port.calls
+    forced = _Warehouse(columns={ORDER_ITEMS: columns}, comments={ORDER_ITEMS: "Order line items, from the catalog"})
+    written = _invoke(monkeypatch, project, forced, *args, "--force", "descriptions")
+    assert written.exit_code == 0, written.output
+    assert written.output.splitlines()[0] == "order_items: 1 column added, descriptions 1, table description"
+    after = (project / YAML).read_text(encoding="utf-8")
+    # A description already in the file is replaced in place, in the block style it was written in.
+    assert "  - name: order_items\n    description: |-\n      Order line items, from the catalog\n" in after
+    assert "      - name: quantity\n        description: Units of the product on the line\n" in after
+    # The reference project is canonical, and enrich keeps it so.
+    formatted = CliRunner().invoke(cli, ["format", "--check", "--project-dir", str(project)])
+    assert formatted.exit_code == 0, formatted.output

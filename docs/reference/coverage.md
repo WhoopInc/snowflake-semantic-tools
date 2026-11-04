@@ -507,7 +507,7 @@ detected: `local` needs no connection, `observe` needs a read of Snowflake, and
 | [`SST-SNO024`](error-codes.md#sst-sno024) | SNO | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.session`<br>`snowflake_semantic_tools.domain.diagnostics.signatures` | `tests/codes/sno/test_sst_sno024.py` |
 | [`SST-SNO025`](error-codes.md#sst-sno025) | SNO | error | runtime | `snowflake_semantic_tools.adapters.snowflake.connector.catalog` | `tests/codes/sno/test_sst_sno025.py` |
 | [`SST-SNO030`](error-codes.md#sst-sno030) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich` | `tests/codes/sno/test_sst_sno030.py` |
-| [`SST-SNO031`](error-codes.md#sst-sno031) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.domain.enrich.columns` | `tests/codes/sno/test_sst_sno031.py` |
+| [`SST-SNO031`](error-codes.md#sst-sno031) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich`<br>`snowflake_semantic_tools.domain.enrich.columns`<br>`snowflake_semantic_tools.domain.enrich.descriptions` | `tests/codes/sno/test_sst_sno031.py` |
 | [`SST-SNO032`](error-codes.md#sst-sno032) | SNO | error | runtime | `snowflake_semantic_tools.app.enrich` | `tests/codes/sno/test_sst_sno032.py` |
 | [`SST-SNO033`](error-codes.md#sst-sno033) | SNO | warning | runtime | `snowflake_semantic_tools.app.enrich` | `tests/codes/sno/test_sst_sno033.py` |
 | [`SST-SNO034`](error-codes.md#sst-sno034) | SNO | error | runtime | `snowflake_semantic_tools.app.evals.run` | `tests/codes/sno/test_sst_sno034.py` |

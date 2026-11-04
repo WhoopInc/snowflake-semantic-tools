@@ -248,3 +248,43 @@ def test_an_edited_file_already_canonical_stays_canonical_under_the_projects_sty
             DBT, "models/orders.yml", {"orders": (ColumnUpdate("note", (("column_type", "dimension"),)),)}, {}
         ).text
     )
+
+
+def test_descriptions_are_each_nodes_own_key_set_in_place_or_beside_its_name() -> None:
+    updates = {
+        "orders": [
+            ColumnUpdate("ORDER_ID", (), description="The order's key"),
+            ColumnUpdate("note", (), description="Free text: what the buyer wrote"),
+            ColumnUpdate("added", (("column_type", "fact"),), added=True, description="Total in USD"),
+        ]
+    }
+    written = write_model_updates(DBT, "orders.yml", updates, descriptions={"orders": "One row per order"})
+    assert not written.reformatted
+    assert written.text == (
+        DBT.replace('    description: "Orders."\n', '    description: "One row per order"\n')
+        .replace(
+            "      - name: order_id\n        meta:\n",
+            "      - name: order_id\n        description: The order's key\n        meta:\n",
+        )
+        .replace(
+            "        description: 'it''s free text'\n",
+            "        description: 'Free text: what the buyer wrote'\n"
+            "      - name: added\n        description: Total in USD\n        config:\n          meta:\n"
+            "            sst:\n              column_type: fact\n",
+        )
+    )
+
+
+def test_a_model_gains_a_description_beside_its_name_and_a_multiline_one_round_trips() -> None:
+    text = "version: 2\nmodels:\n  - name: m\n    columns:\n      - name: a\n"
+    comment = "First line.\nSecond line: with a colon."
+    written = write_model_updates(
+        text, "m.yml", {"m": [ColumnUpdate("a", (), description=comment)]}, descriptions={"m": "A model"}
+    )
+    root = load_editable(written.text, "m.yml").root
+    assert isinstance(root, CommentedMap)
+    model = root["models"][0]
+    assert list(model) == ["name", "description", "columns"] and model["description"] == "A model"
+    assert list(model["columns"][0]) == ["name", "description"] and model["columns"][0]["description"] == comment
+    created = write_model_updates(None, "new.yml", {}, descriptions={"n": "Only a description"})
+    assert created.text == "version: 2\nmodels:\n  - name: n\n    description: Only a description\n"

@@ -2,15 +2,17 @@
 
 `sst enrich` fills the column metadata a semantic view needs from what the warehouse holds,
 and writes it into the dbt model YAML in place. It reads each model's relation for its columns
-and types, and fills what the YAML leaves out. It never writes to Snowflake, and it never
-writes a description: a model's and its columns' descriptions are only read, into the synonym
-prompts.
+and types, and fills what the YAML leaves out. It never writes to Snowflake. It writes a
+description only when a run includes `descriptions`, and then only from the comment Snowflake
+already holds for the relation or the column (see [Descriptions](#descriptions)); otherwise a
+model's and its columns' descriptions are only read, into the synonym prompts.
 
 ```bash
 sst enrich models/marts                          # column types and data types
 sst enrich --select model:orders --include all   # everything, for one model
 sst enrich --include sample-values --check       # would anything change? exit 2 if so
 sst enrich --include synonyms --dry-run          # show each change as a diff
+sst enrich --include descriptions --dry-run      # descriptions from Snowflake comments
 ```
 
 ## Components
@@ -26,6 +28,7 @@ it, a run fills `column-types` and `data-types`, which need no row data and no m
 | `enums` | `is_enum` for values already written; includes `sample-values` | the same query |
 | `column-synonyms` | `synonyms` | a Cortex model |
 | `table-synonyms` | the model's own `synonyms`, which every view that holds it renders | a Cortex model |
+| `descriptions` | not under `meta.sst`: the model's and each column's own `description` | the relation's and each column's COMMENT |
 
 `synonyms` names both synonym components, and `all` names every component. Names are matched
 without case; an unknown one is refused with exit `3`.
@@ -168,6 +171,34 @@ A table's synonyms are generated once per model and written into the model's own
 when it has none, cleaned against the names and synonyms of every other table of each view that
 uses it; `--force table-synonyms` replaces the ones it has.
 
+## Descriptions
+
+Every table and column a semantic view publishes needs a description (`SST-VAL003`). A team
+whose data catalog already syncs descriptions to Snowflake as comments, or that wrote them with
+`COMMENT ON`, can fill the YAML from them instead of copying each one by hand:
+
+```bash
+sst enrich models/marts --include descriptions --dry-run
+```
+
+- **Only missing descriptions are filled.** A model or column whose description is empty or
+  absent gets its relation's or column's COMMENT, without surrounding whitespace; one that has a
+  description keeps it. A blank comment, or one that is already the description, changes
+  nothing.
+- **`--force descriptions` replaces them.** Every description that differs from its comment is
+  overwritten with it, so the YAML follows the catalog. That includes text written by hand and
+  a `{{ doc() }}` reference, which the manifest holds rendered: review the diff before writing.
+- **Template syntax is never written.** A comment holding `{{`, `{%` or `{#` would run as Jinja
+  when dbt parses the YAML, so the description it would fill is left unwritten and reported
+  (`SST-SNO031`); for a column, nothing is written for it, as for any other value.
+- **It is written where dbt reads it.** The description is the node's own `description:`, beside
+  its `name`, never under `meta.sst`; one already in the file is replaced in place, in the
+  style it was written in.
+- **It costs one metadata read at most.** Column comments come with the column read every run
+  already makes. A model's own comment is one more read of `INFORMATION_SCHEMA.TABLES`, made
+  only for a model with no description, or when `descriptions` is forced. No row data is read
+  and no model is called, so `enrichment.allow_sample_value_collection` does not apply.
+
 ## Selecting models
 
 `PATH` arguments, relative to the project directory, select the models whose SQL or YAML file
@@ -235,7 +266,8 @@ or `unchanged`, or `failed`), then each file it wrote or would write (its diff u
 `--dry-run`), then a count of files and models. With `--output json`, `data` holds
 `components`, `forced`, `stopped`, `written`, one `models` entry per model (`status`
 `enriched`, `unchanged` or `failed`; the columns `added`; how many columns each component
-`filled`; the views given `table_synonyms`), and one `files` entry per file (`changed`,
+`filled`; the views given `table_synonyms`; whether the model gained a `table_description`),
+and one `files` entry per file (`changed`,
 `created`, `reformatted`).
 
 ## Offline and connected

@@ -205,8 +205,9 @@ use sst-agents-and-evals.
 ## Filling metadata from the warehouse
 
 `sst enrich` reads each model's built relation and writes what its YAML leaves out, under
-`config.meta.sst`, in place. It never writes to Snowflake and never writes a description, but
-it connects, so run it only when the user agrees. Show the change before writing it:
+`config.meta.sst`, in place. It never writes to Snowflake, and writes a description only with
+`--include descriptions`, from the relation's and its columns' Snowflake comments, but it
+connects, so run it only when the user agrees. Show the change before writing it:
 
 ```bash
 sst enrich --select model:orders --dry-run                  # print each change as a diff

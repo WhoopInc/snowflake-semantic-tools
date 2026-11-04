@@ -27,6 +27,7 @@ from snowflake_semantic_tools.domain.enrich import (
     column_synonyms_prompt,
     enrich_model,
     governed_columns,
+    needs_description,
     needs_table_synonyms,
     parse_column_synonyms,
     parse_table_synonyms,
@@ -34,6 +35,7 @@ from snowflake_semantic_tools.domain.enrich import (
     rejected_synonyms,
     sample_columns,
     synonym_columns,
+    table_description,
     table_synonyms,
     table_synonyms_prompt,
     taken_names,
@@ -124,6 +126,8 @@ class ModelReport:
         table_synonyms: The table synonyms its `meta.sst` gains; empty when it gains none.
         section: The top-level key of the YAML file that describes it: `models`, `snapshots`
             or `seeds`.
+        description: The model's own `description` the run sets from its relation's COMMENT;
+            None when it sets none.
     """
 
     model: str
@@ -131,6 +135,7 @@ class ModelReport:
     enrichment: ModelEnrichment | None
     table_synonyms: tuple[str, ...] = ()
     section: str = "models"
+    description: str | None = None
 
     @property
     def failed(self) -> bool:
@@ -354,9 +359,10 @@ class EnrichProject:
             SST-SNO033: SHOW CORTEX BASE MODELS lists the synonym model as INTERNAL, past
                 end-of-life, legacy or in preview, or does not list it.
             SST-SNO030: a model's relation is missing or not visible.
-            SST-SNO031: reading a model's columns, column tags or values, or asking Cortex, failed;
-                or a column's name, or a value enrich would write for it, holds template syntax,
-                and it is not written.
+            SST-SNO031: reading a model's columns, its relation's comment, column tags or values, or
+                asking Cortex, failed; or a column's name, or a value enrich would write for it,
+                holds template syntax, and it is not written; or the comment a model's description
+                would be filled from does, and the description is not written.
             SST-PRS030: Cortex proposed a synonym that can never be written; it is dropped.
             SST-PRS125: a file enrich writes is also reformatted.
         """
@@ -430,10 +436,24 @@ class EnrichProject:
             )
             taken = taken_by_views(views, model.name)
             edits, dropped_tables = self._table_synonyms(model, warehouse, taken, request.options, settings)
+            description, refused = self._table_description(model, request)
         except _ModelFailed as failure:
             return ModelReport(model.name, path, None, section=yaml_section(model)), [*withheld, failure.diagnostic]
-        report = ModelReport(model.name, path, enrichment, edits, yaml_section(model))
-        return report, [*withheld, *enrichment.diagnostics, *dropped, *dropped_tables]
+        report = ModelReport(model.name, path, enrichment, edits, yaml_section(model), description)
+        return report, [*withheld, *enrichment.diagnostics, *dropped, *dropped_tables, *refused]
+
+    def _table_description(self, model: DbtModel, request: EnrichRequest) -> tuple[str | None, tuple[Diagnostic, ...]]:
+        """Read the model's relation's COMMENT when the run fills its description; return what to write.
+
+        The comment is read only for a model with no description, or when `descriptions` is forced.
+        """
+        if not needs_description(model.description, request.options):
+            return None, ()
+        try:
+            comment = self._port.relation_comment(relation(model, request))
+        except SnowflakePortError as error:
+            raise self._failure(model, "reading the relation's comment", error) from error
+        return table_description(model.name, model.description, comment, request.options)
 
     def _synonym_model(self, model: str) -> list[Diagnostic]:
         """Check once that the synonym model answers, and how SHOW lists it, before any read.
@@ -566,23 +586,37 @@ class EnrichProject:
 
     def _edited_files(self, reports: Sequence[ModelReport]) -> tuple[EditedFile, ...]:
         """Compute every model file's text after the run, in path order."""
-        by_file: dict[str, tuple[dict[str, tuple[ColumnUpdate, ...]], dict[str, tuple[str, ...]], dict[str, str]]] = {}
+        by_file: dict[str, _FileEdits] = {}
         for report in reports:
             updates = report.enrichment.updates if report.enrichment is not None else ()
-            if not updates and not report.table_synonyms:
+            if not updates and not report.table_synonyms and report.description is None:
                 continue
-            columns, synonyms, sections = by_file.setdefault(report.path, ({}, {}, {}))
-            sections[report.model] = report.section
+            edits = by_file.setdefault(report.path, _FileEdits())
+            edits.sections[report.model] = report.section
             if updates:
-                columns[report.model] = updates
+                edits.columns[report.model] = updates
             if report.table_synonyms:
-                synonyms[report.model] = report.table_synonyms
+                edits.synonyms[report.model] = report.table_synonyms
+            if report.description is not None:
+                edits.descriptions[report.model] = report.description
         edited = []
-        for path, (columns, synonyms, sections) in sorted(by_file.items()):
+        for path, edits in sorted(by_file.items()):
             before = self._files.read(path)
-            written = self._files.edit_models(before, path, columns, synonyms, sections)
+            written = self._files.edit_models(
+                before, path, edits.columns, edits.synonyms, edits.sections, descriptions=edits.descriptions
+            )
             edited.append(EditedFile(path, before, written.text, written.reformatted))
         return tuple(edited)
+
+
+@dataclass(slots=True)
+class _FileEdits:
+    """What one YAML file gains, by model name: column updates, table synonyms, sections, descriptions."""
+
+    columns: dict[str, tuple[ColumnUpdate, ...]] = field(default_factory=dict)
+    synonyms: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    sections: dict[str, str] = field(default_factory=dict)
+    descriptions: dict[str, str] = field(default_factory=dict)
 
 
 def _shape_failure(model: DbtModel, step: str) -> Diagnostic:

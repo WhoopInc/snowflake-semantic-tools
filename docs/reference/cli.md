@@ -201,8 +201,10 @@ Reads each selected model's relation for its columns and types, and fills what t
 model YAML leaves out: column types and data types by default, and with --include sample
 values, enums (which bring sample values with them), and synonyms, which Cortex proposes.
 Table synonyms go into the model's own `meta.sst`, which every semantic view that uses it
-reads. Values already written are kept unless --force names their component. Sample values
-and enums read row data, which `enrichment.allow_sample_value_collection: false` refuses.
+reads. Descriptions come from the relation's and its columns' Snowflake comments, and go
+into the model's and each column's own `description`. Values already written are kept
+unless --force names their component. Sample values and enums read row data, which
+`enrichment.allow_sample_value_collection: false` refuses.
 PATH selects the models whose SQL or YAML file is under it. The relations are the
 manifest's, for the resolved target, which must be production-like unless --allow-non-prod
 is given.
@@ -226,7 +228,7 @@ sst enrich [OPTIONS] [PATH]...
 | `--target / -t` | TEXT |  | Target from `profiles.yml`, else `$SST_TARGET`; defaults to the profile's own default target. |
 | `--select` | TEXT, repeatable |  | Only these dbt models: `model:<name>` or a bare name; globs such as `fct_*` work, and dbt's graph operators, as in `+model:orders` for the models it is built from. |
 | `--exclude` | TEXT, repeatable |  | Leave these dbt models out; same forms as `--select`. |
-| `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, synonyms, all. Defaults to column-types and data-types. |
+| `--include` | TEXT, repeatable |  | Components to fill, repeatable or comma-separated: column-types, data-types, sample-values, enums, column-synonyms, table-synonyms, descriptions, synonyms, all. Defaults to column-types and data-types. |
 | `--force` | TEXT, repeatable |  | Components to derive again over values already written; forcing one includes it. |
 | `--database` | TEXT |  | Read every relation from this database instead of the manifest's. |
 | `--schema` | TEXT |  | Read every relation from this schema instead of the manifest's. |

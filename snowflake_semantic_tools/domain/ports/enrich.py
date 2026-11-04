@@ -19,15 +19,29 @@ from snowflake_semantic_tools.domain.ports.snowflake.cortex_models import BaseMo
 
 
 class RelationProfilerPort(Protocol):
-    """Read a relation's columns, the tags on them, and the distinct values they hold."""
+    """Read a relation's columns, its comment, the tags on its columns, and the distinct values they hold."""
 
     def relation_columns(self, relation: QualifiedName) -> tuple[WarehouseColumn, ...] | None:
         """Return a table's or a view's columns in their ordinal order, as INFORMATION_SCHEMA has them.
 
-        Never writes.
+        Each column carries its COMMENT, None when it has none. Never writes.
 
         Returns:
             The columns; None when no relation exists under the name or the role cannot see it.
+
+        Raises:
+            SnowflakePortError: the lookup failed for another reason.
+        """
+        ...
+
+    def relation_comment(self, relation: QualifiedName) -> str | None:
+        """Return a table's or a view's COMMENT, as INFORMATION_SCHEMA.TABLES has it.
+
+        Never writes.
+
+        Returns:
+            The comment; None when the relation has none, no relation exists under the name, or
+            the role cannot see it.
 
         Raises:
             SnowflakePortError: the lookup failed for another reason.
@@ -126,6 +140,8 @@ class EnrichFilesPort(Protocol):
         updates: Mapping[str, Sequence[ColumnUpdate]],
         synonyms: Mapping[str, Sequence[str]],
         sections: Mapping[str, str] | None = None,
+        *,
+        descriptions: Mapping[str, str] | None = None,
     ) -> WrittenFile:
         """Return a dbt YAML file's text with each model's updates made; nothing is written.
 
@@ -135,6 +151,7 @@ class EnrichFilesPort(Protocol):
             synonyms: The table synonyms each model's `meta.sst` gains, by model name.
             sections: The top-level key each model is described under, by model name --
                 `snapshots` for a snapshot, `seeds` for a seed; `models` when absent.
+            descriptions: The `description` each model gains, by model name.
 
         Raises:
             ProjectError: The file is not YAML, or a part enrich must edit has another shape.
